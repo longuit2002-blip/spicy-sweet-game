@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sweet_spicy
+    ports:
+      - "5432:5432"
+    volumes:
+      - sweet_spicy_pg:/var/lib/postgresql/data
+
+volumes:
+  sweet_spicy_pg:

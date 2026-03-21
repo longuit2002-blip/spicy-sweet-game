@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Warm “spice table” dark — default */
+  :root {
+    --background: 20 14% 8%;
+    --foreground: 40 30% 92%;
+
+    --card: 20 12% 14%;
+    --card-foreground: 40 30% 92%;
+
+    --popover: 20 12% 12%;
+    --popover-foreground: 40 30% 92%;
+
+    --primary: 12 85% 55%;
+    --primary-foreground: 40 30% 96%;
+
+    --secondary: 45 90% 55%;
+    --secondary-foreground: 20 14% 8%;
+
+    --muted: 20 10% 18%;
+    --muted-foreground: 30 10% 55%;
+
+    --accent: 45 90% 55%;
+    --accent-foreground: 20 14% 8%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 20 10% 22%;
+    --input: 20 10% 22%;
+    --ring: 12 85% 55%;
+
+    --radius: 0.75rem;
+
+    --chili: 0 80% 50%;
+    --chili-glow: 0 90% 60%;
+    --pepper: 0 0% 25%;
+    --pepper-glow: 0 0% 40%;
+    --lemon: 50 95% 55%;
+    --lemon-glow: 50 100% 65%;
+
+    --card-face: 35 30% 88%;
+    --card-back: 12 60% 25%;
+
+    --gradient-fire: linear-gradient(135deg, hsl(12, 85%, 55%), hsl(35, 90%, 55%));
+    --gradient-dark: linear-gradient(180deg, hsl(20, 14%, 10%), hsl(20, 14%, 6%));
+    --gradient-gold: linear-gradient(135deg, hsl(45, 90%, 55%), hsl(35, 85%, 50%));
+
+    --shadow-fire: 0 4px 20px -4px hsl(12 85% 55% / 0.4);
+    --shadow-card: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 20px hsl(12 85% 55% / 0.3);
+
+    --font-display: 'Dela Gothic One', cursive;
+    --font-body: 'Inter', sans-serif;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* Light: parchment / card-table feel */
+  .light {
+    --background: 40 35% 96%;
+    --foreground: 20 18% 12%;
+
+    --card: 40 30% 98%;
+    --card-foreground: 20 18% 12%;
+
+    --popover: 40 30% 99%;
+    --popover-foreground: 20 18% 12%;
+
+    --primary: 12 80% 48%;
+    --primary-foreground: 40 40% 98%;
+
+    --secondary: 45 85% 48%;
+    --secondary-foreground: 20 18% 10%;
+
+    --muted: 35 20% 90%;
+    --muted-foreground: 25 12% 40%;
+
+    --accent: 45 85% 48%;
+    --accent-foreground: 20 18% 10%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 18% 82%;
+    --input: 30 18% 82%;
+    --ring: 12 80% 48%;
+
+    --shadow-fire: 0 4px 20px -4px hsl(12 80% 48% / 0.25);
+    --shadow-card: 0 8px 24px -8px hsl(30 30% 20% / 0.12);
+    --shadow-glow: 0 0 16px hsl(12 80% 48% / 0.2);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+  }
+
+  .text-gradient-fire {
+    background: var(--gradient-fire);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-fire {
+    background: var(--gradient-fire);
+  }
+
+  .bg-gradient-gold {
+    background: var(--gradient-gold);
+  }
+
+  .shadow-fire {
+    box-shadow: var(--shadow-fire);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .card-chili {
+    border-color: hsl(var(--chili));
+    background: linear-gradient(135deg, hsl(var(--chili) / 0.15), hsl(var(--chili) / 0.05));
+  }
+
+  .card-pepper {
+    border-color: hsl(var(--pepper-glow));
+    background: linear-gradient(135deg, hsl(var(--pepper) / 0.25), hsl(var(--pepper) / 0.1));
+  }
+
+  .card-lemon {
+    border-color: hsl(var(--lemon));
+    background: linear-gradient(135deg, hsl(var(--lemon) / 0.15), hsl(var(--lemon) / 0.05));
+  }
+}

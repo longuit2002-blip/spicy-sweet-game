@@ -1,0 +1,58 @@
+{
+  "spice": {
+    "chili": "Ớt",
+    "pepper": "Tiêu",
+    "lemon": "Chanh"
+  },
+  "declare": {
+    "title": "Tuyên bố lá bài",
+    "chooseType": "Chọn loại gia vị:",
+    "chooseNumber": "Chọn số:",
+    "selectedCard": "Lá bài đã chọn",
+    "cardSelected": "Đã chọn từ bài trên tay",
+    "preview": "Tuyên bố của bạn:",
+    "cancel": "Hủy",
+    "confirm": "Tuyên bố"
+  },
+  "game": {
+    "lobby": {
+      "title": "Đang chờ người chơi",
+      "roomCode": "Mã phòng",
+      "shareCode": "Chia sẻ mã này cho bạn bè!",
+      "addBot": "Thêm Bot",
+      "startGame": "Bắt đầu game",
+      "minPlayers": "Cần ít nhất 2 người chơi"
+    },
+    "turn": {
+      "yourTurn": "Lượt của bạn!",
+      "waitingTurn": "Đang chờ {{player}}"
+    },
+    "challenge": {
+      "title": "Thách hay Chấp nhận?",
+      "challenge": "Thách!",
+      "accept": "Chấp nhận",
+      "timeLeft": "Thời gian: {{seconds}}s",
+      "bluffCaught": "Bị bắt bluff!",
+      "truthAccepted": "Tuyên bố được chấp nhận!"
+    },
+    "result": {
+      "wasBluff": "Đó là BLUFF!",
+      "wasTruth": "Đó là THẬT!",
+      "penalty": "{{player}} rút 2 lá bài phạt"
+    },
+    "winner": {
+      "title": "Người chiến thắng!",
+      "score": "Điểm cuối cùng",
+      "playAgain": "Chơi lại"
+    }
+  },
+  "common": {
+    "online": "Online",
+    "offline": "Offline",
+    "players": "Người chơi",
+    "score": "Điểm",
+    "ready": "Sẵn sàng",
+    "notReady": "Chưa sẵn sàng",
+    "host": "Chủ phòng"
+  }
+}

@@ -1,0 +1,1 @@
+export { OpponentBar } from './OpponentBar';

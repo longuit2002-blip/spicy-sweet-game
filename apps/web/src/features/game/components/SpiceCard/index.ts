@@ -1,0 +1,1 @@
+export { SpiceCard } from './SpiceCard';

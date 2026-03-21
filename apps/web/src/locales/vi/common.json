@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Sweet & Spicy",
+    "subtitle": "Bluff. Thách. Chiến thắng."
+  },
+  "home": {
+    "createRoom": "Tạo phòng",
+    "joinRoom": "Vào phòng",
+    "nickname": "Tên của bạn",
+    "enterNickname": "Nhập tên của bạn...",
+    "roomCode": "Mã phòng",
+    "enterRoomCode": "Nhập mã phòng",
+    "join": "Vào",
+    "footer": "2–6 người chơi · ~10 phút · Không cần tài khoản"
+  },
+  "errors": {
+    "nicknameRequired": "Cần nhập tên",
+    "roomCodeRequired": "Cần nhập mã phòng",
+    "invalidRoomCode": "Mã phòng không hợp lệ",
+    "roomFull": "Phòng đã đầy",
+    "gameInProgress": "Game đang diễn ra"
+  },
+  "buttons": {
+    "confirm": "Xác nhận",
+    "cancel": "Hủy",
+    "close": "Đóng",
+    "back": "Quay lại"
+  },
+  "language": {
+    "vi": "Tiếng Việt",
+    "en": "Tiếng Anh",
+    "toggle": "Đổi ngôn ngữ"
+  }
+}

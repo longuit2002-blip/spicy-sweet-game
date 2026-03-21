@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Sweet & Spicy",
+    "subtitle": "Bluff. Challenge. Win."
+  },
+  "home": {
+    "createRoom": "Create Room",
+    "joinRoom": "Join Room",
+    "nickname": "Your nickname",
+    "enterNickname": "Enter your nickname...",
+    "roomCode": "Room code",
+    "enterRoomCode": "Enter room code",
+    "join": "Join",
+    "footer": "2–6 players · ~10 min · No account needed"
+  },
+  "errors": {
+    "nicknameRequired": "Nickname is required",
+    "roomCodeRequired": "Room code is required",
+    "invalidRoomCode": "Invalid room code",
+    "roomFull": "Room is full",
+    "gameInProgress": "Game already in progress"
+  },
+  "buttons": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "close": "Close",
+    "back": "Back"
+  },
+  "language": {
+    "vi": "Vietnamese",
+    "en": "English",
+    "toggle": "Switch Language"
+  }
+}

@@ -1,0 +1,1 @@
+export { DeclareDialog } from './DeclareDialog';
