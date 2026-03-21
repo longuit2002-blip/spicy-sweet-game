@@ -34,7 +34,6 @@ apps/api/prisma/*.db-journal
 # OS / misc
 Thumbs.db
 
-# Cursor (local IDE / skills — don’t publish to GitHub)
 .cursor/
 
 # Editor directories and files
