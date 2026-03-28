@@ -137,3 +137,31 @@ export async function playChallengeLoseSound(): Promise<void> {
   osc.start(t0);
   osc.stop(t0 + dur + 0.03);
 }
+
+/** Two-note ascending stinger when turn advances (NEXT_TURN or new `PLAYER_TURN` seat). */
+export async function playTurnHandoffStinger(): Promise<void> {
+  if (isSfxMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  await ensureRunning(ctx);
+  const t0 = ctx.currentTime;
+  const level = 0.072;
+
+  const freqs = [392, 523.25] as const;
+  const step = 0.09;
+
+  freqs.forEach((freq, i) => {
+    const t = t0 + i * step;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(level, t + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + step * 1.15);
+    osc.connect(gain);
+    connectToDestination(ctx, gain);
+    osc.start(t);
+    osc.stop(t + step * 1.4);
+  });
+}

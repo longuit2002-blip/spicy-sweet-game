@@ -10,4 +10,6 @@ export type {
   GameTableTableauSectionProps,
   GameTableDeclarationSectionProps,
   PlayDropZoneConfig,
+  DrawPassActionConfig,
+  DrawPassPileDraggableConfig,
 } from "./GameTable";

@@ -11,6 +11,7 @@ import { isWildCardKind } from "@sweet-spicy/shared-types";
 import {
   CHALLENGE_CLAIM_RACE_SECONDS,
   CHALLENGE_PICK_TYPE_SECONDS,
+  DRAW_PASS_TURN_CARD_COUNT,
   IDLE_CHALLENGE_TIMER_SECONDS,
   INITIAL_HAND_SIZE,
   NORMAL_CARD_POINTS,
@@ -422,6 +423,41 @@ export function playCard(
     challengeStep: "CLAIM_RACE",
     challengeClaimHolderId: null,
   };
+}
+
+/** Declaration alternative: draw one from the main pile and advance turn (no challenge phase). */
+export function drawAndPassTurn(state: GameState, playerId: string): GameState | null {
+  const currentPlayer = state.players[state.currentPlayerIndex];
+  if (!currentPlayer || currentPlayer.id !== playerId) {
+    return null;
+  }
+  if (state.phase !== "PLAYER_TURN") return null;
+  if (state.drawPile.length < DRAW_PASS_TURN_CARD_COUNT) return null;
+
+  let drawPile = [...state.drawPile];
+  const { drawPile: nextPile, drawn } = drawFromDrawPile(drawPile, DRAW_PASS_TURN_CARD_COUNT);
+  drawPile = nextPile;
+
+  const updatedPlayers = state.players.map((p, i) =>
+    i === state.currentPlayerIndex ? { ...p, hand: [...p.hand, ...drawn] } : p,
+  );
+  const nextIndex = (state.currentPlayerIndex + 1) % state.players.length;
+
+  const nextState: GameState = {
+    ...state,
+    players: updatedPlayers,
+    drawPile,
+    currentPlayerIndex: nextIndex,
+  };
+
+  if (shouldEndGame(nextState)) {
+    return endGame(nextState);
+  }
+  return nextState;
+}
+
+export function drawAndPassTurnLocal(state: GameState, playerId: string): GameState {
+  return drawAndPassTurn(state, playerId) ?? state;
 }
 
 export function playCardLocal(

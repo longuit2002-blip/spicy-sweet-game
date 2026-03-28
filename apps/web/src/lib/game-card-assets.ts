@@ -37,6 +37,32 @@ export const SPICE_CARD_BORDER_CLASS: Record<SpiceType, string> = {
   avocado: "card-avocado",
 };
 
+/**
+ * `PLAYER_TURN` empty slot — declare context strip shell (see `.declare-context-track--*` in `globals.css`).
+ */
+export const SPICE_DECLARE_CONTEXT_TRACK_CLASS: Record<SpiceType, string> = {
+  chili: "declare-context-track declare-context-track--chili",
+  lemon: "declare-context-track declare-context-track--lemon",
+  avocado: "declare-context-track declare-context-track--avocado",
+};
+
+/** Rank chip inside the strip — border / fill / glow per {@link SpiceType} (Tailwind spice tokens). */
+export const SPICE_DECLARE_CONTEXT_RANK_CHIP_CLASS: Record<SpiceType, string> = {
+  chili:
+    "min-w-[2.75rem] rounded-md border-2 border-chili/55 bg-chili/[0.16] px-2.5 py-1 font-bold tabular-nums text-chili shadow-[0_0_22px_-6px_hsl(var(--chili)/0.55),inset_0_1px_0_hsl(var(--chili-glow)/0.35)]",
+  lemon:
+    "min-w-[2.75rem] rounded-md border-2 border-lemon-glow/60 bg-lemon/[0.12] px-2.5 py-1 font-bold tabular-nums text-lemon shadow-[0_0_22px_-6px_hsl(var(--lemon-glow)/0.4),inset_0_1px_0_hsl(var(--lemon-glow)/0.28)]",
+  avocado:
+    "min-w-[2.75rem] rounded-md border-2 border-avocado/55 bg-avocado/[0.15] px-2.5 py-1 font-bold tabular-nums text-avocado shadow-[0_0_22px_-6px_hsl(var(--avocado)/0.45),inset_0_1px_0_hsl(var(--avocado-glow)/0.32)]",
+};
+
+/** Suit label emphasis in the same strip (pairs with {@link SPICE_DECLARE_CONTEXT_TRACK_CLASS}). */
+export const SPICE_DECLARE_CONTEXT_SUIT_TEXT_CLASS: Record<SpiceType, string> = {
+  chili: "text-chili drop-shadow-[0_0_12px_hsl(var(--chili)/0.35)]",
+  lemon: "text-lemon drop-shadow-[0_0_10px_hsl(var(--lemon-glow)/0.25)]",
+  avocado: "text-avocado drop-shadow-[0_0_12px_hsl(var(--avocado)/0.3)]",
+};
+
 /** Subtle corner radius for in-hand / table cards (not “pill” cards). */
 export const GAME_CARD_CORNER_CLASS = "rounded-md";
 

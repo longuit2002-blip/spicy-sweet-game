@@ -9,6 +9,7 @@ const EVENT_LIMITS: Readonly<Record<string, number>> = {
   "game:challenge": 6,
   "game:accept": 6,
   "game:play-card": 20,
+  "game:draw-pass": 12,
   "room:create": 4,
   "room:join": 12,
   "room:ready": 20,

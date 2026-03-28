@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { MAX_DECLARATION_RANK } from '@sweet-spicy/game-logic';
 import type { Declaration, SpiceType, GameCard } from '@/shared/types/game';
-import { SPICE_EMOJI, SPICE_LABEL } from '@/shared/types/game';
+import { SPICE_EMOJI } from '@/shared/types/game';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { changeLanguage } from '@/lib/i18n';

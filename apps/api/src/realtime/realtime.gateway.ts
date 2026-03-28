@@ -13,6 +13,7 @@ import {
   acceptDeclaration,
   claimChallenge,
   computePlayerFinalScore,
+  drawAndPassTurn,
   playCard,
   resolveChallenge,
 } from "@sweet-spicy/game-logic";
@@ -204,6 +205,32 @@ export class RealtimeGateway implements OnGatewayInit {
     if (!room?.gameState) return { success: false };
     const decl = data.declaration as Declaration;
     const next = playCard(room.gameState, userId, data.cardId, decl);
+    if (!next) {
+      this.emitSocketError(
+        client,
+        SOCKET_ERROR_CODE.INVALID_MOVE,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.INVALID_MOVE] as string,
+      );
+      return { success: false };
+    }
+    room.gameState = next;
+    this.syncRoomPlayers(room);
+    this.broadcast.emitStateUpdate(this.server, roomCode, next);
+    return { success: true };
+  }
+
+  @SubscribeMessage("game:draw-pass")
+  handleDrawPass(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "game:draw-pass")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
+    const roomCode = client.data.roomId as string | undefined;
+    const userId = client.data.userId as string;
+    if (!roomCode) return { success: false };
+    const room = this.roomService.getRoomByCode(roomCode);
+    if (!room?.gameState) return { success: false };
+    const next = drawAndPassTurn(room.gameState, userId);
     if (!next) {
       this.emitSocketError(
         client,

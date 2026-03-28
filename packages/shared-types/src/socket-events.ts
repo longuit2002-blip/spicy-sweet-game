@@ -43,6 +43,8 @@ export interface ClientToServerEvents {
   "room:start": () => void;
 
   "game:play-card": (data: { cardId: string; declaration: Declaration }) => void;
+  /** Draw one from the main pile and skip declaration (authoritative server). */
+  "game:draw-pass": () => void;
   "game:claim-challenge": () => void;
   "game:challenge": (data: { challengeType: ChallengeType }) => void;
   "game:accept": () => void;

@@ -1,10 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { useMemo, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { GameTableDeclarationSection, GameTableTableauSection } from "@/features/game/components/GameTable";
-import type { GameTablePlayfieldProps } from "@/features/game/components/GameTable";
+import type { DrawPassActionConfig, GameTablePlayfieldProps } from "@/features/game/components/GameTable";
 import { PlaymatAnchorProvider, usePlaymatAnchors } from "@/features/game/components/playmat-anchors";
 import {
   RoundResolutionFxOverlay,
@@ -12,14 +12,16 @@ import {
 } from "@/features/game/components/RoundResolutionFxOverlay";
 import { ChallengeRevealImpactOverlay } from "@/features/game/components/ChallengeRevealImpactOverlay";
 import { useChallengeRevealSfx } from "@/features/game/hooks/use-challenge-reveal-sfx";
+import { useOpponentTurnSfx } from "@/features/game/hooks/use-opponent-turn-sfx";
+import { OpponentsTurnCarousel } from "@/features/game/components/BoardView/OpponentsTurnCarousel";
 import { ChallengePhase } from "@/features/game/components/ChallengePhase/ChallengePhase";
 import type { ChallengePhaseProps } from "@/features/game/components/ChallengePhase/ChallengePhase";
 import type { GamePlayer, ClientGamePlayer } from "@/shared/types/game";
 import { GAME_PHASE } from "@/shared/types/game";
 import { cn } from "@/lib/utils";
 import { SNAPPY_SPRING } from "@/features/game/animations";
-import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
 import {
+  DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
   isRoundResolutionInterstitialPhase,
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
 } from "@/lib/game-room.constants";
@@ -61,77 +63,6 @@ function seatAngleRadFromLocalBottom(seatIndex: number, totalPlayers: number): n
   return Math.PI / 2 + (2 * Math.PI * seatIndex) / totalPlayers;
 }
 
-const OPPONENT_STAT_MAX_PIPS = 8;
-
-function OpponentSeatBubble({
-  opp,
-  isCurrentTurn,
-  turnRelative,
-}: {
-  opp: BoardPlayer;
-  isCurrentTurn: boolean;
-  /** From {@link turnRelativeIndex}; 0 = current turn (logic layer). */
-  turnRelative: number;
-}) {
-  const { t } = useTranslation("game");
-  const { hand, score, trophies } = playerPresenceStats(opp);
-
-  return (
-    <div
-      className={cn(
-        "pointer-events-auto flex flex-col items-center gap-1.5 rounded-2xl p-1.5 transition-[background-color,box-shadow]",
-        isCurrentTurn && "bg-primary/12 shadow-kawaii ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
-      )}
-      data-turn-relative={turnRelative}
-    >
-      <div className="relative">
-        <div
-          className={cn(
-            "flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 bg-background/40 shadow-sm backdrop-blur-[2px] sm:h-[4.5rem] sm:w-[4.5rem]",
-            "ring-2 ring-offset-2 ring-offset-background transition-shadow",
-            isCurrentTurn
-              ? "border-primary ring-primary shadow-md"
-              : "border-foreground/[0.12] ring-primary/15",
-          )}
-        >
-          <span className="text-2xl font-bold text-primary sm:text-3xl">
-            {opp.nickname[0]?.toUpperCase()}
-          </span>
-        </div>
-      </div>
-      <span
-        className={cn(
-          "max-w-[6.5rem] truncate rounded-full border border-foreground/[0.12] bg-background/50 px-3 py-1 text-center font-headline text-xs font-bold text-foreground backdrop-blur-[2px]",
-          isCurrentTurn && "border-primary/45 bg-primary/10 text-foreground",
-        )}
-      >
-        {opp.nickname}
-      </span>
-      <div
-        className="flex max-w-[7.5rem] flex-col items-center gap-0.5 text-[10px] text-muted-foreground"
-        aria-label={t("challenge.contextChipStats", { hand, score, trophies })}
-      >
-        <div className="flex flex-wrap justify-center gap-0.5" aria-hidden>
-          {Array.from({ length: Math.min(hand, OPPONENT_STAT_MAX_PIPS) }).map((_, i) => (
-            <span key={i} className="inline-block h-2.5 w-1.5 rounded-sm border border-border bg-card-back" />
-          ))}
-          {hand > OPPONENT_STAT_MAX_PIPS ? (
-            <span className="text-[9px] text-muted-foreground">+{hand - OPPONENT_STAT_MAX_PIPS}</span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 tabular-nums">
-          <span>
-            ⭐ <strong className="text-foreground">{score}</strong>
-          </span>
-          <span>
-            🏆 <strong className="text-foreground">{trophies}</strong>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export interface BoardViewProps extends Omit<GameTablePlayfieldProps, "roundResolutionPanel"> {
   players: readonly BoardPlayer[];
   localPlayerId: string;
@@ -149,6 +80,16 @@ export interface BoardViewProps extends Omit<GameTablePlayfieldProps, "roundReso
   tableFooter?: ReactNode | null;
   /** Set during `PENALTY` for flight VFX (challenge cleared from state; use snapshot from room client). */
   penaltyFxSnapshot?: PenaltyFxSnapshot | null;
+  /** While dragging a card from the local hand — highlights the center play slot. */
+  handDragActive?: boolean;
+  /**
+   * Same session as {@link handDragActive}, set synchronously in `PlayerHand` drag start/end (before React state).
+   */
+  handDragActiveRef: RefObject<boolean>;
+  /** Draw-and-pass: drag the duel draw pile onto the local hand (`PLAYER_TURN` only). */
+  drawPassAction?: DrawPassActionConfig | null;
+  /** Drive hand-strip highlight while the draw pile drag is active. */
+  onDrawPassPileDragSession?: (active: boolean) => void;
 }
 
 export function BoardView(props: BoardViewProps) {
@@ -178,6 +119,10 @@ function BoardViewImpl({
   phaseContent = null,
   tableFooter = null,
   playDropZone = null,
+  drawPassAction = null,
+  handDragActive = false,
+  handDragActiveRef,
+  onDrawPassPileDragSession,
   challengeResult = null,
   penaltyFxSnapshot = null,
 }: BoardViewProps) {
@@ -185,6 +130,7 @@ function BoardViewImpl({
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
   useChallengeRevealSfx(phase, challengeResult, localPlayerId, reducedMotion);
+  useOpponentTurnSfx(phase, currentPlayerIndex, reducedMotion);
   const localIdx = useMemo(() => players.findIndex((p) => p.id === localPlayerId), [players, localPlayerId]);
   const totalPlayers = players.length;
 
@@ -248,9 +194,15 @@ function BoardViewImpl({
 
   const playfieldInterstitial = isRoundResolutionInterstitialPhase(phase);
 
-  /** Hold strip height across REVEAL → PENALTY so the playfield does not jump when copy mounts. */
+  /**
+   * Reserve min-height for the strip below the playfield when interstitial copy can mount here.
+   * `REVEAL` is intentionally omitted: room client renders no `phaseContent` there, so reserving
+   * {@link ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H} (~24dvh) only added empty space below the hero card and caused scroll.
+   */
   const reserveRoundResolutionStrip =
-    phase === GAME_PHASE.REVEAL || phase === GAME_PHASE.PENALTY;
+    phase === GAME_PHASE.PENALTY ||
+    phase === GAME_PHASE.NEXT_TURN ||
+    phase === GAME_PHASE.TROPHY_AWARDED;
 
   const challengeOutcomeNames = useMemo((): { challenger: string; declarer: string } | null => {
     if (!challengeResult) return null;
@@ -264,82 +216,91 @@ function BoardViewImpl({
   const mergeRoundResolutionInTable = playfieldInterstitial && phaseContent != null;
   const phaseContentInStrip = phaseContent != null && !mergeRoundResolutionInTable;
 
-  const boardScrollColumnRef = useRef<HTMLDivElement>(null);
-  const boardScrollInnerRef = useRef<HTMLDivElement>(null);
+  /** REVEAL + claim on table: flex chain must use `flex-1 min-h-0` (not `min-h-full`) so the scroll column passes height to the below-duel block on all breakpoints; otherwise `justify-center` is a no-op below `lg`. */
+  const revealPlayedInScroll =
+    phase === GAME_PHASE.REVEAL && playedCard != null && !showChallengeInline;
 
-  useLayoutEffect(() => {
-    if (phase !== GAME_PHASE.REVEAL) return;
-    const scrollEl = boardScrollColumnRef.current;
-    const innerEl = boardScrollInnerRef.current;
-    const doc = document.documentElement;
-    const scrollCH = scrollEl?.clientHeight ?? -1;
-    const scrollSH = scrollEl?.scrollHeight ?? -1;
-    const innerOH = innerEl?.offsetHeight ?? -1;
-    const data = {
-      verticallyCenterPlayfieldInScroll,
-      stretchPlayfieldBlock,
-      mergeRoundResolutionInTable,
-      viewportH: window.innerHeight,
-      viewportW: window.innerWidth,
-      docClientH: doc.clientHeight,
-      docScrollH: doc.scrollHeight,
-      bodyScrollH: document.body.scrollHeight,
-      scrollClientH: scrollCH,
-      scrollScrollH: scrollSH,
-      innerOffsetH: innerOH,
-      scrollOverflowY: scrollSH > scrollCH + 1,
-      pageOverflowY: doc.scrollHeight > doc.clientHeight + 1,
-    };
-    // #region agent log
-    fetch("http://127.0.0.1:7545/ingest/dfeb2aae-d72a-4d3e-9028-a1269ee253e7", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "eae836" },
-      body: JSON.stringify({
-        sessionId: "eae836",
-        runId: "pre-fix",
-        hypothesisId: "H1-H5-layout",
-        location: "BoardView.tsx:useLayoutEffect(REVEAL)",
-        message: "REVEAL scroll metrics",
-        data,
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [
-    phase,
-    verticallyCenterPlayfieldInScroll,
-    stretchPlayfieldBlock,
-    mergeRoundResolutionInTable,
-    challengeResult,
-  ]);
+  const drawPassPileDraggable =
+    drawPassAction != null
+      ? {
+          active: true,
+          onDragSessionChange: onDrawPassPileDragSession ?? (() => undefined),
+        }
+      : null;
 
-  const playfieldColumn = (
+  /**
+   * Duel band: center column sets in-flow height; trophy + draw use `absolute` anchored from the
+   * **band top** ({@link DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS}) so REVEAL vs declare `min-h` changes
+   * do not move side piles (anchoring `bottom` to a growing box was shifting them).
+   */
+  const duelSuppliesRow = (
+    <div className="relative w-full min-w-0 overflow-visible">
+      <div
+        className={cn(
+          "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 pb-1 pt-1 sm:px-4",
+          "md:w-[min(100%,max(18rem,calc(100%-21rem)))]",
+          "lg:w-[min(100%,max(20rem,calc(100%-25rem)))]",
+          "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(22rem,calc(100%-28rem)))]",
+        )}
+      >
+        <GameTableDeclarationSection
+          playedCard={playedCard}
+          currentPlayerName={currentPlayerName}
+          phase={phase}
+          lastResolvedDeclaration={lastResolvedDeclaration}
+          lockedSuit={lockedSuit}
+          tablePileCount={tablePileCount}
+          showEmptyStateTurnLine={false}
+          playDropZone={playDropZone}
+          challengeResult={challengeResult}
+          challengeOutcomeNames={challengeOutcomeNames}
+          localPlayerId={localPlayerId}
+          roundPileAnchorRef={roundPileRailRef}
+          roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
+        />
+      </div>
+      <div
+        className={cn(
+          "pointer-events-auto absolute left-2 z-20 sm:left-4 lg:left-5 xl:left-6",
+          DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
+        )}
+      >
+        <GameTableTableauSection
+          {...tableauDuelProps}
+          variant="duel"
+          duelSlot="trophy"
+        />
+      </div>
+      <div
+        className={cn(
+          "pointer-events-auto absolute right-2 z-20 sm:right-4 lg:right-5 xl:right-6",
+          DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
+          // Above center playfield (z-10); do not gate z-30 on handDragActive (React state lags the hand-drag ref).
+          drawPassAction != null && "z-30",
+        )}
+      >
+        <GameTableTableauSection
+          {...tableauDuelProps}
+          variant="duel"
+          duelSlot="draw"
+          drawStackAnchorRef={drawStackRef}
+          drawPassPileDraggable={drawPassPileDraggable}
+        />
+      </div>
+    </div>
+  );
+
+  const playfieldBelowDuel = (
     <div
       className={cn(
-        "flex min-h-0 w-full flex-col",
+        "flex w-full flex-col",
+        (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
         playfieldInterstitial ? "gap-2 sm:gap-3" : "gap-3 sm:gap-4",
-        stretchPlayfieldBlock && "flex-1",
-        showChallengeInline
-          ? "items-center gap-2 sm:gap-3"
-          : "items-stretch",
+        revealPlayedInScroll && "justify-center",
+        verticallyCenterPlayfieldInScroll && "lg:justify-center",
+        showChallengeInline && "items-center gap-2 sm:gap-3",
       )}
     >
-      <GameTableDeclarationSection
-        playedCard={playedCard}
-        currentPlayerName={currentPlayerName}
-        phase={phase}
-        lastResolvedDeclaration={lastResolvedDeclaration}
-        lockedSuit={lockedSuit}
-        tablePileCount={tablePileCount}
-        showEmptyStateTurnLine={false}
-        playDropZone={playDropZone}
-        challengeResult={challengeResult}
-        challengeOutcomeNames={challengeOutcomeNames}
-        localPlayerId={localPlayerId}
-        roundPileAnchorRef={roundPileRailRef}
-        roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
-      />
-
       {showChallengeInline && playedCard && inlineChallenge ? (
         <ChallengePhase variant="embedded" playedCard={playedCard} {...inlineChallenge} />
       ) : null}
@@ -378,6 +339,44 @@ function BoardViewImpl({
     </div>
   );
 
+  /**
+   * Duel rail sits outside the scroll port so absolutely positioned trophy cards can extend
+   * upward without inflating flex height or being clipped by `overflow-y-auto`.
+   */
+  const playfieldStageColumn = (
+    <div
+      className={cn(
+        "flex w-full min-h-0 flex-1 flex-col",
+        playfieldInterstitial ? "gap-2 sm:gap-3" : "gap-3 sm:gap-4",
+        (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
+        "items-stretch overflow-visible",
+      )}
+    >
+      <div className="w-full shrink-0 overflow-visible px-2 pt-1 sm:px-4 sm:pt-2">
+        {duelSuppliesRow}
+      </div>
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain",
+          revealPlayedInScroll && "flex min-h-0 flex-col",
+        )}
+      >
+        <div
+          className={cn(
+            "flex w-full min-w-0 flex-col gap-3 sm:gap-4",
+            "px-2 pb-3 sm:px-4",
+            revealPlayedInScroll
+              ? "min-h-0 flex-1"
+              : cn("min-h-full", stretchPlayfieldBlock && "lg:flex-1 lg:min-h-0"),
+            verticallyCenterPlayfieldInScroll && "lg:justify-center",
+          )}
+        >
+          {playfieldBelowDuel}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="table-stage-bg relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <ChallengeRevealImpactOverlay
@@ -393,68 +392,19 @@ function BoardViewImpl({
       <div className="relative mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col px-2 py-1.5 sm:px-4 sm:py-2">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 sm:gap-2.5">
           {sortedOpponentSlots.length > 0 ? (
-            <div
-              role="list"
-              aria-label={t("room.opponents")}
-              className="shrink-0 overflow-x-auto overflow-y-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              <div className="flex min-w-min justify-center gap-5 px-2 py-1 sm:gap-7">
-                {sortedOpponentSlots.map(({ player, turnRelative }) => (
-                  <div key={player.id} role="listitem" className="shrink-0">
-                    <OpponentSeatBubble
-                      opp={player}
-                      isCurrentTurn={currentPlayer?.id === player.id}
-                      turnRelative={turnRelative}
-                    />
-                  </div>
-                ))}
-              </div>
+            <div className="w-full min-w-0 shrink-0">
+              <OpponentsTurnCarousel
+                slots={sortedOpponentSlots.map(({ player, turnRelative }) => ({ player, turnRelative }))}
+                currentPlayer={currentPlayer}
+                currentPlayerIndex={currentPlayerIndex}
+                phase={phase}
+                reducedMotion={reducedMotion}
+              />
             </div>
           ) : null}
 
-          <div className="relative z-10 mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col px-1 sm:px-2">
-            <div
-              className={cn(
-                "flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-4 lg:gap-y-2",
-              )}
-            >
-              <div className="flex shrink-0 justify-between gap-3 px-1 sm:gap-6 lg:contents">
-                <div className="tableau-supply-rail flex justify-center lg:col-start-1 lg:row-start-1">
-                  <GameTableTableauSection
-                    {...tableauDuelProps}
-                    variant="duel"
-                    duelSlot="trophy"
-                  />
-                </div>
-                <div className="tableau-supply-rail flex justify-center lg:col-start-3 lg:row-start-1">
-                  <GameTableTableauSection
-                    {...tableauDuelProps}
-                    variant="duel"
-                    duelSlot="draw"
-                    drawStackAnchorRef={drawStackRef}
-                  />
-                </div>
-              </div>
-
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:col-start-2 lg:row-start-1">
-                <div
-                  ref={boardScrollColumnRef}
-                  className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain"
-                >
-                  <div
-                    ref={boardScrollInnerRef}
-                    className={cn(
-                      "flex min-h-full w-full min-w-0 flex-col gap-3 sm:gap-4",
-                      "px-2 pb-3 pt-1 sm:px-4 sm:pt-2",
-                      stretchPlayfieldBlock && "lg:flex-1 lg:min-h-0",
-                      verticallyCenterPlayfieldInScroll && "lg:justify-center",
-                    )}
-                  >
-                    {playfieldColumn}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="relative z-10 mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible px-1 sm:px-2 lg:mx-0 lg:max-w-none lg:w-full lg:px-0">
+            {playfieldStageColumn}
 
             {phase === GAME_PHASE.PLAYER_TURN && (
               <p className="shrink-0 px-1 pt-2 text-center text-sm text-muted-foreground sm:pt-2">

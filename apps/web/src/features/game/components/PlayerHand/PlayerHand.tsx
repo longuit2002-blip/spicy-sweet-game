@@ -1,12 +1,23 @@
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
+import { useTranslation } from "react-i18next";
 import type { GameCard } from "@/shared/types/game";
 import { SpiceCard } from "@/features/game/components/SpiceCard";
 import { staggerHandItemVariantsForIndex } from "@/features/game/animations";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import {
+  dataTransferTypeSetHasDrawPassDrag,
   GAME_CARD_DRAG_MIME_TYPE,
+  isDrawPassDropDataTransfer,
   PLAYER_HAND_CARD_WIDTH_NARROW_PX,
   PLAYER_HAND_CARD_WIDTH_WIDE_PX,
   PLAYER_HAND_FAN_LOOSE_OVERLAP_PX,
@@ -20,6 +31,17 @@ import {
   PLAYER_HAND_SELECTED_Z_INDEX,
   PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
 } from "@/lib/game-room.constants";
+
+export type PlayerHandDrawPassDropConfig = {
+  active: boolean;
+  pileDragActive: boolean;
+  onDrop: () => void;
+};
+
+function handStripAcceptsDrawPassDrag(e: DragEvent, pileDragActive: boolean): boolean {
+  if (pileDragActive) return true;
+  return dataTransferTypeSetHasDrawPassDrag(e.dataTransfer.types);
+}
 
 function handCardWidthPx(isWide: boolean): number {
   return isWide ? PLAYER_HAND_CARD_WIDTH_WIDE_PX : PLAYER_HAND_CARD_WIDTH_NARROW_PX;
@@ -77,6 +99,8 @@ interface PlayerHandProps {
   disabled?: boolean;
   /** While a card is being dragged (for play-zone highlight). */
   onDragSessionChange?: (active: boolean) => void;
+  /** Drag draw pile onto the hand strip (draw + pass). */
+  drawPassDrop?: PlayerHandDrawPassDropConfig | null;
 }
 
 export const PlayerHand = memo(function PlayerHand({
@@ -85,15 +109,19 @@ export const PlayerHand = memo(function PlayerHand({
   onInspectCard,
   disabled,
   onDragSessionChange,
+  drawPassDrop = null,
 }: PlayerHandProps) {
+  const { t } = useTranslation("game");
   const reduced = useReducedMotion();
   const skipNextClickRef = useRef(false);
+  const dragPreviewHostRef = useRef<HTMLDivElement | null>(null);
   const prevHandKeyRef = useRef<string | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const cardElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [stripWidth, setStripWidth] = useState(0);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [drawPassHandHovered, setDrawPassHandHovered] = useState(false);
   const isWideHand = useMediaQuery(PLAYER_HAND_FAN_MEDIA);
   const handKey = useMemo(() => cards.map((c) => c.id).join("|"), [cards]);
 
@@ -142,6 +170,10 @@ export const PlayerHand = memo(function PlayerHand({
     });
   }, [selectedCardId, reduced, handKey]);
 
+  useEffect(() => {
+    if (!drawPassDrop?.pileDragActive) setDrawPassHandHovered(false);
+  }, [drawPassDrop?.pileDragActive]);
+
   const rotationMax = useMemo(() => fanRotationMaxDeg(cards.length), [cards.length]);
 
   const rotations = useMemo(() => {
@@ -161,9 +193,48 @@ export const PlayerHand = memo(function PlayerHand({
             "relative z-[1] flex w-full min-w-0 items-end justify-center overflow-x-auto overscroll-x-contain px-4 pb-4 pt-6 sm:px-8 sm:pb-5 sm:pt-7",
             PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
             "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            drawPassDrop?.active === true &&
+              drawPassDrop.pileDragActive &&
+              cn(
+                "transition-[box-shadow,background-color] duration-200",
+                "ring-2 ring-primary/25 ring-offset-2 ring-offset-background",
+                drawPassHandHovered && "bg-primary/[0.06] ring-primary/55",
+              ),
           )}
           role="list"
-          aria-label="Player hand"
+          aria-label={
+            drawPassDrop?.active === true && drawPassDrop.pileDragActive
+              ? t("table.drawPileHandDropZoneAria")
+              : t("hand.playerHandAria")
+          }
+          onDragOverCapture={(e) => {
+            if (!drawPassDrop?.active || disabled) return;
+            if (!handStripAcceptsDrawPassDrag(e, drawPassDrop.pileDragActive)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "copy";
+            setDrawPassHandHovered(true);
+          }}
+          onDragLeave={(e) => {
+            if (!drawPassDrop?.active) return;
+            if (
+              !drawPassDrop.pileDragActive &&
+              !dataTransferTypeSetHasDrawPassDrag(e.dataTransfer.types)
+            ) {
+              return;
+            }
+            const related = e.relatedTarget as Node | null;
+            if (related && e.currentTarget.contains(related)) return;
+            setDrawPassHandHovered(false);
+          }}
+          onDropCapture={(e) => {
+            if (!drawPassDrop?.active || disabled) return;
+            if (!isDrawPassDropDataTransfer(e.dataTransfer)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDrawPassHandHovered(false);
+            drawPassDrop.onDrop();
+          }}
         >
           <div className="flex w-max max-w-none items-end justify-center px-6 sm:px-10">
             <AnimatePresence mode="popLayout">
@@ -211,6 +282,7 @@ export const PlayerHand = memo(function PlayerHand({
                     "origin-bottom shrink-0",
                     isBeingDragged && "cursor-grabbing",
                     allowDrag && !isBeingDragged && "cursor-grab",
+                    drawPassDrop?.pileDragActive === true && "pointer-events-none",
                   )}
                   role="listitem"
                 >
@@ -222,12 +294,34 @@ export const PlayerHand = memo(function PlayerHand({
                     isHovered={isBeingHovered}
                     isDragging={isBeingDragged}
                     onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = "move";
+                      const node = e.currentTarget;
+                      e.dataTransfer.effectAllowed = "copyMove";
                       e.dataTransfer.setData(GAME_CARD_DRAG_MIME_TYPE, card.id);
+                      e.dataTransfer.setData("text/plain", card.id);
                       setDraggedCardId(card.id);
                       onDragSessionChange?.(true);
+
+                      const rect = node.getBoundingClientRect();
+                      const clone = node.cloneNode(true) as HTMLDivElement;
+                      clone.style.boxSizing = "border-box";
+                      clone.style.width = `${rect.width}px`;
+                      clone.style.height = `${rect.height}px`;
+                      clone.style.position = "fixed";
+                      clone.style.left = "-10000px";
+                      clone.style.top = "0";
+                      clone.style.margin = "0";
+                      clone.style.pointerEvents = "none";
+                      clone.style.zIndex = "2147483647";
+                      document.body.appendChild(clone);
+                      void clone.offsetWidth;
+                      const anchorX = Math.min(Math.max(e.clientX - rect.left, 1), Math.max(1, rect.width - 1));
+                      const anchorY = Math.min(Math.max(e.clientY - rect.top, 1), Math.max(1, rect.height - 1));
+                      dragPreviewHostRef.current = clone;
+                      e.dataTransfer.setDragImage(clone, anchorX, anchorY);
                     }}
                     onDragEnd={() => {
+                      dragPreviewHostRef.current?.remove();
+                      dragPreviewHostRef.current = null;
                       setDraggedCardId(null);
                       onDragSessionChange?.(false);
                       skipNextClickRef.current = true;

@@ -20,8 +20,10 @@ import {
   SPICE_CARD_BORDER_CLASS,
 } from "@/lib/game-card-assets";
 
-/** `hand` — local fan; `tableau` — supply rail footprint aligned with {@link GameTable} tableau stacks. */
-export type SpiceCardSize = "default" | "small" | "hand" | "tableau";
+/**
+ * `hand` — local fan; `tableau` — supply rail; `duel` — larger duel-board trophy column; `playfield` — REVEAL flip slot.
+ */
+export type SpiceCardSize = "default" | "small" | "hand" | "tableau" | "duel" | "playfield";
 
 /** Single chrome set for in-hand cards — nhẹ: bo góc + viền token, art vẫn full-bleed trong khung. */
 const HAND_SURFACE_CLASS =
@@ -87,9 +89,23 @@ function sizeClasses(size: SpiceCardSize, smallLegacy: boolean | undefined): {
   }
   if (size === "tableau") {
     return {
-      box: cn("w-[5.25rem] sm:w-24", GAME_CARD_ART_ASPECT_CLASS),
+      box: cn("w-[7.25rem] sm:w-[8rem]", GAME_CARD_ART_ASPECT_CLASS),
       text: "text-xs",
-      imageSizes: "(max-width: 640px) 84px, 96px",
+      imageSizes: "(max-width: 640px) 116px, 128px",
+    };
+  }
+  if (size === "duel") {
+    return {
+      box: cn("w-[8.875rem] sm:w-[10rem]", GAME_CARD_ART_ASPECT_CLASS),
+      text: "text-xs sm:text-sm",
+      imageSizes: "(max-width: 640px) 142px, 160px",
+    };
+  }
+  if (size === "playfield") {
+    return {
+      box: "h-full w-full min-h-0",
+      text: "text-xs sm:text-sm",
+      imageSizes: "(max-width: 640px) 92vw, (max-width: 1024px) 400px, 480px",
     };
   }
   return {

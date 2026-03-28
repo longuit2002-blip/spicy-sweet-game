@@ -4,19 +4,22 @@
  */
 
 /** Challenge / accept window after a play (server decrements once per second). */
-export const CHALLENGE_PHASE_COUNTDOWN_SECONDS = 50;
+export const CHALLENGE_PHASE_COUNTDOWN_SECONDS = 20;
 
 /** Race to tap “claim challenge” in the center; first server-side claim wins. */
-export const CHALLENGE_CLAIM_RACE_SECONDS = 50;
+export const CHALLENGE_CLAIM_RACE_SECONDS = 20;
 
 /** After a claim, holder must pick wrong suit vs wrong number. */
-export const CHALLENGE_PICK_TYPE_SECONDS = 50;
+export const CHALLENGE_PICK_TYPE_SECONDS = 20;
 
 /** Pause after REVEAL / before PENALTY, and after PENALTY / NEXT_TURN before advancing. */
 export const PHASE_STEP_PAUSE_SECONDS = 2;
 
 /** Number of cards drawn as a failed-challenge penalty. */
 export const PENALTY_DRAW_COUNT = 2;
+
+/** Cards drawn when a player skips declaration and passes the turn ({@link drawAndPassTurn}). */
+export const DRAW_PASS_TURN_CARD_COUNT = 1;
 
 /** Default `challengeTimer` in LOBBY / idle states (not actively counting down). */
 export const IDLE_CHALLENGE_TIMER_SECONDS = 0;

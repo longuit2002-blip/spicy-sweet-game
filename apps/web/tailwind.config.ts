@@ -123,6 +123,17 @@ export default {
             backgroundColor: "hsl(var(--muted) / 0.24)",
           },
         },
+        /** Duel draw stack while dragging a hand card — subtle “toward hand” bob + shadow pulse. */
+        "draw-pile-stack-invite": {
+          "0%, 100%": {
+            transform: "translateY(0) scale(1)",
+            filter: "drop-shadow(0 8px 14px hsl(0 0% 0% / 0.12))",
+          },
+          "50%": {
+            transform: "translateY(6px) scale(1.02)",
+            filter: "drop-shadow(0 12px 22px hsl(var(--primary) / 0.22))",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -130,6 +141,7 @@ export default {
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "trophy-pulse": "trophy-pulse 2.4s ease-in-out infinite",
         "play-drop-slot-invite": "play-drop-slot-invite 2.6s ease-in-out infinite",
+        "draw-pile-stack-invite": "draw-pile-stack-invite 1.35s ease-in-out infinite",
       },
     },
   },

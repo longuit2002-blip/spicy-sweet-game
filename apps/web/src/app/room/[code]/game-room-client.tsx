@@ -14,6 +14,7 @@ import {
   createPlayer,
   startGame,
   playCardLocal,
+  drawAndPassTurnLocal,
   resolveChallenge,
   claimChallenge,
   tickChallengePhase,
@@ -64,6 +65,7 @@ import {
   MIN_PLAYERS_TO_START,
   NEW_ROOM_ROUTE_SEGMENT,
   OFFLINE_BOT_ACTION_DELAY_MS,
+  OFFLINE_BOT_DRAW_PASS_CHANCE,
   OFFLINE_BOT_TRUTH_PLAY_THRESHOLD,
   OFFLINE_CHALLENGE_TICK_MS,
   OFFLINE_BOT_DISPLAY_NAMES,
@@ -125,6 +127,8 @@ export function GameRoomClient() {
   const [showDeclare, setShowDeclare] = useState(false);
   const [inspectCard, setInspectCard] = useState<GameCard | null>(null);
   const [handDragActive, setHandDragActive] = useState(false);
+  const handDragActiveRef = useRef(false);
+  const [drawPileDragActive, setDrawPileDragActive] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [botNames] = useState<string[]>(() => [...OFFLINE_BOT_DISPLAY_NAMES]);
   const [gameLog, setGameLog] = useState<readonly { id: string; text: string; at: number }[]>([]);
@@ -447,6 +451,10 @@ export function GameRoomClient() {
           const hand = cp?.hand || [];
           if (hand.length === 0) return prev;
 
+          if (prev.drawPile.length > 0 && Math.random() < OFFLINE_BOT_DRAW_PASS_CHANCE) {
+            return drawAndPassTurnLocal(prev, cp!.id);
+          }
+
           const minDecl = minDeclarationRankForState(prev);
           const maxDecl = maxDeclarationRankForState(prev);
           const locked = prev.lockedSuit;
@@ -559,6 +567,17 @@ export function GameRoomClient() {
     setSelectedCardLocal(null);
     setShowDeclare(false);
   };
+
+  const handleDrawPass = useCallback(() => {
+    if (!isMyTurn || currentGameState.phase !== GAME_PHASE.PLAYER_TURN) return;
+    setSelectedCardLocal(null);
+    setShowDeclare(false);
+    if (isOnlineMode) {
+      socketApi.drawPass();
+    } else {
+      setLocalGameState((prev) => drawAndPassTurnLocal(prev, localPlayerId));
+    }
+  }, [isMyTurn, currentGameState.phase, isOnlineMode, localPlayerId, socketApi]);
 
   const handleChallenge = useCallback(
     (challengerId: string, challengeType: ChallengeType) => {
@@ -859,6 +878,16 @@ export function GameRoomClient() {
                   drawPileCount={drawPileCount}
                   supremeReserve={currentGameState.supremeReserve}
                   trophiesRemaining={currentGameState.trophiesRemaining}
+                  drawPassAction={
+                    isMyTurn &&
+                    currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
+                    drawPileCount > 0
+                      ? { onDrawPass: handleDrawPass }
+                      : null
+                  }
+                  handDragActive={handDragActive}
+                  handDragActiveRef={handDragActiveRef}
+                  onDrawPassPileDragSession={setDrawPileDragActive}
                   playDropZone={
                     isMyTurn &&
                     currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
@@ -908,10 +937,24 @@ export function GameRoomClient() {
                             <PlayerHand
                               cards={localPlayer.hand}
                               onInspectCard={handleInspectCard}
-                              onDragSessionChange={setHandDragActive}
+                              onDragSessionChange={(active) => {
+                                handDragActiveRef.current = active;
+                                setHandDragActive(active);
+                              }}
                               selectedCardId={selectedCard}
                               disabled={
                                 !isMyTurn || currentGameState.phase !== GAME_PHASE.PLAYER_TURN
+                              }
+                              drawPassDrop={
+                                isMyTurn &&
+                                currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
+                                drawPileCount > 0
+                                  ? {
+                                      active: true,
+                                      pileDragActive: drawPileDragActive,
+                                      onDrop: handleDrawPass,
+                                    }
+                                  : null
                               }
                             />
                           </div>

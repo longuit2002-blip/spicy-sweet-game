@@ -9,7 +9,7 @@ import { playRevealCardFlipSound } from "@/features/game/lib/game-reveal-sounds"
 import { cn } from "@/lib/utils";
 
 /** Duration of reveal flip from card back to real face (seconds). */
-export const PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS = 0.95;
+export const PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS = 1;
 
 const PLAYFIELD_FLIP_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -75,13 +75,11 @@ export function PlayfieldDeclaredCardFlip({
           <CardBackSurface corner="lg" framed={false} className="h-full w-full" />
         </div>
         <div
-          className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"
+          className="absolute inset-0 [backface-visibility:hidden]"
           style={{ transform: "rotateY(180deg)" }}
         >
           {showFaceUp && faceCard != null ? (
-            <div className="flex h-full w-full items-center justify-center">
-              <SpiceCard card={faceCard} faceDown={false} size="hand" artOnly />
-            </div>
+            <SpiceCard card={faceCard} faceDown={false} size="playfield" artOnly />
           ) : (
             <div className="h-full w-full rounded-md bg-card-back/25" aria-hidden />
           )}

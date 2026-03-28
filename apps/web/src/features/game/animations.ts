@@ -243,3 +243,18 @@ export const MODAL_CONTENT_REDUCED: Variants = {
   animate: { opacity: 1 },
   exit: { opacity: 0 },
 };
+
+/** Active opponent chip — idle breathing scale loop (seconds per half-cycle feel). */
+export const OPPONENT_ACTIVE_PULSE_DURATION_SECONDS = 2.8;
+/** Peak scale during active pulse when seat is carousel hero (center). */
+export const OPPONENT_ACTIVE_PULSE_SCALE_PEAK_CENTER = 1.1;
+/** Peak scale when active but not visually centered (edge of arc). */
+export const OPPONENT_ACTIVE_PULSE_SCALE_PEAK_SIDE = 1.04;
+
+/** NEXT_TURN incoming emphasis on current actor seat. */
+export const OPPONENT_INCOMING_TURN_TRANSITION: Transition = {
+  type: "spring",
+  stiffness: 280,
+  damping: 22,
+  mass: 0.65,
+};

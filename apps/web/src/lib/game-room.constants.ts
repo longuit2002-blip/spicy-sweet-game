@@ -66,6 +66,12 @@ export const ROUND_RESOLUTION_FX_MAX_PILE_CARDS = 6;
  */
 export const ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H = "min-h-[min(10rem,24dvh)]";
 
+/**
+ * BoardView duel band: trophy + draw rails use `absolute` with this **top** inset (not `bottom`) so
+ * changing declaration / REVEAL `min-h` does not move side piles — the band top is stable.
+ */
+export const DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS = "top-1 sm:top-2" as const;
+
 /** Full-screen REVEAL impact overlay (above table; PENALTY card flights use a separate layer). */
 export const CHALLENGE_REVEAL_IMPACT_Z = 62;
 
@@ -111,17 +117,48 @@ export const PLAYER_HAND_DRAGGING_Z_INDEX = 100;
 
 /**
  * Min height for the horizontal-scroll hand strip (card height + top slack for rotate/ring/badges + hover + shadow).
- * Hand card height is `aspect-[2/3]` at 6.5rem / 8.5rem width (~9.75rem / ~12.75rem); extra space avoids clipping overflow above `items-end`.
+ * Hand card height is `aspect-[2/3]` at 6.5rem / 8.5rem width; extra space avoids clipping overflow above `items-end`.
  */
 export const PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS = "min-h-[15.5rem] sm:min-h-[18rem]" as const;
+
+/** Framer Motion scale — center seat (hero) vs wings; strong TCG “duel field” read. */
+export const OPPONENT_CAROUSEL_SCALE_CENTER = 1;
+export const OPPONENT_CAROUSEL_SCALE_SIDE = 0.82;
+export const OPPONENT_CAROUSEL_SCALE_FAR = 0.68;
+/** Snap column — wide enough for portrait + ornate frame. */
+export const OPPONENT_CAROUSEL_CELL_MIN_WIDTH_CLASS = "min-w-[10.75rem] sm:min-w-[12rem]" as const;
+/** `rotateY` per index step from focused seat (subtle arc, Yu-Gi-Oh–style duel row). */
+export const OPPONENT_CAROUSEL_ARC_ROTATE_DEG_PER_STEP = 8;
+/** `translateZ` (px) when seat is carousel focus — pops hero toward camera. */
+export const OPPONENT_CAROUSEL_FOCUS_TRANSLATE_Z_PX = 28;
 
 /** HTML5 drag payload — hand card id (play area drop target). */
 export const GAME_CARD_DRAG_MIME_TYPE = "application/x-sweet-spicy-card-id";
 
+/** HTML5 drag from duel draw pile → drop on local hand (draw-and-pass). */
+export const GAME_DRAW_PASS_DRAG_MIME_TYPE = "application/x-sweet-spicy-draw-pass";
+/** Payload token — must not collide with real card ids. */
+export const GAME_DRAW_PASS_DRAG_PAYLOAD = "sweet-spicy-draw-pass-v1" as const;
+
+export function dataTransferTypeSetHasDrawPassDrag(types: readonly string[]): boolean {
+  const want = GAME_DRAW_PASS_DRAG_MIME_TYPE.toLowerCase();
+  return types.some((t) => t.toLowerCase() === want);
+}
+
+export function isDrawPassDropDataTransfer(dt: DataTransfer | null): boolean {
+  if (!dt) return false;
+  if (dt.getData(GAME_DRAW_PASS_DRAG_MIME_TYPE) === GAME_DRAW_PASS_DRAG_PAYLOAD) return true;
+  return dt.getData("text/plain") === GAME_DRAW_PASS_DRAG_PAYLOAD;
+}
+
 export function getCardIdFromDragDataTransfer(dt: DataTransfer | null): string | null {
   if (!dt) return null;
+  if (dt.getData(GAME_DRAW_PASS_DRAG_MIME_TYPE) === GAME_DRAW_PASS_DRAG_PAYLOAD) return null;
   const id = dt.getData(GAME_CARD_DRAG_MIME_TYPE);
-  return typeof id === "string" && id.length > 0 ? id : null;
+  if (typeof id === "string" && id.length > 0) return id;
+  const plain = dt.getData("text/plain");
+  if (plain === GAME_DRAW_PASS_DRAG_PAYLOAD) return null;
+  return typeof plain === "string" && plain.length > 0 ? plain : null;
 }
 
 /** Offline-only: delay before a bot plays a card. */
@@ -138,6 +175,9 @@ export const OFFLINE_CHALLENGE_TICK_MS = GAME_SERVER_TICK_INTERVAL_MS;
 
 /** Bot picks truthful declaration when random exceeds this (0..1). */
 export const OFFLINE_BOT_TRUTH_PLAY_THRESHOLD = 0.35;
+
+/** Chance a bot uses draw-and-pass instead of playing (0..1); only when draw pile non-empty. */
+export const OFFLINE_BOT_DRAW_PASS_CHANCE = 0.12;
 
 /** Display names for offline AI seats (flavor names; not shown as UI copy keys). */
 export const OFFLINE_BOT_DISPLAY_NAMES = [

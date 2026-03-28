@@ -155,6 +155,10 @@ export function useGameSocket() {
     [emit],
   );
 
+  const drawPass = useCallback(() => {
+    emit("game:draw-pass");
+  }, [emit]);
+
   const challenge = useCallback(
     (challengeType: ChallengeType) => {
       emit("game:challenge", { challengeType });
@@ -184,6 +188,7 @@ export function useGameSocket() {
     setReady,
     startGame,
     playCard,
+    drawPass,
     challenge,
     claimChallenge,
     acceptDeclaration,

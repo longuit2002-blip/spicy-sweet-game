@@ -1,4 +1,4 @@
-import { useMemo, type DragEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { MAX_DECLARATION_RANK, TOTAL_TROPHIES } from "@sweet-spicy/game-logic";
@@ -14,13 +14,21 @@ import { GAME_PHASE, SPICE_EMOJI, SPICE_LABEL } from "@/shared/types/game";
 import { CardBackSurface } from "@/features/game/components/CardBackSurface";
 import { SpiceCard } from "@/features/game/components/SpiceCard";
 import { PlayfieldDeclaredCardFlip } from "./PlayfieldDeclaredCardFlip";
-import { TABLEAU_TROPHY_DISPLAY_CARD } from "@/lib/game-card-assets";
+import {
+  SPICE_DECLARE_CONTEXT_RANK_CHIP_CLASS,
+  SPICE_DECLARE_CONTEXT_SUIT_TEXT_CLASS,
+  SPICE_DECLARE_CONTEXT_TRACK_CLASS,
+  TABLEAU_TROPHY_DISPLAY_CARD,
+} from "@/lib/game-card-assets";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PHASE_EASE_OUT, PLAY_CARD_TO_TABLE_SPRING, SNAPPY_SPRING } from "@/features/game/animations";
 import {
   DEFAULT_LOBBY_NICKNAME,
+  GAME_CARD_DRAG_MIME_TYPE,
+  GAME_DRAW_PASS_DRAG_MIME_TYPE,
+  GAME_DRAW_PASS_DRAG_PAYLOAD,
   getCardIdFromDragDataTransfer,
   isRoundResolutionInterstitialPhase,
 } from "@/lib/game-room.constants";
@@ -29,6 +37,18 @@ import {
 export type PlayDropZoneConfig = {
   highlighted: boolean;
   onCardDrop: (cardId: string) => void;
+};
+
+/** Draw one from the main pile and skip declaration (PLAYER_TURN only). */
+export type DrawPassActionConfig = {
+  onDrawPass: () => void;
+};
+
+/** Duel draw pile: drag stack toward local hand to draw-and-pass (`PLAYER_TURN` only). */
+export type DrawPassPileDraggableConfig = {
+  active: boolean;
+  /** Fired when a draw-pile drag session starts / ends (highlights hand drop zone). */
+  onDragSessionChange: (active: boolean) => void;
 };
 
 export interface GameTableProps {
@@ -81,14 +101,27 @@ const REDUCED_CARD_MOTION_DURATION_SECONDS = 0.16;
  * Caps in rem keep very large viewports from forcing excess scroll vs opponents + hand strip.
  */
 const DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE =
-  "sm:min-h-[min(52vh,34rem)] lg:min-h-[min(58vh,40rem)]";
+  "sm:min-h-[min(56vh,38rem)] lg:min-h-[min(62vh,44rem)]";
+
+/**
+ * REVEAL: height follows the hero card + copy only. A fixed `min-h` here stacked with a large
+ * `aspect-[2/3]` REVEAL card forced the board column taller than the viewport; see BoardView strip reservation.
+ */
+const DECLARATION_PLAYFIELD_MIN_H_REVEAL = "min-h-0";
 
 /**
  * Shared shell: empty `PLAYER_TURN` drop zone and round-resolution panel (PENALTY / NEXT_TURN / TROPHY).
  * Same min-height avoids jump when swapping interstitial panel for declare UI.
  */
 const DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT =
-  "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(42vh,26rem)] sm:py-4 lg:max-w-4xl lg:min-h-[min(46vh,30rem)]";
+  "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(46vh,30rem)] sm:py-4 lg:max-w-4xl lg:min-h-[min(50vh,34rem)]";
+
+/**
+ * Side rails (contested pile) stay **top-aligned** in the row so `items-center` does not vertically
+ * recenter them when declaration `min-h` changes (declare vs REVEAL vs challenge).
+ */
+const PLAYFIELD_SIDE_RAIL_GRID_CLASS =
+  "grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:content-start sm:items-start lg:gap-x-4";
 
 /** Challenge-phase declaration column is shorter — only used when `phase === CHALLENGE_PHASE`. */
 const DECLARATION_PLAYFIELD_MIN_H_CHALLENGE =
@@ -97,24 +130,16 @@ const DECLARATION_PLAYFIELD_MIN_H_CHALLENGE =
 const PILE_STACK_VISIBLE_MAX = 6;
 const TABLEAU_STACK_DEPTH = 4;
 
-function declareRulesTooltipLines(
-  t: (key: string, opts?: Record<string, unknown>) => string,
-  lockedSuit: SpiceType | null,
-  lastResolvedDeclaration: Declaration | null,
-): string {
-  const lastNum =
-    lastResolvedDeclaration != null ? Math.floor(Number(lastResolvedDeclaration.number)) : null;
-  const lastType = lastResolvedDeclaration?.type;
-  if (lockedSuit == null) return t("table.firstRoundHint");
-  if (lastResolvedDeclaration != null && lastType != null && lastNum != null) {
-    return lastNum >= MAX_DECLARATION_RANK
-      ? t("table.rankCycleReset")
-      : t("table.mustDeclareHigherThan", { number: lastNum });
-  }
-  return t("table.followLockedSuit");
-}
+/** Played / empty play-slot width — REVEAL uses a larger hero size. */
+const PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT =
+  "w-[12rem] sm:w-[13rem] lg:w-[15.5rem]";
+const PLAYFIELD_CLAIM_CARD_WIDTH_REVEAL =
+  "w-[14.5rem] sm:w-[16rem] lg:w-[19rem]";
+/** PLAYER_TURN drag target: same footprint as {@link PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT}. */
+const PLAYFIELD_DROP_SLOT_CARD_BOX = PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT;
 
-function DeclareRulesHelpButton({
+/** Empty play slot (`PLAYER_TURN`): locked suit + chain rank on one line, rule text below. */
+function PlayerTurnDeclareContextPanel({
   lockedSuit,
   lastResolvedDeclaration,
 }: {
@@ -122,39 +147,136 @@ function DeclareRulesHelpButton({
   lastResolvedDeclaration: Declaration | null;
 }) {
   const { t } = useTranslation("game");
-  const body = declareRulesTooltipLines(t, lockedSuit, lastResolvedDeclaration);
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/15 bg-background/50 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          aria-label={t("table.a11y.declareRulesHelp")}
-        >
-          <Icon name="help" size={20} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent
-        side="left"
-        align="center"
-        className="max-w-[min(20rem,calc(100vw-2rem))] text-left text-xs leading-snug"
+  const reducedMotion = useReducedMotion() === true;
+  const lastNumRaw = lastResolvedDeclaration != null ? Number(lastResolvedDeclaration.number) : NaN;
+  const lastNum = Number.isFinite(lastNumRaw) ? Math.floor(lastNumRaw) : null;
+
+  if (lockedSuit == null) {
+    return (
+      <div
+        className="w-full rounded-md border border-dashed border-border/45 bg-muted/20 px-3 py-3 sm:px-4"
+        role="region"
+        aria-label={t("table.a11y.firstRoundDeclareContext")}
       >
-        {body}
-      </TooltipContent>
-    </Tooltip>
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          {t("table.firstRoundHint")}
+        </p>
+      </div>
+    );
+  }
+
+  const ruleLine =
+    lastNum != null
+      ? lastNum >= MAX_DECLARATION_RANK
+        ? t("table.rankCycleReset")
+        : t("table.mustDeclareHigherThan", { number: lastNum })
+      : t("table.followLockedSuit");
+
+  const suitLabel = `${SPICE_LABEL[lockedSuit]}`;
+  const chainAria =
+    lastNum != null
+      ? t("table.a11y.roundDeclareContextCompact", { suit: suitLabel, rank: lastNum })
+      : t("table.a11y.roundDeclareContextSuitOnly", { suit: suitLabel });
+
+  const trackClass = SPICE_DECLARE_CONTEXT_TRACK_CLASS[lockedSuit];
+  const suitTextClass = SPICE_DECLARE_CONTEXT_SUIT_TEXT_CLASS[lockedSuit];
+  const rankChipClass = SPICE_DECLARE_CONTEXT_RANK_CHIP_CLASS[lockedSuit];
+
+  return (
+    <motion.div
+      layout
+      initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={SNAPPY_SPRING}
+      className={cn(
+        "flex w-full flex-col items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4 sm:py-3.5",
+        trackClass,
+      )}
+      role="region"
+      aria-label={chainAria}
+    >
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+        <motion.div
+          key={lockedSuit}
+          className="flex items-center gap-2 sm:gap-2.5"
+          initial={reducedMotion ? false : { scale: 0.94, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ ...SNAPPY_SPRING, delay: reducedMotion ? 0 : 0.04 }}
+        >
+          <motion.span
+            className="select-none text-3xl sm:text-4xl"
+            aria-hidden
+            animate={
+              reducedMotion
+                ? undefined
+                : {
+                    scale: [1, 1.06, 1],
+                  }
+            }
+            transition={
+              reducedMotion
+                ? undefined
+                : { duration: 2.8, repeat: Infinity, ease: "easeInOut" }
+            }
+          >
+            {SPICE_EMOJI[lockedSuit]}
+          </motion.span>
+          <span
+            className={cn(
+              "font-headline text-lg font-semibold tracking-tight sm:text-xl",
+              suitTextClass,
+            )}
+          >
+            {SPICE_LABEL[lockedSuit]}
+          </span>
+        </motion.div>
+
+        {lastNum != null ? (
+          <>
+            <span
+              className="hidden h-9 w-px shrink-0 bg-border/55 sm:block"
+              aria-hidden
+            />
+            <motion.div
+              key={lastNum}
+              className={cn(
+                "flex items-center justify-center text-2xl sm:text-3xl",
+                rankChipClass,
+              )}
+              initial={reducedMotion ? false : { scale: 0.72, opacity: 0, rotate: -6 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 440, damping: 24 }}
+            >
+              {lastNum}
+            </motion.div>
+          </>
+        ) : null}
+      </div>
+
+      <p className="text-center text-[11px] leading-snug text-muted-foreground sm:text-xs">
+        {ruleLine} {t("table.drawPassOptionSuffix")}
+      </p>
+    </motion.div>
   );
 }
 
 /** Face-down stack footprint — larger for tabletop legibility. */
-const TABLEAU_CARD_W = "w-[5.25rem] sm:w-24";
-const TABLEAU_CARD_H = "h-[7.125rem] sm:h-[8rem]";
+const TABLEAU_CARD_W = "w-[7.25rem] sm:w-[8rem]";
+const TABLEAU_CARD_H = "h-[10.875rem] sm:h-[12rem]";
 
-const TABLEAU_LAYER_W_REM = "5rem";
-const TABLEAU_LAYER_H_REM = "6.75rem";
+const TABLEAU_LAYER_W_REM = "7rem";
+const TABLEAU_LAYER_H_REM = "9rem";
 const TABLEAU_LAYER_OFFSET_PX = 3.5;
 
-function stackLayerStyle(layer: number, total: number) {
-  const offset = (total - 1 - layer) * TABLEAU_LAYER_OFFSET_PX;
+/** Duel-board supply columns — larger trophy / draw stacks (see `SpiceCard` size `duel`). */
+const DUEL_TABLEAU_CARD_W = "w-[8.875rem] sm:w-[10rem]";
+const DUEL_TABLEAU_CARD_H = "h-[13.3125rem] sm:h-[15rem]";
+const DUEL_TABLEAU_LAYER_W_REM = "8.5rem";
+const DUEL_TABLEAU_LAYER_H_REM = "10.75rem";
+const DUEL_TABLEAU_LAYER_OFFSET_PX = 4;
+
+function stackLayerStyle(layer: number, total: number, offsetPx: number) {
+  const offset = (total - 1 - layer) * offsetPx;
   return { left: offset, top: -offset, zIndex: layer };
 }
 
@@ -189,32 +311,44 @@ function TableauPileMount({
       <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
         {label}
       </p>
-      <div className="flex min-h-[7.5rem] flex-col items-center justify-end sm:min-h-[8.25rem]">{stackChild}</div>
+      <div className="flex min-h-[10.5rem] flex-col items-center justify-end sm:min-h-[11.5rem]">
+        {stackChild}
+      </div>
       {countChild}
     </div>
   );
 }
 
-function TableauFaceDownStack({ layers, className }: { layers: number; className?: string }) {
+function TableauFaceDownStack({
+  layers,
+  className,
+  preset = "tableau",
+}: {
+  layers: number;
+  className?: string;
+  preset?: "tableau" | "duel";
+}) {
   const n = Math.max(0, Math.min(TABLEAU_STACK_DEPTH, layers));
+  const cardW = preset === "duel" ? DUEL_TABLEAU_CARD_W : TABLEAU_CARD_W;
+  const cardH = preset === "duel" ? DUEL_TABLEAU_CARD_H : TABLEAU_CARD_H;
+  const layerW = preset === "duel" ? DUEL_TABLEAU_LAYER_W_REM : TABLEAU_LAYER_W_REM;
+  const layerH = preset === "duel" ? DUEL_TABLEAU_LAYER_H_REM : TABLEAU_LAYER_H_REM;
+  const offsetPx = preset === "duel" ? DUEL_TABLEAU_LAYER_OFFSET_PX : TABLEAU_LAYER_OFFSET_PX;
   return (
-    <div className={cn("relative mx-auto", TABLEAU_CARD_W, TABLEAU_CARD_H, className)} aria-hidden>
+    <div className={cn("relative mx-auto", cardW, cardH, className)} aria-hidden>
       {n > 0 &&
         Array.from({ length: n }).map((_, layer) => (
           <div
             key={layer}
             className="absolute rounded-lg border-2 border-card-back/90 bg-card-back/90 shadow-card"
             style={{
-              ...stackLayerStyle(layer, n),
-              width: TABLEAU_LAYER_W_REM,
-              height: TABLEAU_LAYER_H_REM,
+              ...stackLayerStyle(layer, n, offsetPx),
+              width: layerW,
+              height: layerH,
             }}
           />
         ))}
-      <CardBackSurface
-        corner="lg"
-        className={cn("absolute left-0 top-0 z-[10]", TABLEAU_CARD_W, TABLEAU_CARD_H)}
-      />
+      <CardBackSurface corner="lg" className={cn("absolute left-0 top-0 z-[10]", cardW, cardH)} />
     </div>
   );
 }
@@ -245,12 +379,17 @@ function PlayfieldRoundPileRail({
       <p
         className={cn(
           "max-w-[6rem] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none",
-          compact ? "text-[9px]" : "text-[10px]",
+          compact ? "text-[10px]" : "text-[11px] sm:text-xs",
         )}
       >
         {t("table.contestedPile")}
       </p>
-      <div className={cn("relative shrink-0", compact ? "h-12 w-9" : "h-14 w-10 sm:h-[4.25rem] sm:w-11")}>
+      <div
+        className={cn(
+          "relative shrink-0",
+          compact ? "h-[4.5rem] w-12" : "h-[5.75rem] w-[4.25rem] sm:h-28 sm:w-16",
+        )}
+      >
         {visualLayers === 0 ? (
           <div
             className="absolute inset-0 rounded-md border border-dashed border-border/55 bg-transparent"
@@ -262,8 +401,8 @@ function PlayfieldRoundPileRail({
               key={i}
               className="absolute rounded-md border-2 border-card-back/90 bg-card-back/90 shadow-sm"
               style={{
-                width: compact ? "2.25rem" : "2.5rem",
-                height: compact ? "3rem" : "3.35rem",
+                width: compact ? "3rem" : "3.5rem",
+                height: compact ? "4rem" : "4.65rem",
                 left: i * (compact ? 2 : 3),
                 top: i * (compact ? -2 : -2),
                 zIndex: i,
@@ -276,7 +415,7 @@ function PlayfieldRoundPileRail({
       <strong
         className={cn(
           "tabular-nums font-bold text-foreground",
-          compact ? "text-xs" : "text-sm",
+          compact ? "text-sm" : "text-sm sm:text-base",
         )}
       >
         {tablePileCount}
@@ -294,24 +433,65 @@ export type GameTableTableauSectionProps = Pick<
   /** Which duel playmat column to render; required for `variant="duel"` in BoardView grid. */
   duelSlot?: "trophy" | "draw";
   drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  /** When set on the draw column, the face-down stack is draggable to the local hand (draw-and-pass). */
+  drawPassPileDraggable?: DrawPassPileDraggableConfig | null;
 };
+
+/** Vertical trophy rail: three fixed `duel`-footprint slots (same width/height as a single duel {@link SpiceCard}). */
+const TROPHY_DUEL_STACK_GAP = "gap-2 sm:gap-2.5" as const;
 
 function GameTableDuelTrophyColumn({ trophiesRemaining }: { trophiesRemaining: number }) {
   const { t } = useTranslation("game");
+  const awardedTrophyCount = Math.max(0, TOTAL_TROPHIES - trophiesRemaining);
+
   return (
-    <div
-      className={cn(
-        "playmat-supply-trophy flex flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:gap-2.5 sm:p-2.5",
-        TABLEAU_PILE_FRAME.trophy,
-      )}
-    >
-      <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
-        {t("table.trophiesLeft")}
-      </p>
-      <div className="flex min-h-0 flex-col items-center justify-end">
-        <SpiceCard card={TABLEAU_TROPHY_DISPLAY_CARD} size="tableau" />
+    <div className="relative w-full max-w-[10.5rem] shrink-0 overflow-visible">
+      {/** Zero in-flow height; panel is `absolute top-0` — BoardView anchors rails from the band top. */}
+      <div className="h-0 w-full shrink-0 overflow-visible" aria-hidden />
+      <div
+        className={cn(
+          "playmat-supply-trophy pointer-events-auto absolute left-0 top-0 z-20 flex w-[min(100%,10rem)] flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:w-[10.5rem] sm:gap-2.5 sm:p-2.5",
+          TABLEAU_PILE_FRAME.trophy,
+        )}
+      >
+        <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
+          {t("table.trophiesLeft")}
+        </p>
+        <div
+          role="list"
+          className={cn("flex w-full flex-col items-center", TROPHY_DUEL_STACK_GAP)}
+          aria-label={t("table.trophyDuelRailAria", {
+            remaining: trophiesRemaining,
+            total: TOTAL_TROPHIES,
+          })}
+        >
+          {Array.from({ length: TOTAL_TROPHIES }, (_, slot) => {
+            const claimed = slot < awardedTrophyCount;
+            return (
+              <div key={slot} role="listitem" className={cn("shrink-0", DUEL_TABLEAU_CARD_W)}>
+                {claimed ? (
+                  <div
+                    className={cn(
+                      "flex aspect-[2/3] w-full flex-col items-center justify-center rounded-md border-2 border-dashed border-[hsl(var(--trophy-gold)/0.35)] bg-muted/20 text-xs font-semibold text-muted-foreground",
+                    )}
+                    aria-label={t("table.trophySlotClaimed")}
+                  >
+                    —
+                  </div>
+                ) : (
+                  <SpiceCard card={TABLEAU_TROPHY_DISPLAY_CARD} size="duel" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <span className="sr-only">
+          {t("table.trophyDuelRailSr", {
+            remaining: trophiesRemaining,
+            total: TOTAL_TROPHIES,
+          })}
+        </span>
       </div>
-      <strong className="tabular-nums text-sm font-bold text-foreground">{trophiesRemaining}</strong>
     </div>
   );
 }
@@ -319,48 +499,116 @@ function GameTableDuelTrophyColumn({ trophiesRemaining }: { trophiesRemaining: n
 function GameTableDuelDrawColumn({
   drawPileCount,
   drawStackAnchorRef = null,
+  drawPassPileDraggable = null,
 }: {
   drawPileCount: number;
   drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  drawPassPileDraggable?: DrawPassPileDraggableConfig | null;
 }) {
   const { t } = useTranslation("game");
+  const reducedMotion = useReducedMotion() === true;
+  const [pileDragActive, setPileDragActive] = useState(false);
   const drawStackVisualLayers =
     drawPileCount <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, 1 + Math.floor(drawPileCount / 9));
+
+  const pileDraggable =
+    drawPassPileDraggable?.active === true && drawPileCount > 0 && drawPassPileDraggable != null;
+
+  useEffect(() => {
+    if (!drawPassPileDraggable?.active) {
+      setPileDragActive(false);
+    }
+  }, [drawPassPileDraggable?.active]);
+
+  const onPileDragStart = (e: DragEvent<HTMLDivElement>) => {
+    if (!pileDraggable || !drawPassPileDraggable) return;
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData(GAME_DRAW_PASS_DRAG_MIME_TYPE, GAME_DRAW_PASS_DRAG_PAYLOAD);
+    e.dataTransfer.setData("text/plain", GAME_DRAW_PASS_DRAG_PAYLOAD);
+    setPileDragActive(true);
+    drawPassPileDraggable.onDragSessionChange(true);
+  };
+
+  const onPileDragEnd = () => {
+    if (!drawPassPileDraggable) return;
+    setPileDragActive(false);
+    drawPassPileDraggable.onDragSessionChange(false);
+  };
+
+  /**
+   * In-flow flex column (not `h-0` + all-`absolute` children): a zero-size shrink-wrap parent
+   * breaks hit-testing / HTML5 drag hover even when paints correctly.
+   */
   return (
     <div
       className={cn(
-        "playmat-supply-draw flex flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:gap-2.5 sm:p-2.5",
+        "playmat-supply-draw relative z-20 flex w-[min(100%,10rem)] max-w-[10.5rem] shrink-0 flex-col items-center gap-2 overflow-visible rounded-xl border border-dashed border-border/35 bg-transparent p-2 text-center sm:w-[10.5rem] sm:gap-2.5 sm:p-2.5",
         TABLEAU_PILE_FRAME.draw,
+        pileDraggable && "border-primary/30",
+        pileDragActive && "z-30 ring-2 ring-primary/40 ring-offset-2 ring-offset-background",
       )}
     >
-      <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
+      <p className="pointer-events-none max-w-[7.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
         {t("table.drawPile")}
       </p>
-      <div className="flex min-h-[7.5rem] flex-col items-center justify-end sm:min-h-[8.25rem]">
-        <div ref={drawStackAnchorRef ?? undefined} className="inline-flex flex-col items-center">
+      {pileDraggable ? (
+        <p
+          className={cn(
+            "pointer-events-none max-w-[10.5rem] px-0.5 text-[9px] font-medium leading-snug text-muted-foreground sm:max-w-[12rem] sm:text-[10px]",
+            pileDragActive && !reducedMotion && "motion-safe:animate-pulse",
+          )}
+        >
+          {t("table.drawPileDropHint")}
+        </p>
+      ) : null}
+      <div className="flex w-full flex-col items-center justify-end">
+        <div
+          ref={drawStackAnchorRef ?? undefined}
+          className={cn(
+            "inline-flex flex-col items-center",
+            pileDraggable && "cursor-grab select-none active:cursor-grabbing",
+          )}
+          draggable={pileDraggable}
+          onDragStart={onPileDragStart}
+          onDragEnd={onPileDragEnd}
+          aria-hidden={!pileDraggable}
+          aria-label={pileDraggable ? t("table.drawPileDragAria") : undefined}
+        >
           <motion.div
             key={drawPileCount}
             initial={{ scale: 0.96, opacity: 0.85 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={SNAPPY_SPRING}
           >
-            {drawStackVisualLayers > 0 ? (
-              <TableauFaceDownStack layers={drawStackVisualLayers} />
-            ) : (
-              <div
-                className={cn(
-                  "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
-                  TABLEAU_CARD_W,
-                  TABLEAU_CARD_H,
-                )}
-              >
-                <span className="text-xs font-semibold text-muted-foreground">—</span>
-              </div>
-            )}
+            <div
+              className={cn(
+                "inline-flex flex-col items-center",
+                pileDraggable &&
+                  !pileDragActive &&
+                  !reducedMotion &&
+                  "motion-safe:origin-bottom motion-safe:animate-draw-pile-stack-invite",
+              )}
+            >
+              {drawStackVisualLayers > 0 ? (
+                <TableauFaceDownStack layers={drawStackVisualLayers} preset="duel" />
+              ) : (
+                <div
+                  className={cn(
+                    "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                    DUEL_TABLEAU_CARD_W,
+                    DUEL_TABLEAU_CARD_H,
+                  )}
+                >
+                  <span className="text-xs font-semibold text-muted-foreground">—</span>
+                </div>
+              )}
+            </div>
           </motion.div>
         </div>
       </div>
-      <strong className="tabular-nums text-sm font-bold text-foreground">{drawPileCount}</strong>
+      <strong className="pointer-events-none tabular-nums text-sm font-bold text-foreground">
+        {drawPileCount}
+      </strong>
     </div>
   );
 }
@@ -375,6 +623,7 @@ export function GameTableTableauSection({
   variant = "full",
   duelSlot,
   drawStackAnchorRef = null,
+  drawPassPileDraggable = null,
 }: GameTableTableauSectionProps) {
   const { t } = useTranslation("game");
 
@@ -384,7 +633,11 @@ export function GameTableTableauSection({
     }
     if (duelSlot === "draw") {
       return (
-        <GameTableDuelDrawColumn drawPileCount={drawPileCount} drawStackAnchorRef={drawStackAnchorRef} />
+        <GameTableDuelDrawColumn
+          drawPileCount={drawPileCount}
+          drawStackAnchorRef={drawStackAnchorRef}
+          drawPassPileDraggable={drawPassPileDraggable}
+        />
       );
     }
     return (
@@ -560,8 +813,13 @@ export function GameTableDeclarationSection({
   const isPlayDropTarget =
     playDropZone != null && phase === GAME_PHASE.PLAYER_TURN && playedCard == null;
 
+  const hasHandCardDragPayload = (e: DragEvent<HTMLDivElement>) => {
+    const types = new Set(Array.from(e.dataTransfer.types).map((ty) => ty.toLowerCase()));
+    return types.has(GAME_CARD_DRAG_MIME_TYPE.toLowerCase()) || types.has("text/plain");
+  };
+
   const onPlayZoneDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (!isPlayDropTarget) return;
+    if (!isPlayDropTarget || !hasHandCardDragPayload(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
@@ -656,8 +914,13 @@ export function GameTableDeclarationSection({
               : PLAY_CARD_TO_TABLE_SPRING
           }
             className={cn(
-              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:py-4 lg:max-w-4xl",
-              isChallengePhaseLayout ? DECLARATION_PLAYFIELD_MIN_H_CHALLENGE : DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE,
+              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:py-4",
+              phase === GAME_PHASE.REVEAL ? "lg:max-w-7xl" : "lg:max-w-4xl",
+              isChallengePhaseLayout
+                ? DECLARATION_PLAYFIELD_MIN_H_CHALLENGE
+                : phase === GAME_PHASE.REVEAL
+                  ? DECLARATION_PLAYFIELD_MIN_H_REVEAL
+                  : DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE,
             )}
           >
             <div className="flex justify-center px-1 sm:hidden">
@@ -665,10 +928,10 @@ export function GameTableDeclarationSection({
             </div>
 
             {/* `1fr auto 1fr` keeps the card column on the same vertical axis as centered content below (e.g. BLUFF). */}
-            <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+            <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
               <div
                 ref={roundPileAnchorRef ?? undefined}
-                className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+                className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
               >
                 <motion.div
                   className="rounded-2xl"
@@ -700,12 +963,31 @@ export function GameTableDeclarationSection({
               </div>
 
               <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
-                <div className="flex max-w-[min(100%,18rem)] flex-col items-center gap-2 px-1 text-center sm:gap-2.5">
+                <div
+                  className={cn(
+                    "flex w-full flex-col items-center gap-2 px-1 text-center sm:gap-2.5",
+                    phase === GAME_PHASE.REVEAL
+                      ? "max-w-[min(100%,26rem)] sm:max-w-[min(100%,28rem)]"
+                      : "max-w-[min(100%,18rem)]",
+                  )}
+                >
                   <div className="w-full">
-                    <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground">
+                    <p
+                      className={cn(
+                        "font-bold uppercase leading-tight tracking-wide text-muted-foreground",
+                        phase === GAME_PHASE.REVEAL ? "text-xs sm:text-sm" : "text-[10px]",
+                      )}
+                    >
                       {t("table.currentClaim")}
                     </p>
-                    <p className="mt-1 font-headline text-lg font-semibold tabular-nums leading-snug text-foreground sm:text-xl">
+                    <p
+                      className={cn(
+                        "mt-1 font-headline font-semibold tabular-nums leading-snug text-foreground",
+                        phase === GAME_PHASE.REVEAL
+                          ? "text-2xl sm:text-3xl"
+                          : "text-lg sm:text-xl",
+                      )}
+                    >
                       {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{" "}
                       <span className="text-primary">{playedCard.declaration.number}</span>
                     </p>
@@ -724,7 +1006,14 @@ export function GameTableDeclarationSection({
                         tabIndex={0}
                         aria-label={claimFlipAriaLabel}
                       >
-                        <div className="relative z-[1] aspect-[2/3] w-[8.25rem] shrink-0 overflow-hidden rounded-md sm:w-[8.5rem] lg:w-[10rem]">
+                        <div
+                          className={cn(
+                            "relative z-[1] aspect-[2/3] shrink-0 overflow-hidden rounded-md",
+                            phase === GAME_PHASE.REVEAL
+                              ? PLAYFIELD_CLAIM_CARD_WIDTH_REVEAL
+                              : PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT,
+                          )}
+                        >
                           {pileLayers > 0 &&
                             Array.from({ length: Math.min(pileLayers, 4) }).map((_, layer) => (
                               <div
@@ -781,10 +1070,10 @@ export function GameTableDeclarationSection({
           <div className="flex justify-center px-1 sm:hidden">
             <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
           </div>
-          <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+          <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
             <div
               ref={roundPileAnchorRef ?? undefined}
-              className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+              className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
             >
               <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
             </div>
@@ -828,10 +1117,6 @@ export function GameTableDeclarationSection({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: REDUCED_CARD_MOTION_DURATION_SECONDS }}
-          role={isPlayDropTarget ? "region" : undefined}
-          aria-label={isPlayDropTarget ? t("hand.dropToPlayAria") : undefined}
-          onDragOver={onPlayZoneDragOver}
-          onDrop={onPlayZoneDrop}
           className={cn(
             phase === GAME_PHASE.PLAYER_TURN
               ? DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT
@@ -844,31 +1129,36 @@ export function GameTableDeclarationSection({
                   <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
                 </div>
 
-                <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+                <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
                   <div
                     ref={roundPileAnchorRef ?? undefined}
-                    className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+                    className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
                   >
                     <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
                   </div>
 
                   <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
-                    <div className="flex w-full max-w-[min(100%,20rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
+                    <div className="flex w-full max-w-[min(100%,32rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
                       {showEmptyStateTurnLine ? (
                         <p className="text-sm text-muted-foreground">
                           <span className="font-semibold text-foreground">{currentPlayerName}</span> {t("turn.isTurn")}
                         </p>
                       ) : null}
 
-                      <div className="w-full">
-                        <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">
-                          {declareRulesTooltipLines(t, lockedSuit, lastResolvedDeclaration)}
-                        </p>
-                      </div>
+                      <PlayerTurnDeclareContextPanel
+                        lockedSuit={lockedSuit}
+                        lastResolvedDeclaration={lastResolvedDeclaration}
+                      />
 
                       <div
-                        className="relative z-10 mt-1 aspect-[2/3] w-[8.25rem] shrink-0 overflow-hidden rounded-md sm:mt-2 sm:w-[8.5rem] lg:w-[10rem]"
-                        aria-label={t("table.a11y.playSlot")}
+                        role={isPlayDropTarget ? "region" : undefined}
+                        aria-label={isPlayDropTarget ? t("hand.dropToPlayAria") : t("table.a11y.playSlot")}
+                        onDragOver={isPlayDropTarget ? onPlayZoneDragOver : undefined}
+                        onDrop={isPlayDropTarget ? onPlayZoneDrop : undefined}
+                        className={cn(
+                          "relative z-10 mt-1 aspect-[2/3] shrink-0 overflow-hidden rounded-md sm:mt-2",
+                          PLAYFIELD_DROP_SLOT_CARD_BOX,
+                        )}
                       >
                         {pileLayers > 0 &&
                           Array.from({ length: Math.min(pileLayers, 4) }).map((_, layer) => (
@@ -902,7 +1192,7 @@ export function GameTableDeclarationSection({
                             <>
                               <Icon
                                 name="move_down"
-                                size={36}
+                                size={44}
                                 className={cn(
                                   "text-primary/60",
                                   !reducedMotion && "motion-safe:animate-bounce",
@@ -915,13 +1205,6 @@ export function GameTableDeclarationSection({
                           ) : null}
                         </div>
                       </div>
-
-                      <div className="mt-1 flex w-full justify-center sm:mt-0">
-                        <DeclareRulesHelpButton
-                          lockedSuit={lockedSuit}
-                          lastResolvedDeclaration={lastResolvedDeclaration}
-                        />
-                      </div>
                     </div>
                   </div>
 
@@ -932,7 +1215,10 @@ export function GameTableDeclarationSection({
               <>
                 <div className="flex flex-col items-center gap-2">
                   <div
-                    className="relative h-36 w-24 sm:h-40 sm:w-28"
+                    className={cn(
+                      "relative aspect-[2/3]",
+                      PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT,
+                    )}
                     aria-label={t("table.a11y.playSlot")}
                   >
                     {tablePileCount > 0 &&
@@ -941,8 +1227,8 @@ export function GameTableDeclarationSection({
                           key={layer}
                           className="absolute rounded-lg border-2 border-dashed border-foreground/15 bg-transparent"
                           style={{
-                            width: "6.25rem",
-                            height: "9rem",
+                            width: "calc(100% - 6px)",
+                            height: "calc(100% - 8px)",
                             left: layer * 5,
                             top: layer * -4,
                             zIndex: layer,
@@ -950,7 +1236,7 @@ export function GameTableDeclarationSection({
                           aria-hidden
                         />
                       ))}
-                    <div className="absolute left-0 top-0 z-[5] flex h-36 w-24 items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent sm:h-40 sm:w-28" />
+                    <div className="absolute left-0 top-0 z-[5] flex h-full w-full items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent" />
                   </div>
                 </div>
                 {showEmptyStateTurnLine ? (
