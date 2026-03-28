@@ -1,11 +1,17 @@
 import { Injectable } from "@nestjs/common";
-import type { GameState } from "@sweet-spicy/shared-types";
 import {
+  DEFAULT_ROOM_MAX_PLAYERS,
+  MIN_PLAYERS_TO_START,
+  type GameState,
+  type RoomPlayer,
+  type RoomState,
+} from "@sweet-spicy/shared-types";
+import {
+  computePlayerFinalScore,
   createInitialState,
   startGame as engineStartGame,
   generateRoomCode,
 } from "@sweet-spicy/game-logic";
-import type { RoomPlayer, RoomState } from "@sweet-spicy/shared-types";
 
 export interface ServerRoom {
   roomCode: string;
@@ -33,7 +39,7 @@ export class RoomService {
     };
   }
 
-  createRoom(userId: string, nickname: string, maxPlayers = 6): ServerRoom {
+  createRoom(userId: string, nickname: string, maxPlayers = DEFAULT_ROOM_MAX_PLAYERS): ServerRoom {
     const roomCode = generateRoomCode();
     const player: RoomPlayer = {
       id: userId,
@@ -42,8 +48,8 @@ export class RoomService {
       isReady: true,
       score: 0,
       hand: [],
-      successfulBluffs: 0,
-      successfulChallenges: 0,
+      wonPileCount: 0,
+      trophyCount: 0,
     };
     const room: ServerRoom = {
       roomCode,
@@ -74,8 +80,8 @@ export class RoomService {
       isReady: false,
       score: 0,
       hand: [],
-      successfulBluffs: 0,
-      successfulChallenges: 0,
+      wonPileCount: 0,
+      trophyCount: 0,
     };
     room.players.push(player);
     this.userToRoom.set(userId, code);
@@ -125,7 +131,9 @@ export class RoomService {
     const room = this.rooms.get(roomCode);
     if (!room) return { ok: false, error: "Room not found" };
     if (room.hostId !== hostId) return { ok: false, error: "Only the host can start the game" };
-    if (room.players.length < 2) return { ok: false, error: "Need at least 2 players" };
+    if (room.players.length < MIN_PLAYERS_TO_START) {
+      return { ok: false, error: "Need at least 2 players" };
+    }
     if (!room.players.every((p) => p.isReady)) return { ok: false, error: "All players must be ready" };
 
     room.status = "IN_PROGRESS";
@@ -134,9 +142,8 @@ export class RoomService {
       id: p.id,
       nickname: p.nickname,
       hand: [],
-      score: 0,
-      successfulBluffs: p.successfulBluffs ?? 0,
-      successfulChallenges: p.successfulChallenges ?? 0,
+      wonPile: [],
+      trophyCount: 0,
       isReady: p.isReady,
       isHost: p.isHost,
     }));
@@ -147,10 +154,10 @@ export class RoomService {
       nickname: gp.nickname,
       isHost: room.hostId === gp.id,
       isReady: true,
-      score: gp.score,
+      score: computePlayerFinalScore(gp),
       hand: gp.hand,
-      successfulBluffs: gp.successfulBluffs,
-      successfulChallenges: gp.successfulChallenges,
+      wonPileCount: gp.wonPile.length,
+      trophyCount: gp.trophyCount,
     }));
     return { ok: true, room };
   }

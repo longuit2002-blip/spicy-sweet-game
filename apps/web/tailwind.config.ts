@@ -53,12 +53,25 @@ export default {
         },
         chili: "hsl(var(--chili))",
         "chili-glow": "hsl(var(--chili-glow))",
-        pepper: "hsl(var(--pepper))",
-        "pepper-glow": "hsl(var(--pepper-glow))",
         lemon: "hsl(var(--lemon))",
         "lemon-glow": "hsl(var(--lemon-glow))",
+        avocado: "hsl(var(--avocado))",
+        "avocado-glow": "hsl(var(--avocado-glow))",
         "card-face": "hsl(var(--card-face))",
         "card-back": "hsl(var(--card-back))",
+        "surface-felt": "hsl(var(--surface-felt))",
+        "surface-rail": "hsl(var(--surface-rail))",
+        "trophy-gold": "hsl(var(--trophy-gold))",
+        "trophy-glow": "hsl(var(--trophy-glow))",
+        /* Marshmallow Studio surface hierarchy */
+        "neko-pink": "hsl(var(--neko-pink))",
+        "surface-dim": "hsl(var(--surface-dim))",
+        "surface-container-lowest": "hsl(var(--surface-container-lowest))",
+        "surface-container-low": "hsl(var(--surface-container-low))",
+        "surface-container": "hsl(var(--surface-container))",
+        "surface-container-high": "hsl(var(--surface-container-high))",
+        "surface-container-highest": "hsl(var(--surface-container-highest))",
+        "outline-variant": "hsl(var(--outline-variant))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -74,6 +87,7 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "3rem",
       },
       keyframes: {
         "accordion-down": {
@@ -88,11 +102,34 @@ export default {
           "0%, 100%": { boxShadow: "0 0 10px hsl(12 85% 55% / 0.3)" },
           "50%": { boxShadow: "0 0 25px hsl(12 85% 55% / 0.6)" },
         },
+        "trophy-pulse": {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 hsl(43 96% 56% / 0.35)",
+            transform: "scale(1)",
+          },
+          "50%": {
+            boxShadow: "0 0 20px 2px hsl(43 100% 72% / 0.45)",
+            transform: "scale(1.02)",
+          },
+        },
+        /** Empty play slot (PLAYER_TURN): subtle “drag here” invite without a card-back preview. */
+        "play-drop-slot-invite": {
+          "0%, 100%": {
+            borderColor: "hsl(var(--primary) / 0.32)",
+            backgroundColor: "hsl(var(--muted) / 0.12)",
+          },
+          "50%": {
+            borderColor: "hsl(var(--primary) / 0.52)",
+            backgroundColor: "hsl(var(--muted) / 0.24)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "trophy-pulse": "trophy-pulse 2.4s ease-in-out infinite",
+        "play-drop-slot-invite": "play-drop-slot-invite 2.6s ease-in-out infinite",
       },
     },
   },

@@ -1,54 +1,1054 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
-import type { PlayedCard } from '@/shared/types/game';
-import { SPICE_EMOJI, SPICE_LABEL } from '@/shared/types/game';
+import { useMemo, type DragEvent, type ReactNode, type RefObject } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import { MAX_DECLARATION_RANK, TOTAL_TROPHIES } from "@sweet-spicy/game-logic";
+import type {
+  ChallengeResult,
+  ClientPlayedCard,
+  Declaration,
+  GamePhase,
+  PlayedCard,
+  SpiceType,
+} from "@/shared/types/game";
+import { GAME_PHASE, SPICE_EMOJI, SPICE_LABEL } from "@/shared/types/game";
+import { CardBackSurface } from "@/features/game/components/CardBackSurface";
+import { SpiceCard } from "@/features/game/components/SpiceCard";
+import { PlayfieldDeclaredCardFlip } from "./PlayfieldDeclaredCardFlip";
+import { TABLEAU_TROPHY_DISPLAY_CARD } from "@/lib/game-card-assets";
+import { cn } from "@/lib/utils";
+import { Icon } from "@/components/ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PHASE_EASE_OUT, PLAY_CARD_TO_TABLE_SPRING, SNAPPY_SPRING } from "@/features/game/animations";
+import {
+  DEFAULT_LOBBY_NICKNAME,
+  getCardIdFromDragDataTransfer,
+  isRoundResolutionInterstitialPhase,
+} from "@/lib/game-room.constants";
 
-interface GameTableProps {
-  playedCard: PlayedCard | null;
+/** Drop a hand card onto the empty play slot (HTML5 DnD). */
+export type PlayDropZoneConfig = {
+  highlighted: boolean;
+  onCardDrop: (cardId: string) => void;
+};
+
+export interface GameTableProps {
+  playedCard: PlayedCard | ClientPlayedCard | null;
   currentPlayerName: string;
+  phase: GamePhase;
+  lastResolvedDeclaration: Declaration | null;
+  lockedSuit: SpiceType | null;
+  tablePileCount: number;
+  /** Cards left in the main draw pile. */
+  drawPileCount: number;
+  /** Total Wild cards beside the draw pile (recovery pool). */
+  supremeReserve: number;
+  trophiesRemaining: number;
+  /** When set and phase is `PLAYER_TURN` with no `playedCard`, center slot accepts drag-drop. */
+  playDropZone?: PlayDropZoneConfig | null;
+  /** Set during `REVEAL` — enriches claim card a11y label with outcome (visual is the flipped real card). */
+  challengeResult?: ChallengeResult | null;
+  /** Shown with {@link challengeResult} for inline outcome copy (REVEAL callout). */
+  challengeOutcomeNames?: { challenger: string; declarer: string } | null;
+  /**
+   * When set, REVEAL result chips show only **this** seat’s consequence (won pile vs penalty draw).
+   * Omit on standalone {@link GameTable} for a neutral two-line fallback when truth resolves.
+   */
+  localPlayerId?: string;
+  /** Optional: duel board — round pile rail center for flight FX (BoardView playmat anchors). */
+  roundPileAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
 }
 
-export function GameTable({ playedCard, currentPlayerName }: GameTableProps) {
-  const { t } = useTranslation('game');
+/** Props for the inner playfield (metadata + claim / empty state). Used inside {@link GameTable} and embedded in {@link BoardView}. */
+export type GameTablePlayfieldProps = GameTableProps & {
+  /** When false, omits the “Player’s turn” line under the empty play slot (BoardView shows its own turn row). Default true. */
+  showEmptyStateTurnLine?: boolean;
+  /**
+   * PENALTY / NEXT_TURN / TROPHY: panel rendered in the same center slot as the empty declare zone (BoardView).
+   * Keeps one layout shell so phase transitions do not stack two siblings + strip exit.
+   */
+  roundResolutionPanel?: ReactNode | null;
+};
+
+/** Extra lead-in on the stacked face-down card vs. the outer claim row (seconds). */
+const PLAY_CARD_STACK_LEAD_IN_SECONDS = 0.02;
+
+/** Reduced-motion duration for play / empty cross-fade (seconds). */
+const REDUCED_CARD_MOTION_DURATION_SECONDS = 0.16;
+
+/**
+ * Non-challenge played declaration block min-height (must match `motion` when `playedCard != null`).
+ * Caps in rem keep very large viewports from forcing excess scroll vs opponents + hand strip.
+ */
+const DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE =
+  "sm:min-h-[min(52vh,34rem)] lg:min-h-[min(58vh,40rem)]";
+
+/**
+ * Shared shell: empty `PLAYER_TURN` drop zone and round-resolution panel (PENALTY / NEXT_TURN / TROPHY).
+ * Same min-height avoids jump when swapping interstitial panel for declare UI.
+ */
+const DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT =
+  "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(42vh,26rem)] sm:py-4 lg:max-w-4xl lg:min-h-[min(46vh,30rem)]";
+
+/** Challenge-phase declaration column is shorter — only used when `phase === CHALLENGE_PHASE`. */
+const DECLARATION_PLAYFIELD_MIN_H_CHALLENGE =
+  "sm:min-h-[min(34vh,20rem)] lg:min-h-[min(40vh,26rem)]";
+
+const PILE_STACK_VISIBLE_MAX = 6;
+const TABLEAU_STACK_DEPTH = 4;
+
+function declareRulesTooltipLines(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  lockedSuit: SpiceType | null,
+  lastResolvedDeclaration: Declaration | null,
+): string {
+  const lastNum =
+    lastResolvedDeclaration != null ? Math.floor(Number(lastResolvedDeclaration.number)) : null;
+  const lastType = lastResolvedDeclaration?.type;
+  if (lockedSuit == null) return t("table.firstRoundHint");
+  if (lastResolvedDeclaration != null && lastType != null && lastNum != null) {
+    return lastNum >= MAX_DECLARATION_RANK
+      ? t("table.rankCycleReset")
+      : t("table.mustDeclareHigherThan", { number: lastNum });
+  }
+  return t("table.followLockedSuit");
+}
+
+function DeclareRulesHelpButton({
+  lockedSuit,
+  lastResolvedDeclaration,
+}: {
+  lockedSuit: SpiceType | null;
+  lastResolvedDeclaration: Declaration | null;
+}) {
+  const { t } = useTranslation("game");
+  const body = declareRulesTooltipLines(t, lockedSuit, lastResolvedDeclaration);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/15 bg-background/50 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-label={t("table.a11y.declareRulesHelp")}
+        >
+          <Icon name="help" size={20} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="left"
+        align="center"
+        className="max-w-[min(20rem,calc(100vw-2rem))] text-left text-xs leading-snug"
+      >
+        {body}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Face-down stack footprint — larger for tabletop legibility. */
+const TABLEAU_CARD_W = "w-[5.25rem] sm:w-24";
+const TABLEAU_CARD_H = "h-[7.125rem] sm:h-[8rem]";
+
+const TABLEAU_LAYER_W_REM = "5rem";
+const TABLEAU_LAYER_H_REM = "6.75rem";
+const TABLEAU_LAYER_OFFSET_PX = 3.5;
+
+function stackLayerStyle(layer: number, total: number) {
+  const offset = (total - 1 - layer) * TABLEAU_LAYER_OFFSET_PX;
+  return { left: offset, top: -offset, zIndex: layer };
+}
+
+type TableauPileKind = "trophy" | "draw" | "round" | "tw";
+
+/** Flat zones on the felt — no nested “card behind card” panels. */
+const TABLEAU_PILE_FRAME: Record<TableauPileKind, string> = {
+  trophy: "ring-1 ring-[hsl(var(--trophy-gold)/0.35)]",
+  draw: "ring-1 ring-foreground/[0.08]",
+  round: "ring-1 ring-dashed ring-foreground/[0.12]",
+  tw: "ring-1 ring-foreground/[0.08]",
+};
+
+function TableauPileMount({
+  kind,
+  label,
+  countChild,
+  stackChild,
+}: {
+  kind: TableauPileKind;
+  label: ReactNode;
+  countChild: ReactNode;
+  stackChild: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:gap-2.5 sm:p-2.5",
+        TABLEAU_PILE_FRAME[kind],
+      )}
+    >
+      <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
+        {label}
+      </p>
+      <div className="flex min-h-[7.5rem] flex-col items-center justify-end sm:min-h-[8.25rem]">{stackChild}</div>
+      {countChild}
+    </div>
+  );
+}
+
+function TableauFaceDownStack({ layers, className }: { layers: number; className?: string }) {
+  const n = Math.max(0, Math.min(TABLEAU_STACK_DEPTH, layers));
+  return (
+    <div className={cn("relative mx-auto", TABLEAU_CARD_W, TABLEAU_CARD_H, className)} aria-hidden>
+      {n > 0 &&
+        Array.from({ length: n }).map((_, layer) => (
+          <div
+            key={layer}
+            className="absolute rounded-lg border-2 border-card-back/90 bg-card-back/90 shadow-card"
+            style={{
+              ...stackLayerStyle(layer, n),
+              width: TABLEAU_LAYER_W_REM,
+              height: TABLEAU_LAYER_H_REM,
+            }}
+          />
+        ))}
+      <CardBackSurface
+        corner="lg"
+        className={cn("absolute left-0 top-0 z-[10]", TABLEAU_CARD_W, TABLEAU_CARD_H)}
+      />
+    </div>
+  );
+}
+
+/** Max face-down layers drawn in playfield side rails (decorative, not pile logic). */
+const PLAYFIELD_RAIL_STACK_CAP = 2;
+
+function PlayfieldRoundPileRail({
+  tablePileCount,
+  compact = false,
+  className,
+}: {
+  tablePileCount: number;
+  compact?: boolean;
+  className?: string;
+}) {
+  const { t } = useTranslation("game");
+  const visualLayers =
+    tablePileCount <= 0 ? 0 : Math.min(tablePileCount, PLAYFIELD_RAIL_STACK_CAP);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[200px] gap-4">
-      <AnimatePresence mode="wait">
-        {playedCard ? (
-          <motion.div
-            key="played"
-            initial={{ scale: 0, rotate: -20 }}
-            animate={{ scale: 1, rotate: 0 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            className="flex flex-col items-center gap-3"
-          >
-            <div className="w-24 h-36 rounded-lg border-2 border-card-back bg-card-back flex items-center justify-center shadow-card">
-              <span className="text-3xl opacity-40">🃏</span>
-            </div>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-muted rounded-lg px-4 py-2 text-center"
-            >
-              <p className="text-muted-foreground text-xs">{t('declare.preview')}</p>
-              <p className="font-display text-lg text-foreground">
-                {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{' '}
-                {playedCard.declaration.number}
-              </p>
-            </motion.div>
-          </motion.div>
-        ) : (
-          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-            <div className="w-24 h-36 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center mb-3">
-              <span className="text-muted-foreground/30 text-sm">{t('game.table.playHere')}</span>
-            </div>
-            <p className="text-muted-foreground text-sm">
-              <span className="text-foreground font-semibold">{currentPlayerName}</span> {t('game.turn.isTurn')}
-            </p>
-          </motion.div>
+    <div
+      className={cn(
+        "flex flex-col items-center gap-1.5 text-center text-muted-foreground",
+        className,
+      )}
+    >
+      <p
+        className={cn(
+          "max-w-[6rem] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none",
+          compact ? "text-[9px]" : "text-[10px]",
         )}
-      </AnimatePresence>
+      >
+        {t("table.contestedPile")}
+      </p>
+      <div className={cn("relative shrink-0", compact ? "h-12 w-9" : "h-14 w-10 sm:h-[4.25rem] sm:w-11")}>
+        {visualLayers === 0 ? (
+          <div
+            className="absolute inset-0 rounded-md border border-dashed border-border/55 bg-transparent"
+            aria-hidden
+          />
+        ) : (
+          Array.from({ length: visualLayers }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-md border-2 border-card-back/90 bg-card-back/90 shadow-sm"
+              style={{
+                width: compact ? "2.25rem" : "2.5rem",
+                height: compact ? "3rem" : "3.35rem",
+                left: i * (compact ? 2 : 3),
+                top: i * (compact ? -2 : -2),
+                zIndex: i,
+              }}
+              aria-hidden
+            />
+          ))
+        )}
+      </div>
+      <strong
+        className={cn(
+          "tabular-nums font-bold text-foreground",
+          compact ? "text-xs" : "text-sm",
+        )}
+      >
+        {tablePileCount}
+      </strong>
+    </div>
+  );
+}
+
+export type GameTableTableauSectionProps = Pick<
+  GameTableProps,
+  "drawPileCount" | "tablePileCount" | "supremeReserve" | "trophiesRemaining" | "lockedSuit"
+> & {
+  /** `full` = four supply zones (standalone table). `duel` = single column when `duelSlot` is set. */
+  variant?: "full" | "duel";
+  /** Which duel playmat column to render; required for `variant="duel"` in BoardView grid. */
+  duelSlot?: "trophy" | "draw";
+  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+};
+
+function GameTableDuelTrophyColumn({ trophiesRemaining }: { trophiesRemaining: number }) {
+  const { t } = useTranslation("game");
+  return (
+    <div
+      className={cn(
+        "playmat-supply-trophy flex flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:gap-2.5 sm:p-2.5",
+        TABLEAU_PILE_FRAME.trophy,
+      )}
+    >
+      <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
+        {t("table.trophiesLeft")}
+      </p>
+      <div className="flex min-h-0 flex-col items-center justify-end">
+        <SpiceCard card={TABLEAU_TROPHY_DISPLAY_CARD} size="tableau" />
+      </div>
+      <strong className="tabular-nums text-sm font-bold text-foreground">{trophiesRemaining}</strong>
+    </div>
+  );
+}
+
+function GameTableDuelDrawColumn({
+  drawPileCount,
+  drawStackAnchorRef = null,
+}: {
+  drawPileCount: number;
+  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+}) {
+  const { t } = useTranslation("game");
+  const drawStackVisualLayers =
+    drawPileCount <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, 1 + Math.floor(drawPileCount / 9));
+  return (
+    <div
+      className={cn(
+        "playmat-supply-draw flex flex-col items-center gap-2 rounded-lg bg-transparent p-2 text-center sm:gap-2.5 sm:p-2.5",
+        TABLEAU_PILE_FRAME.draw,
+      )}
+    >
+      <p className="max-w-[6.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
+        {t("table.drawPile")}
+      </p>
+      <div className="flex min-h-[7.5rem] flex-col items-center justify-end sm:min-h-[8.25rem]">
+        <div ref={drawStackAnchorRef ?? undefined} className="inline-flex flex-col items-center">
+          <motion.div
+            key={drawPileCount}
+            initial={{ scale: 0.96, opacity: 0.85 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={SNAPPY_SPRING}
+          >
+            {drawStackVisualLayers > 0 ? (
+              <TableauFaceDownStack layers={drawStackVisualLayers} />
+            ) : (
+              <div
+                className={cn(
+                  "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                  TABLEAU_CARD_W,
+                  TABLEAU_CARD_H,
+                )}
+              >
+                <span className="text-xs font-semibold text-muted-foreground">—</span>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </div>
+      <strong className="tabular-nums text-sm font-bold text-foreground">{drawPileCount}</strong>
+    </div>
+  );
+}
+
+/** Supply piles (trophy / draw / round / TW in full layout; duel columns in BoardView). */
+export function GameTableTableauSection({
+  drawPileCount,
+  tablePileCount,
+  supremeReserve,
+  trophiesRemaining,
+  lockedSuit,
+  variant = "full",
+  duelSlot,
+  drawStackAnchorRef = null,
+}: GameTableTableauSectionProps) {
+  const { t } = useTranslation("game");
+
+  if (variant === "duel") {
+    if (duelSlot === "trophy") {
+      return <GameTableDuelTrophyColumn trophiesRemaining={trophiesRemaining} />;
+    }
+    if (duelSlot === "draw") {
+      return (
+        <GameTableDuelDrawColumn drawPileCount={drawPileCount} drawStackAnchorRef={drawStackAnchorRef} />
+      );
+    }
+    return (
+      <div className="flex w-full items-end justify-between gap-4 px-1">
+        <GameTableDuelTrophyColumn trophiesRemaining={trophiesRemaining} />
+        <GameTableDuelDrawColumn drawPileCount={drawPileCount} drawStackAnchorRef={drawStackAnchorRef} />
+      </div>
+    );
+  }
+
+  const awardedTrophies = Math.max(0, TOTAL_TROPHIES - trophiesRemaining);
+  const drawStackVisualLayers =
+    drawPileCount <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, 1 + Math.floor(drawPileCount / 9));
+  const roundStackVisualLayers =
+    tablePileCount <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, Math.max(1, Math.ceil(tablePileCount / 4)));
+  const twStackVisualLayers =
+    supremeReserve <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, 1 + Math.floor(supremeReserve / 3));
+
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <TableauPileMount
+          kind="trophy"
+          label={t("table.trophiesLeft")}
+          stackChild={
+            <div className="flex flex-wrap justify-center gap-1" aria-label={t("table.trophiesLeft")}>
+              {Array.from({ length: TOTAL_TROPHIES }).map((_, i) => {
+                const filled = i < awardedTrophies;
+                return (
+                  <span
+                    key={i}
+                    className={cn(
+                      "inline-flex h-9 w-9 items-center justify-center rounded-full border text-sm transition-transform duration-300 sm:h-10 sm:w-10",
+                      filled
+                        ? "border-[hsl(var(--trophy-gold)/0.85)] bg-[hsl(var(--trophy-gold)/0.18)] text-[hsl(var(--trophy-gold))] shadow-[0_0_14px_hsl(var(--trophy-glow)/0.45)]"
+                        : "border-border/55 bg-muted/25 text-muted-foreground opacity-50",
+                    )}
+                    aria-hidden
+                  >
+                    🏆
+                  </span>
+                );
+              })}
+            </div>
+          }
+          countChild={<strong className="tabular-nums text-sm font-bold text-foreground">{trophiesRemaining}</strong>}
+        />
+
+        <TableauPileMount
+          kind="draw"
+          label={t("table.drawPile")}
+          stackChild={
+            <motion.div
+              key={drawPileCount}
+              initial={{ scale: 0.96, opacity: 0.85 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={SNAPPY_SPRING}
+            >
+              {drawStackVisualLayers > 0 ? (
+                <TableauFaceDownStack layers={drawStackVisualLayers} />
+              ) : (
+                <div
+                  className={cn(
+                    "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                    TABLEAU_CARD_W,
+                    TABLEAU_CARD_H,
+                  )}
+                >
+                  <span className="text-xs font-semibold text-muted-foreground">—</span>
+                </div>
+              )}
+            </motion.div>
+          }
+          countChild={<strong className="tabular-nums text-sm font-bold text-foreground">{drawPileCount}</strong>}
+        />
+
+        <TableauPileMount
+          kind="round"
+          label={t("table.roundPile")}
+          stackChild={
+            <motion.div
+              key={tablePileCount}
+              initial={{ scale: 0.97 }}
+              animate={{ scale: 1 }}
+              transition={SNAPPY_SPRING}
+            >
+              {roundStackVisualLayers > 0 ? (
+                <TableauFaceDownStack layers={roundStackVisualLayers} />
+              ) : (
+                <div
+                  className={cn(
+                    "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                    TABLEAU_CARD_W,
+                    TABLEAU_CARD_H,
+                  )}
+                >
+                  <span className="text-xs font-semibold text-muted-foreground">0</span>
+                </div>
+              )}
+            </motion.div>
+          }
+          countChild={<strong className="tabular-nums text-sm font-bold text-foreground">{tablePileCount}</strong>}
+        />
+
+        <TableauPileMount
+          kind="tw"
+          label={t("table.supremeReserve")}
+          stackChild={
+            <motion.div
+              key={supremeReserve}
+              initial={{ scale: 0.96 }}
+              animate={{ scale: 1 }}
+              transition={SNAPPY_SPRING}
+            >
+              {twStackVisualLayers > 0 ? (
+                <TableauFaceDownStack layers={twStackVisualLayers} className="opacity-95" />
+              ) : (
+                <div
+                  className={cn(
+                    "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                    TABLEAU_CARD_W,
+                    TABLEAU_CARD_H,
+                  )}
+                >
+                  <span className="text-xs font-bold text-secondary">TW</span>
+                </div>
+              )}
+            </motion.div>
+          }
+          countChild={<strong className="tabular-nums text-sm font-bold text-foreground">{supremeReserve}</strong>}
+        />
+      </div>
+    </div>
+  );
+}
+
+export type GameTableDeclarationSectionProps = Pick<
+  GameTablePlayfieldProps,
+  | "playedCard"
+  | "currentPlayerName"
+  | "phase"
+  | "lastResolvedDeclaration"
+  | "lockedSuit"
+  | "tablePileCount"
+  | "showEmptyStateTurnLine"
+  | "playDropZone"
+  | "challengeResult"
+  | "challengeOutcomeNames"
+  | "localPlayerId"
+  | "roundPileAnchorRef"
+  | "roundResolutionPanel"
+>;
+
+/** Center play area: current claim or empty “play here” — mounts below {@link GameTableTableauSection}. */
+export function GameTableDeclarationSection({
+  playedCard,
+  currentPlayerName,
+  phase,
+  lastResolvedDeclaration,
+  lockedSuit,
+  tablePileCount,
+  showEmptyStateTurnLine = true,
+  playDropZone = null,
+  challengeResult = null,
+  challengeOutcomeNames = null,
+  localPlayerId = "",
+  roundPileAnchorRef = null,
+  roundResolutionPanel = null,
+}: GameTableDeclarationSectionProps) {
+  const { t } = useTranslation("game");
+  const reducedMotion = useReducedMotion() === true;
+
+  const isPlayDropTarget =
+    playDropZone != null && phase === GAME_PHASE.PLAYER_TURN && playedCard == null;
+
+  const onPlayZoneDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!isPlayDropTarget) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const onPlayZoneDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (!isPlayDropTarget || !playDropZone) return;
+    e.preventDefault();
+    const id = getCardIdFromDragDataTransfer(e.dataTransfer);
+    if (id) playDropZone.onCardDrop(id);
+  };
+
+  const playCardMotionKey = useMemo(
+    () =>
+      playedCard != null
+        ? `play-${playedCard.playerId}-${playedCard.declaration.type}-${String(playedCard.declaration.number)}-${tablePileCount}`
+        : "empty",
+    [playedCard, tablePileCount],
+  );
+
+  const pileLayers = Math.min(tablePileCount, PILE_STACK_VISIBLE_MAX);
+
+  const showDeclaredCardFace =
+    phase === GAME_PHASE.REVEAL && playedCard != null && playedCard.card != null;
+
+  /** Plain-text outcome for assistive tech (visual outcome is portal FX + PENALTY strip). */
+  const revealOutcomeSrText = useMemo(() => {
+    if (phase !== GAME_PHASE.REVEAL || challengeResult == null || !showDeclaredCardFace) return null;
+    const challenger = (challengeOutcomeNames?.challenger ?? "").trim() || DEFAULT_LOBBY_NICKNAME;
+    const declarer = (challengeOutcomeNames?.declarer ?? "").trim() || DEFAULT_LOBBY_NICKNAME;
+    const { challengeCorrect, timedOut } = challengeResult;
+    const timeoutBranch = timedOut === true && !challengeCorrect;
+    if (timeoutBranch) {
+      return [
+        t("result.challengeTimedOut"),
+        t("result.declarerTakesPile"),
+        t("result.challengerPenalty", { player: challenger }),
+      ].join(" ");
+    }
+    if (challengeCorrect) {
+      return [
+        t("challenge.bluffCaught"),
+        `${challenger} ${t("result.challengeCorrect")}`,
+        t("result.challengerTakesPile"),
+      ].join(" ");
+    }
+    return [
+      t("result.wasTruth"),
+      `${declarer} ${t("result.wasTruthMessage")}`,
+      t("result.challengerPenalty", { player: challenger }),
+      t("result.declarerTakesPile"),
+    ].join(" ");
+  }, [phase, challengeResult, showDeclaredCardFace, challengeOutcomeNames, t]);
+
+  const isChallengePhaseLayout = phase === GAME_PHASE.CHALLENGE_PHASE;
+
+  const claimFlipAriaLabel = useMemo(() => {
+    if (playedCard == null) return "";
+    const claimLine = `${t("table.claimIs")}: ${SPICE_LABEL[playedCard.declaration.type]} ${playedCard.declaration.number}`;
+    const base =
+      phase === GAME_PHASE.REVEAL && playedCard.card != null
+        ? `${t("table.a11y.currentClaimDetails")} — ${claimLine}`
+        : `${t("table.a11y.faceDownPlay")} — ${claimLine}`;
+    if (phase === GAME_PHASE.REVEAL && challengeResult) {
+      const { challengeCorrect, timedOut } = challengeResult;
+      if (timedOut && !challengeCorrect) {
+        return `${base}. ${t("result.challengeTimedOut")}`;
+      }
+      if (challengeCorrect) {
+        return `${base}. ${t("challenge.bluffCaught")}`;
+      }
+      return `${base}. ${t("result.wasTruth")}`;
+    }
+    return base;
+  }, [playedCard, phase, challengeResult, t]);
+
+  const roundInterstitialEmpty = playedCard == null && isRoundResolutionInterstitialPhase(phase);
+
+  return (
+    <div className="relative min-h-0 w-full">
+      {playedCard != null ? (
+        <motion.div
+          key={playCardMotionKey}
+          initial={
+            reducedMotion
+              ? { opacity: 0 }
+              : { y: 72, opacity: 0, rotateZ: -5.5, scale: 0.86 }
+          }
+          animate={{ y: 0, opacity: 1, rotateZ: 0, scale: 1 }}
+          transition={
+            reducedMotion
+              ? { duration: REDUCED_CARD_MOTION_DURATION_SECONDS, ease: PHASE_EASE_OUT }
+              : PLAY_CARD_TO_TABLE_SPRING
+          }
+            className={cn(
+              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:py-4 lg:max-w-4xl",
+              isChallengePhaseLayout ? DECLARATION_PLAYFIELD_MIN_H_CHALLENGE : DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE,
+            )}
+          >
+            <div className="flex justify-center px-1 sm:hidden">
+              <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
+            </div>
+
+            {/* `1fr auto 1fr` keeps the card column on the same vertical axis as centered content below (e.g. BLUFF). */}
+            <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+              <div
+                ref={roundPileAnchorRef ?? undefined}
+                className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+              >
+                <motion.div
+                  className="rounded-2xl"
+                  animate={
+                    phase === GAME_PHASE.REVEAL &&
+                    challengeResult &&
+                    showDeclaredCardFace &&
+                    !reducedMotion
+                      ? {
+                          boxShadow: [
+                            "0 0 0 0px hsl(var(--primary) / 0)",
+                            "0 0 0 3px hsl(var(--primary) / 0.22)",
+                            "0 0 0 0px hsl(var(--primary) / 0)",
+                          ],
+                        }
+                      : { boxShadow: "0 0 0 0px transparent" }
+                  }
+                  transition={
+                    phase === GAME_PHASE.REVEAL &&
+                    challengeResult &&
+                    showDeclaredCardFace &&
+                    !reducedMotion
+                      ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                      : { duration: 0.15 }
+                  }
+                >
+                  <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
+                </motion.div>
+              </div>
+
+              <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+                <div className="flex max-w-[min(100%,18rem)] flex-col items-center gap-2 px-1 text-center sm:gap-2.5">
+                  <div className="w-full">
+                    <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground">
+                      {t("table.currentClaim")}
+                    </p>
+                    <p className="mt-1 font-headline text-lg font-semibold tabular-nums leading-snug text-foreground sm:text-xl">
+                      {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{" "}
+                      <span className="text-primary">{playedCard.declaration.number}</span>
+                    </p>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <motion.div
+                        className="relative z-10 cursor-default rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        initial={reducedMotion ? false : { y: 20, rotateX: 8, opacity: 0 }}
+                        animate={{ y: 0, rotateX: 0, opacity: 1 }}
+                        transition={
+                          reducedMotion
+                            ? { duration: 0 }
+                            : { ...PLAY_CARD_TO_TABLE_SPRING, delay: PLAY_CARD_STACK_LEAD_IN_SECONDS }
+                        }
+                        tabIndex={0}
+                        aria-label={claimFlipAriaLabel}
+                      >
+                        <div className="relative z-[1] aspect-[2/3] w-[8.25rem] shrink-0 overflow-hidden rounded-md sm:w-[8.5rem] lg:w-[10rem]">
+                          {pileLayers > 0 &&
+                            Array.from({ length: Math.min(pileLayers, 4) }).map((_, layer) => (
+                              <div
+                                key={layer}
+                                className="absolute rounded-md bg-card-back/80 shadow-sm"
+                                style={{
+                                  width: "calc(100% - 4px)",
+                                  height: "calc(100% - 6px)",
+                                  left: layer * 5,
+                                  top: layer * -4,
+                                  zIndex: layer,
+                                }}
+                                aria-hidden
+                              />
+                            ))}
+                          <div className="absolute left-0 top-0 z-[20] h-full w-full will-change-transform">
+                            <PlayfieldDeclaredCardFlip
+                              faceCard={playedCard.card}
+                              showFaceUp={showDeclaredCardFace}
+                              ariaLabel={claimFlipAriaLabel}
+                              className="h-full w-full"
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-left text-xs">
+                      <p className="font-medium text-foreground">{t("table.claimIs")}</p>
+                      <p className="mt-1 tabular-nums text-muted-foreground">
+                        {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{" "}
+                        <span className="text-foreground">{playedCard.declaration.number}</span>
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  {revealOutcomeSrText ? (
+                    <p className="sr-only" role="status">
+                      {revealOutcomeSrText}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="hidden min-w-0 sm:block" aria-hidden />
+            </div>
+          </motion.div>
+      ) : roundInterstitialEmpty && roundResolutionPanel != null ? (
+        <motion.div
+          key="round-resolution-merged"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: REDUCED_CARD_MOTION_DURATION_SECONDS }}
+          className={cn(DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT, "w-full shrink-0")}
+        >
+          <div className="flex justify-center px-1 sm:hidden">
+            <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
+          </div>
+          <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+            <div
+              ref={roundPileAnchorRef ?? undefined}
+              className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+            >
+              <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
+            </div>
+            <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+              <AnimatePresence mode="wait" initial={false}>
+                {roundResolutionPanel != null ? (
+                  <motion.div
+                    key={phase}
+                    initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={SNAPPY_SPRING}
+                    className="flex w-full min-h-0 max-w-[min(100%,24rem)] flex-col items-center justify-center overflow-y-auto overflow-x-hidden overscroll-y-contain px-1 py-2 sm:px-2 sm:py-3"
+                  >
+                    {roundResolutionPanel}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+            <div className="hidden min-w-0 sm:block" aria-hidden />
+          </div>
+        </motion.div>
+      ) : roundInterstitialEmpty ? (
+        <div
+          className={cn("relative min-h-0 w-full shrink-0", DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT)}
+          aria-hidden
+        >
+          {/**
+           * Invisible proxy for round-pile FX origin during interstitials (rails unmounted with `playedCard`).
+           */}
+          <div
+            ref={roundPileAnchorRef ?? undefined}
+            className="invisible absolute left-[max(0.25rem,6vw)] top-[min(10vh,4.5rem)] z-0 sm:left-[8%] sm:top-[min(12vh,5.5rem)]"
+          >
+            <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
+          </div>
+        </div>
+      ) : (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: REDUCED_CARD_MOTION_DURATION_SECONDS }}
+          role={isPlayDropTarget ? "region" : undefined}
+          aria-label={isPlayDropTarget ? t("hand.dropToPlayAria") : undefined}
+          onDragOver={onPlayZoneDragOver}
+          onDrop={onPlayZoneDrop}
+          className={cn(
+            phase === GAME_PHASE.PLAYER_TURN
+              ? DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT
+              : "mx-auto flex w-full max-w-md flex-col items-center gap-4 py-4 text-center",
+          )}
+        >
+            {phase === GAME_PHASE.PLAYER_TURN ? (
+              <>
+                <div className="flex justify-center px-1 sm:hidden">
+                  <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
+                </div>
+
+                <div className="grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:items-center lg:gap-x-4">
+                  <div
+                    ref={roundPileAnchorRef ?? undefined}
+                    className="hidden min-w-0 sm:flex sm:items-center sm:justify-end sm:pr-2"
+                  >
+                    <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
+                  </div>
+
+                  <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+                    <div className="flex w-full max-w-[min(100%,20rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
+                      {showEmptyStateTurnLine ? (
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-semibold text-foreground">{currentPlayerName}</span> {t("turn.isTurn")}
+                        </p>
+                      ) : null}
+
+                      <div className="w-full">
+                        <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">
+                          {declareRulesTooltipLines(t, lockedSuit, lastResolvedDeclaration)}
+                        </p>
+                      </div>
+
+                      <div
+                        className="relative z-10 mt-1 aspect-[2/3] w-[8.25rem] shrink-0 overflow-hidden rounded-md sm:mt-2 sm:w-[8.5rem] lg:w-[10rem]"
+                        aria-label={t("table.a11y.playSlot")}
+                      >
+                        {pileLayers > 0 &&
+                          Array.from({ length: Math.min(pileLayers, 4) }).map((_, layer) => (
+                            <div
+                              key={layer}
+                              className="absolute rounded-md bg-muted/50 shadow-sm ring-1 ring-border/40"
+                              style={{
+                                width: "calc(100% - 4px)",
+                                height: "calc(100% - 6px)",
+                                left: layer * 5,
+                                top: layer * -4,
+                                zIndex: layer,
+                              }}
+                              aria-hidden
+                            />
+                          ))}
+                        <div
+                          className={cn(
+                            "absolute left-0 top-0 z-[20] flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-md border-2 border-dashed px-2 transition-[transform,box-shadow,background-color,border-color] duration-200 motion-reduce:transition-none",
+                            isPlayDropTarget
+                              ? playDropZone?.highlighted
+                                ? "scale-[1.03] border-primary bg-primary/15 shadow-[var(--shadow-glow)] ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
+                                : cn(
+                                    "border-primary/40 bg-muted/15",
+                                    !reducedMotion && "motion-safe:animate-play-drop-slot-invite",
+                                  )
+                              : "border-border/50 bg-muted/10",
+                          )}
+                        >
+                          {isPlayDropTarget ? (
+                            <>
+                              <Icon
+                                name="move_down"
+                                size={36}
+                                className={cn(
+                                  "text-primary/60",
+                                  !reducedMotion && "motion-safe:animate-bounce",
+                                )}
+                              />
+                              <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t("table.dropSlotHint")}
+                              </p>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-1 flex w-full justify-center sm:mt-0">
+                        <DeclareRulesHelpButton
+                          lockedSuit={lockedSuit}
+                          lastResolvedDeclaration={lastResolvedDeclaration}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="hidden min-w-0 sm:block" aria-hidden />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col items-center gap-2">
+                  <div
+                    className="relative h-36 w-24 sm:h-40 sm:w-28"
+                    aria-label={t("table.a11y.playSlot")}
+                  >
+                    {tablePileCount > 0 &&
+                      Array.from({ length: Math.min(3, pileLayers) }).map((_, layer) => (
+                        <div
+                          key={layer}
+                          className="absolute rounded-lg border-2 border-dashed border-foreground/15 bg-transparent"
+                          style={{
+                            width: "6.25rem",
+                            height: "9rem",
+                            left: layer * 5,
+                            top: layer * -4,
+                            zIndex: layer,
+                          }}
+                          aria-hidden
+                        />
+                      ))}
+                    <div className="absolute left-0 top-0 z-[5] flex h-36 w-24 items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent sm:h-40 sm:w-28" />
+                  </div>
+                </div>
+                {showEmptyStateTurnLine ? (
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{currentPlayerName}</span> {t("turn.isTurn")}
+                  </p>
+                ) : null}
+              </>
+            )}
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Full playfield: supply rail + declaration center (used by standalone {@link GameTable}).
+ */
+export function GameTablePlayfield(props: GameTablePlayfieldProps) {
+  return (
+    <div className="flex w-full flex-col gap-3 sm:gap-4">
+      <GameTableTableauSection
+        drawPileCount={props.drawPileCount}
+        tablePileCount={props.tablePileCount}
+        supremeReserve={props.supremeReserve}
+        trophiesRemaining={props.trophiesRemaining}
+        lockedSuit={props.lockedSuit}
+      />
+      <GameTableDeclarationSection
+        playedCard={props.playedCard}
+        currentPlayerName={props.currentPlayerName}
+        phase={props.phase}
+        lastResolvedDeclaration={props.lastResolvedDeclaration}
+        lockedSuit={props.lockedSuit}
+        tablePileCount={props.tablePileCount}
+        showEmptyStateTurnLine={props.showEmptyStateTurnLine}
+        playDropZone={props.playDropZone}
+        challengeResult={props.challengeResult}
+        challengeOutcomeNames={props.challengeOutcomeNames}
+        localPlayerId={props.localPlayerId}
+        roundPileAnchorRef={props.roundPileAnchorRef}
+        roundResolutionPanel={props.roundResolutionPanel ?? null}
+      />
+    </div>
+  );
+}
+
+export function GameTable({
+  playedCard,
+  currentPlayerName,
+  phase,
+  lastResolvedDeclaration,
+  lockedSuit,
+  tablePileCount,
+  drawPileCount,
+  supremeReserve,
+  trophiesRemaining,
+}: GameTableProps) {
+  const { t } = useTranslation("game");
+
+  if (phase === "LOBBY") {
+    return (
+      <div
+        className={cn(
+          "flex min-h-[200px] flex-col items-center justify-center px-4 py-6 sm:min-h-[220px]",
+          "game-table-surface rounded-3xl border border-border/25 shadow-kawaii",
+        )}
+      >
+        <p className="max-w-md text-center text-sm leading-relaxed text-muted-foreground">
+          {t("table.lobbyHint")}
+        </p>
+      </div>
+    );
+  }
+
+  if (phase === "END_GAME") {
+    return null;
+  }
+
+  return (
+    <div className="w-full [perspective:1400px]">
+      <div
+        className={cn(
+          "relative z-0 flex min-h-[200px] w-full flex-col items-center justify-center gap-4 px-2 py-4 sm:min-h-[240px] sm:px-3 sm:py-6",
+        )}
+      >
+        <GameTablePlayfield
+          playedCard={playedCard}
+          currentPlayerName={currentPlayerName}
+          phase={phase}
+          lastResolvedDeclaration={lastResolvedDeclaration}
+          lockedSuit={lockedSuit}
+          tablePileCount={tablePileCount}
+          drawPileCount={drawPileCount}
+          supremeReserve={supremeReserve}
+          trophiesRemaining={trophiesRemaining}
+        />
+      </div>
     </div>
   );
 }

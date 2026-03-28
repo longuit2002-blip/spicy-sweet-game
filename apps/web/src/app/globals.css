@@ -18,6 +18,7 @@
 
     --primary: 12 85% 55%;
     --primary-foreground: 40 30% 96%;
+    --primary-container: 338 95% 75%;
 
     --secondary: 45 90% 55%;
     --secondary-foreground: 20 14% 8%;
@@ -39,10 +40,10 @@
 
     --chili: 0 80% 50%;
     --chili-glow: 0 90% 60%;
-    --pepper: 0 0% 25%;
-    --pepper-glow: 0 0% 40%;
-    --lemon: 50 95% 55%;
-    --lemon-glow: 50 100% 65%;
+    --lemon: 0 0% 25%;
+    --lemon-glow: 0 0% 40%;
+    --avocado: 145 45% 42%;
+    --avocado-glow: 145 50% 55%;
 
     --card-face: 35 30% 88%;
     --card-back: 12 60% 25%;
@@ -54,6 +55,12 @@
     --shadow-fire: 0 4px 20px -4px hsl(12 85% 55% / 0.4);
     --shadow-card: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
     --shadow-glow: 0 0 20px hsl(12 85% 55% / 0.3);
+    /* Game table: felt + trophy (gaming UX layer; tokens only) */
+    --surface-felt: 20 18% 11%;
+    --surface-rail: 20 12% 16%;
+    --trophy-gold: 43 96% 56%;
+    --trophy-glow: 43 100% 72%;
+    --accent-immersive: 265 85% 62%;
 
     --font-display: 'Dela Gothic One', cursive;
     --font-body: 'Inter', sans-serif;
@@ -81,6 +88,7 @@
 
     --primary: 12 80% 48%;
     --primary-foreground: 40 40% 98%;
+    --primary-container: 338 95% 75%;
 
     --secondary: 45 85% 48%;
     --secondary-foreground: 20 18% 10%;
@@ -102,6 +110,210 @@
     --shadow-card: 0 8px 24px -8px hsl(30 30% 20% / 0.12);
     --shadow-glow: 0 0 16px hsl(12 80% 48% / 0.2);
   }
+
+  /**
+   * Room route: Tactile Kawaii (Marshmallow Studio).
+   * Applied via document.documentElement[data-room-ui="kawaii"] so portals (Dialog) inherit tokens.
+   */
+  html[data-room-ui="kawaii"] {
+    --background: 48 67% 98%;
+    --foreground: 60 6% 22%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 6% 22%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 60 6% 22%;
+    --primary: 343 40% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-container: 338 95% 75%;
+    --secondary: 162 100% 23%;
+    --secondary-foreground: 48 67% 98%;
+    --muted: 50 22% 92%;
+    --muted-foreground: 30 10% 38%;
+    --accent: 338 60% 94%;
+    --accent-foreground: 343 40% 32%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 48 22% 88%;
+    --input: 50 25% 91%;
+    --ring: 343 45% 52%;
+    --radius: 1rem;
+    --chili: 350 52% 46%;
+    --chili-glow: 350 60% 55%;
+    --lemon: 25 8% 28%;
+    --lemon-glow: 25 10% 40%;
+    --avocado: 162 100% 26%;
+    --avocado-glow: 162 70% 45%;
+    --card-face: 48 45% 97%;
+    --card-back: 343 32% 40%;
+    --surface-felt: 145 24% 86%;
+    --surface-rail: 140 20% 80%;
+    --trophy-gold: 43 96% 56%;
+    --trophy-glow: 43 100% 72%;
+    --accent-immersive: 265 75% 58%;
+    --gradient-fire: linear-gradient(135deg, hsl(343 40% 45%), hsl(338 95% 72%));
+    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 40% 45%) 0%, hsl(338 95% 75%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(48 55% 97%), hsl(48 40% 93%));
+    --shadow-fire: 0 4px 24px -4px hsl(343 40% 45% / 0.28);
+    --shadow-card: 0 12px 32px -10px hsl(343 40% 45% / 0.14);
+    --shadow-glow: 0 0 24px hsl(338 95% 75% / 0.35);
+    --shadow-kawaii: 0 12px 32px hsl(343 40% 45% / 0.08);
+    --sidebar-background: 48 50% 97%;
+    --sidebar-foreground: 60 6% 22%;
+    --sidebar-border: 48 22% 88%;
+
+    /* Marshmallow Studio — Tactile Kawaii surface hierarchy */
+    --neko-pink: 343 100% 85%;
+    --surface-dim: 40 14% 89%;
+    --surface-container-lowest: 0 0% 100%;
+    --surface-container-low: 48 44% 98%;
+    --surface-container: 40 22% 96%;
+    --surface-container-high: 40 14% 93%;
+    --surface-container-highest: 40 14% 91%;
+    --outline: 40 4% 51%;
+    --outline-variant: 40 14% 73%;
+  }
+
+  /**
+   * Game room shell: light kawaii tokens even when `html.dark` is set (rest of app can stay dark).
+   * Apply on the root wrapper of `/room/[code]` only.
+   */
+  html[data-room-ui="kawaii"] .kawaii-room-light-scope {
+    --background: 48 67% 98%;
+    --foreground: 60 6% 22%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 6% 22%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 60 6% 22%;
+    --primary: 343 40% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-container: 338 95% 75%;
+    --secondary: 162 100% 23%;
+    --secondary-foreground: 48 67% 98%;
+    --muted: 50 22% 92%;
+    --muted-foreground: 30 10% 38%;
+    --accent: 338 60% 94%;
+    --accent-foreground: 343 40% 32%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 48 22% 88%;
+    --input: 50 25% 91%;
+    --ring: 343 45% 52%;
+    --chili: 350 52% 46%;
+    --chili-glow: 350 60% 55%;
+    --lemon: 25 8% 28%;
+    --lemon-glow: 25 10% 40%;
+    --avocado: 162 100% 26%;
+    --avocado-glow: 162 70% 45%;
+    --card-face: 48 45% 97%;
+    --card-back: 343 32% 40%;
+    --surface-felt: 145 24% 86%;
+    --surface-rail: 140 20% 80%;
+    --trophy-gold: 43 96% 56%;
+    --trophy-glow: 43 100% 72%;
+    --accent-immersive: 265 75% 58%;
+    --gradient-fire: linear-gradient(135deg, hsl(343 40% 45%), hsl(338 95% 72%));
+    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 40% 45%) 0%, hsl(338 95% 75%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(48 55% 97%), hsl(48 40% 93%));
+    --shadow-fire: 0 4px 24px -4px hsl(343 40% 45% / 0.28);
+    --shadow-card: 0 12px 32px -10px hsl(343 40% 45% / 0.14);
+    --shadow-glow: 0 0 24px hsl(338 95% 75% / 0.35);
+    --shadow-kawaii: 0 12px 32px hsl(343 40% 45% / 0.08);
+    --sidebar-background: 48 50% 97%;
+    --sidebar-foreground: 60 6% 22%;
+    --sidebar-border: 48 22% 88%;
+    --neko-pink: 343 100% 85%;
+    --surface-dim: 40 14% 89%;
+    --surface-container-lowest: 0 0% 100%;
+    --surface-container-low: 48 44% 98%;
+    --surface-container: 40 22% 96%;
+    --surface-container-high: 40 14% 93%;
+    --surface-container-highest: 40 14% 91%;
+    --outline: 40 4% 51%;
+    --outline-variant: 40 14% 73%;
+  }
+
+  html.dark[data-room-ui="kawaii"] {
+    --background: 25 18% 11%;
+    --foreground: 48 35% 95%;
+    --card: 25 14% 17%;
+    --card-foreground: 48 35% 95%;
+    --popover: 25 14% 15%;
+    --popover-foreground: 48 35% 95%;
+    --primary: 343 48% 58%;
+    --primary-foreground: 25 18% 8%;
+    --primary-container: 338 45% 62%;
+    --secondary: 162 55% 40%;
+    --secondary-foreground: 25 18% 8%;
+    --muted: 25 12% 22%;
+    --muted-foreground: 45 15% 72%;
+    --accent: 25 14% 22%;
+    --accent-foreground: 48 35% 95%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 25 10% 26%;
+    --input: 25 12% 20%;
+    --ring: 338 55% 65%;
+    --chili: 350 48% 55%;
+    --chili-glow: 350 55% 62%;
+    --lemon: 25 8% 72%;
+    --lemon-glow: 25 10% 80%;
+    --avocado: 162 55% 45%;
+    --avocado-glow: 162 60% 55%;
+    --card-face: 25 12% 24%;
+    --card-back: 343 28% 32%;
+    --surface-felt: 150 16% 14%;
+    --surface-rail: 145 12% 18%;
+    --trophy-gold: 43 90% 58%;
+    --trophy-glow: 43 95% 72%;
+    --accent-immersive: 265 70% 65%;
+    --gradient-fire: linear-gradient(135deg, hsl(343 48% 58%), hsl(338 50% 55%));
+    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 48% 58%) 0%, hsl(338 45% 55%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(25 18% 13%), hsl(25 18% 9%));
+    --shadow-fire: 0 4px 24px -4px hsl(343 48% 40% / 0.35);
+    --shadow-card: 0 12px 36px -12px hsl(0 0% 0% / 0.45);
+    --shadow-glow: 0 0 28px hsl(338 45% 50% / 0.25);
+    --shadow-kawaii: 0 12px 32px hsl(343 48% 30% / 0.2);
+    --sidebar-background: 25 14% 14%;
+    --sidebar-foreground: 48 35% 95%;
+    --sidebar-border: 25 10% 24%;
+
+    /* Marshmallow Studio dark — surface hierarchy */
+    --neko-pink: 343 100% 85%;
+    --surface-dim: 30 12% 18%;
+    --surface-container-lowest: 25 14% 22%;
+    --surface-container-low: 25 14% 18%;
+    --surface-container: 30 14% 20%;
+    --surface-container-high: 35 14% 24%;
+    --surface-container-highest: 40 14% 28%;
+    --outline: 40 8% 45%;
+    --outline-variant: 40 14% 55%;
+  }
+
+  html[data-room-ui="kawaii"] body {
+    font-family: var(--font-kawaii-body), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  html[data-room-ui="kawaii"] h1,
+  html[data-room-ui="kawaii"] h2,
+  html[data-room-ui="kawaii"] h3 {
+    font-family: var(--font-kawaii-display), var(--font-display), ui-sans-serif, sans-serif;
+  }
+}
+
+/* Marshmallow Studio Animations */
+@keyframes kawaii-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.05); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 60px 20px hsl(338 95% 75% / 0.4); }
+  50% { box-shadow: 0 0 80px 30px hsl(338 95% 75% / 0.55); }
 }
 
 @layer base {
@@ -160,13 +372,243 @@
     background: linear-gradient(135deg, hsl(var(--chili) / 0.15), hsl(var(--chili) / 0.05));
   }
 
-  .card-pepper {
-    border-color: hsl(var(--pepper-glow));
-    background: linear-gradient(135deg, hsl(var(--pepper) / 0.25), hsl(var(--pepper) / 0.1));
+  .card-lemon {
+    border-color: hsl(var(--lemon-glow));
+    background: linear-gradient(135deg, hsl(var(--lemon) / 0.25), hsl(var(--lemon) / 0.1));
   }
 
-  .card-lemon {
-    border-color: hsl(var(--lemon));
-    background: linear-gradient(135deg, hsl(var(--lemon) / 0.15), hsl(var(--lemon) / 0.05));
+  .card-avocado {
+    border-color: hsl(var(--avocado));
+    background: linear-gradient(135deg, hsl(var(--avocado) / 0.2), hsl(var(--avocado) / 0.06));
   }
+
+  .game-table-surface {
+    background: radial-gradient(
+        ellipse 120% 80% at 50% 0%,
+        hsl(var(--surface-rail) / 0.85),
+        hsl(var(--surface-felt) / 0.98)
+      ),
+      hsl(var(--surface-felt));
+    box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.06);
+  }
+
+  /**
+   * Play-area table: felt grain, rail highlight, bottom shadow (pocket depth), subtle tilt.
+   * Transform-only; disabled when prefers-reduced-motion.
+   */
+  .game-table-surface.game-table-surface--realistic {
+    transform: rotateX(0.55deg);
+    transform-origin: center top;
+    transform-style: preserve-3d;
+    box-shadow:
+      inset 0 2px 0 hsl(var(--foreground) / 0.08),
+      inset 0 -24px 48px -18px hsl(0 0% 0% / 0.52),
+      0 0 0 1px hsl(var(--border) / 0.4),
+      0 14px 44px -10px hsl(0 0% 0% / 0.55);
+    background:
+      radial-gradient(ellipse 125% 75% at 50% 0%, hsl(var(--surface-rail) / 0.48), transparent 58%),
+      radial-gradient(ellipse 85% 55% at 50% 115%, hsl(0 0% 0% / 0.44), transparent 58%),
+      repeating-linear-gradient(
+        118deg,
+        hsl(0 0% 0% / 0.028) 0px,
+        hsl(0 0% 0% / 0.028) 1px,
+        transparent 1px,
+        transparent 6px
+      ),
+      radial-gradient(
+          ellipse 120% 80% at 50% 0%,
+          hsl(var(--surface-rail) / 0.85),
+          hsl(var(--surface-felt) / 0.98)
+        ),
+      hsl(var(--surface-felt));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-table-surface.game-table-surface--realistic {
+      transform: none;
+    }
+  }
+
+  /**
+   * Supply row sits directly on the felt — no second “glass card” behind the piles.
+   * (Class name kept where markup still references it; styling is flat.)
+   */
+  .tableau-supply-rail,
+  .playmat-supply-trophy,
+  .playmat-supply-draw {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /** Floating glass panel over the felt — static shadow (no keyframed box-shadow). */
+  .game-glass-panel {
+    @apply rounded-2xl border border-border/80 bg-card/90 backdrop-blur-md shadow-card;
+  }
+
+  html[data-room-ui="kawaii"] .game-glass-panel {
+    @apply rounded-[1.5rem] border-border/30 bg-card/95 shadow-[0_12px_32px_hsl(343_40%_45%/0.1)] backdrop-blur-lg;
+  }
+
+  .shadow-kawaii {
+    box-shadow: var(--shadow-kawaii);
+  }
+
+  .bg-gradient-kawaii-cta {
+    background-image: var(--gradient-kawaii-cta);
+  }
+
+  .room-shell-bg {
+    background: var(--gradient-dark);
+  }
+
+  .wild-shimmer-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .wild-shimmer-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      hsl(var(--trophy-glow) / 0.12) 45%,
+      hsl(var(--accent-immersive) / 0.18) 50%,
+      hsl(var(--trophy-glow) / 0.12) 55%,
+      transparent 100%
+    );
+    transform: translateX(-120%);
+    animation: wild-shimmer-slide 2.2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wild-shimmer-overlay::after {
+      animation: none;
+      transform: none;
+      opacity: 0.35;
+    }
+  }
+}
+
+@keyframes wild-shimmer-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* Marshmallow Studio — Social Layout utilities */
+.bg-pattern {
+  background-image: radial-gradient(circle at 2px 2px, hsl(var(--outline-variant)) 1px, transparent 0);
+  background-size: 40px 40px;
+  opacity: 0.08;
+}
+
+.catnip-table-bg {
+  background: radial-gradient(circle at center, hsl(var(--surface-container)) 0%, hsl(var(--background)) 100%);
+}
+
+/**
+ * Board outer scroll area: no extra wash — one physical table mat is drawn inside {@link BoardView}.
+ */
+.table-stage-bg {
+  background: transparent;
+}
+
+html[data-room-ui="kawaii"] .kawaii-room-light-scope .table-stage-bg {
+  background: transparent;
+}
+
+/** Game room shell: flat background (no heavy cream gradient “mat”). */
+html[data-room-ui="kawaii"] .kawaii-room-light-scope .room-shell-bg {
+  background: hsl(var(--background));
+}
+
+.side-panel-glass {
+  background: hsl(var(--background) / 0.7);
+  backdrop-filter: blur(12px);
+  border-left: 1px solid hsl(var(--primary) / 0.1);
+}
+
+html[data-room-ui="kawaii"] .cartoon-button-shadow {
+  box-shadow: 0 12px 0px 0px rgba(0, 0, 0, 0.1), 0 20px 30px -10px hsl(343 40% 45% / 0.3);
+}
+
+html[data-room-ui="kawaii"] .cartoon-button-shadow-alt {
+  box-shadow: 0 12px 0px 0px rgba(0, 0, 0, 0.05), 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+}
+
+html[data-room-ui="kawaii"] .cartoon-button:active {
+  transform: translateY(8px) scale(0.98);
+  box-shadow: 0 4px 0px 0px rgba(0, 0, 0, 0.1);
+}
+
+html[data-room-ui="kawaii"] .bluff-bubble {
+  box-shadow:
+    inset 0 10px 20px hsl(0 0% 100% / 0.4),
+    inset 0 -10px 20px rgba(0, 0, 0, 0.2),
+    0 15px 0 hsl(var(--primary) / 0.8),
+    0 25px 30px hsl(343 40% 45% / 0.3);
+}
+
+html[data-room-ui="kawaii"] .bluff-bubble:active {
+  box-shadow:
+    inset 0 5px 10px hsl(0 0% 100% / 0.2),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.1),
+    0 4px 0 hsl(var(--primary) / 0.8),
+    0 8px 15px hsl(343 40% 45% / 0.2);
+  transform: translateY(11px) scale(0.98);
+}
+
+html[data-room-ui="kawaii"] .bouncy-action {
+  animation: bounce-gentle 2s infinite ease-in-out;
+}
+
+html[data-room-ui="kawaii"] .animate-kawaii-bounce {
+  animation: kawaii-bounce 2s infinite ease-in-out;
+}
+
+html[data-room-ui="kawaii"] .halo-glow {
+  box-shadow: 0 0 60px 20px hsl(338 95% 75% / 0.4);
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+html[data-room-ui="kawaii"] .bubbly-text {
+  text-shadow: 4px 4px 0px hsl(338 95% 75% / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-room-ui="kawaii"] .bouncy-action,
+  html[data-room-ui="kawaii"] .animate-kawaii-bounce {
+    animation: none;
+  }
+  html[data-room-ui="kawaii"] .bluff-bubble:active {
+    transform: none;
+  }
+  html[data-room-ui="kawaii"] .cartoon-button:active {
+    transform: none;
+  }
+  html[data-room-ui="kawaii"] .halo-glow {
+    animation: none;
+  }
+}
+
+/* Custom scrollbar for kawaii panels */
+html[data-room-ui="kawaii"] .kawaii-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+html[data-room-ui="kawaii"] .kawaii-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--surface-container));
+  border-radius: 9999px;
+}
+html[data-room-ui="kawaii"] .kawaii-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.4);
+  border-radius: 9999px;
 }

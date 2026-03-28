@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
+
+const STORAGE_KEY = "i18nextLng";
 
 // English translations
 const enCommon = {
@@ -15,6 +16,8 @@ const enCommon = {
     cancel: 'Cancel',
     confirm: 'Confirm',
     loading: 'Loading...',
+    unknownPlayer: 'Unknown',
+    avatarFallback: '?',
   },
   home: {
     nickname: 'Nickname',
@@ -35,6 +38,13 @@ const enGame = {
     addBot: 'Add Bot',
     startGame: 'Start Game',
     minPlayers: 'Need at least 2 players',
+    ready: 'Ready',
+    cancelReady: 'Not ready',
+    waitingAllReady: 'Everyone must tap Ready before the host can start.',
+    hostStartsOnly: 'Only the host can start the game.',
+    botFallbackName: 'Bot {{n}}',
+    inviteFriend: 'Invite Friend',
+    waiting: 'Waiting...',
   },
   turn: {
     yourTurn: 'Your turn!',
@@ -43,6 +53,41 @@ const enGame = {
   },
   table: {
     playHere: 'Place card here',
+    dropSlotHint: 'Drag a card',
+    lobbyHint: 'Once the game starts, the current claim and face-down card show here in the center.',
+    currentClaim: 'Current claim',
+    claimIs: 'Declared as',
+    claimedBy: 'Card from {{player}}',
+    lastResolvedLabel: 'Last resolved',
+    mustDeclareHigherThan: 'You must declare a rank strictly higher than {{number}}.',
+    firstRoundHint: 'New round: declare a spice and a rank from 1 to 3.',
+    rankCycleReset:
+      'Rank 10 was the last resolved play — the chain resets. Declare the same locked suit with ranks 1, 2, or 3 only.',
+    trophiesLeft: 'Trophies',
+    roundPile: 'Round pile',
+    contestedPile: 'Contest pile',
+    lockedSuit: 'Locked suit',
+    followLockedSuit: 'Play the same locked suit with a higher rank than the last claim.',
+    drawPile: 'Draw',
+    supremeReserve: 'TW pool',
+    a11y: {
+      playSlot: 'Play zone — pick a card from your hand to place here.',
+      declareRulesHelp: 'Declaration rules',
+      currentClaimDetails: 'Details about this claim',
+      faceDownPlay: 'Face-down play on the table',
+    },
+  },
+  board: {
+    bluff: 'BLUFF!',
+    myCards: 'My cards',
+    focusHand: 'Scroll to your hand',
+  },
+  hand: {
+    cardDetailTitle: 'Your card',
+    cardDetailHint:
+      'Drag a card onto the play area, or use Play this card to open the declaration step.',
+    playThisCard: 'Play this card',
+    dropToPlayAria: 'Play area — drop a card from your hand here',
   },
   declare: {
     title: 'Declare Your Card',
@@ -53,35 +98,93 @@ const enGame = {
     chooseNumber: 'Choose number:',
     cancel: 'Cancel',
     confirm: 'Declare',
+    noValid: 'No valid declaration for the current rules.',
+    cannotDeclareAboveTen:
+      'Last resolved number was 10. The next declaration must be higher, but ranks only go 1–10 — no legal choice.',
+    lockedSuitHint: 'Suit is locked for this round.',
   },
   challenge: {
     title: 'declared',
     timeLeft: '{{seconds}}s left',
     playerChallenge: "{{player}}'s turn to challenge",
+    eligiblePrompt: 'Challenge or accept before time runs out.',
+    waitingDeclarer: 'Waiting for other players…',
     accept: 'Accept',
     challenge: 'Challenge!',
     bluffCaught: 'BLUFF CAUGHT!',
+    wrongSuit: 'Wrong suit!',
+    wrongNumber: 'Wrong number!',
+    raceForClaim: 'Race — tap the bell to claim the challenge',
+    claimChallenge: 'Claim challenge',
+    claimHint: 'First tap wins the right to choose wrong suit or wrong number.',
+    youHoldChallenge: 'You claimed the challenge — pick wrong suit or wrong number.',
+    holderMustPick: '{{player}} must choose wrong suit or wrong number.',
+    pickWaitShort: 'Waiting for {{player}}',
+    declareRole: 'Declarer',
+    holderRole: 'Challenger',
+    pickHelpAria: 'Full challenge instructions',
+    timeRemainingSr: '{{seconds}} seconds remaining',
+    contextChipStats: '{{hand}} in hand · {{score}} pts · {{trophies}} trophies',
+    regionLabel: 'Challenge phase — timer and actions on the table',
+    embeddedCaption: 'Challenge — timer on the table',
   },
   result: {
     realCard: 'Real card',
-    wasBluff: 'was bluffing!',
-    challengerWins: 'challenged correctly!',
+    challenged: 'Challenged: {{type}}',
+    suitAttr: 'suit',
+    numberAttr: 'number',
+    challengeCorrect: 'caught the lie!',
+    challengerTakesPile: 'Challenger takes the round pile.',
+    declarerTakesPile: 'Declarer takes the round pile.',
+    challengerPenalty: '{{player}} draws 2 cards (and may take a Total Wild from reserve).',
     wasTruth: 'TRUTH TOLD!',
-    wasTruthMessage: 'told the truth!',
-    challengerLoses: 'challenged incorrectly!',
-    penalty: '{{player}} draws 2 cards',
+    wasTruthMessage: 'matched the claim on that attribute.',
+    pileCardCount: 'Contested pile: {{count}} cards',
+    challengeTimedOut: 'Challenge holder ran out of time — declarer takes the pile.',
+  },
+  seat: {
+    you: 'You',
+    wonPile: 'Won',
+    wonPileHint: 'Face-down cards won from challenges',
+    handCards: 'Hand',
+    runningScore: 'Score',
+    actionDeclared: 'Declared',
+    actionChallenged: 'Challenged',
+  },
+  actionLog: {
+    title: 'Game log',
+    expand: 'Log',
+    collapse: 'Hide',
+    empty: 'No events yet.',
+  },
+  log: {
+    declared: '{{player}} declared {{type}} {{number}}',
+    challenged: '{{player}} challenged ({{attr}})',
+    accepted: 'Declaration accepted — next turn',
+    penaltyWin: '{{winner}} takes {{count}} cards',
+    trophy: '{{player}} earned a Trophy',
+  },
+  scoreboard: {
+    normalCards: 'Normal in pile: {{count}} × {{points}} pts',
+    wildCards: 'Wild in pile: {{count}} × {{points}} pts',
+    trophyCards: 'Trophies in pile: {{count}} × {{points}} pts',
+    pileSubtotal: 'Pile total: {{value}}',
+    wildHandPenalty: 'Wild left in hand: {{count}} × −{{penalty}}',
+    total: 'Total: {{value}}',
+    summaryClient: 'Trophies: {{trophies}} · Won pile cards: {{pile}} (detail hidden until end)',
   },
   spice: {
     chili: 'Chili',
-    pepper: 'Pepper',
     lemon: 'Lemon',
+    avocado: 'Avocado',
   },
   game: {
     winner: {
       title: 'Game Over',
+      endHeroTitle: '🏆 Game Over',
       wins: 'wins',
-      bluffs: 'Bluffs',
-      catches: 'Catches',
+      tie: 'Shared victory',
+      trophies: 'Trophies',
       cardsLeft: 'Cards',
       leave: 'Leave',
       playAgain: 'Play Again',
@@ -92,6 +195,7 @@ const enGame = {
       placeholder: 'Type a message...',
       hide: 'Hide',
       show: 'Show',
+      you: 'You',
     },
     video: {
       title: 'Video Call',
@@ -105,6 +209,42 @@ const enGame = {
   room: {
     title: 'Game Room',
     exit: 'Exit',
+    exitWithArrow: '← {{label}}',
+    opponents: 'Opponents',
+    joinFailedTitle: 'Cannot join room',
+    joinFailedDesc: 'Check the code or try again.',
+    help: 'Help',
+    settings: 'Settings',
+  },
+  phase: {
+    challengeHelpAria: 'How this phase works',
+    challengeOnTableHint:
+      'Ring the bell to claim the challenge, or accept / challenge before the timer ends.',
+    penalty: 'Resolving round…',
+    nextTurn: 'Next turn…',
+    trophyAwarded: 'Trophy claimed — refilling hand…',
+    penaltyChallengerWins: '{{challenger}} takes {{count}} cards into their won pile.',
+    penaltyDeclarerWins: '{{declarer}} takes the pile. {{challenger}} draws 2 cards.',
+    penaltyFxDrawChip: 'Draw {{count}}',
+    penaltyFxRoundChip: 'Round pile · {{count}} cards',
+    trophyTitle: 'Trophy earned!',
+    trophyBody: '{{player}} claims a Trophy (+10). {{remaining}} left in the pool.',
+    trophyRefill: 'Refilling hand to {{count}} cards…',
+    revealImpactNeutral: 'Round resolved',
+    revealImpactLocalWin: 'You seize the round!',
+    revealImpactLocalLose: 'A harsh reveal…',
+  },
+  /** Short UI labels for each game phase (header chip, a11y). */
+  phases: {
+    lobby: 'Lobby',
+    gameStart: 'Starting',
+    playerTurn: 'Play card',
+    challengePhase: 'Challenge',
+    reveal: 'Reveal',
+    penalty: 'Round end',
+    trophyAwarded: 'Trophy',
+    nextTurn: 'Next turn',
+    endGame: 'Game over',
   },
 };
 
@@ -121,6 +261,8 @@ const viCommon = {
     cancel: 'Hủy',
     confirm: 'Xác nhận',
     loading: 'Đang tải...',
+    unknownPlayer: 'Chưa rõ',
+    avatarFallback: '?',
   },
   home: {
     nickname: 'Biệt danh',
@@ -141,6 +283,13 @@ const viGame = {
     addBot: 'Thêm Bot',
     startGame: 'Bắt đầu game',
     minPlayers: 'Cần ít nhất 2 người chơi',
+    ready: 'Sẵn sàng',
+    cancelReady: 'Chưa sẵn sàng',
+    waitingAllReady: 'Mọi người cần bấm Sẵn sàng trước khi host bắt đầu.',
+    hostStartsOnly: 'Chỉ host mới có thể bắt đầu game.',
+    botFallbackName: 'Bot {{n}}',
+    inviteFriend: 'Mời bạn',
+    waiting: 'Đang chờ...',
   },
   turn: {
     yourTurn: 'Lượt của bạn!',
@@ -149,6 +298,41 @@ const viGame = {
   },
   table: {
     playHere: 'Đặt bài ở đây',
+    dropSlotHint: 'Kéo bài vào',
+    lobbyHint: 'Khi vào ván, tuyên bố và lá úp sẽ hiện ở giữa bàn.',
+    currentClaim: 'Tuyên bố trên bàn',
+    claimIs: 'Đang tuyên bố là',
+    claimedBy: 'Lá của {{player}}',
+    lastResolvedLabel: 'Lần resolve gần nhất',
+    mustDeclareHigherThan: 'Bạn phải tuyên bố số lớn hơn {{number}}.',
+    firstRoundHint: 'Vòng mới: tuyên bố một vị và số từ 1 đến 3.',
+    rankCycleReset:
+      'Vừa resolve ở số 10 — chuỗi reset. Giữ nguyên vị đã khóa, chỉ được tuyên bố 1, 2 hoặc 3.',
+    trophiesLeft: 'Chiến tích còn',
+    roundPile: 'Xấp vòng',
+    contestedPile: 'Xấp tranh vòng',
+    lockedSuit: 'Vị khóa',
+    followLockedSuit: 'Đánh cùng vị đã khóa với số cao hơn lần trước.',
+    drawPile: 'Bài rút',
+    supremeReserve: 'Kho TW',
+    a11y: {
+      playSlot: 'Ô đánh bài — chọn một lá từ tay để đặt vào đây.',
+      declareRulesHelp: 'Luật tuyên bố',
+      currentClaimDetails: 'Chi tiết tuyên bố trên bàn',
+      faceDownPlay: 'Lá úp trên bàn',
+    },
+  },
+  board: {
+    bluff: 'BLUFF!',
+    myCards: 'Bài của tôi',
+    focusHand: 'Cuộn tới bài trên tay',
+  },
+  hand: {
+    cardDetailTitle: 'Chi tiết lá bài',
+    cardDetailHint:
+      'Kéo lá lên vùng đánh, hoặc bấm Chơi lá này để mở bước tuyên bố.',
+    playThisCard: 'Chơi lá này',
+    dropToPlayAria: 'Vùng đánh — thả lá từ tay vào đây',
   },
   declare: {
     title: 'Tuyên bố bài của bạn',
@@ -159,35 +343,93 @@ const viGame = {
     chooseNumber: 'Chọn số:',
     cancel: 'Hủy',
     confirm: 'Tuyên bố',
+    noValid: 'Không có tuyên bố hợp lệ theo luật hiện tại.',
+    cannotDeclareAboveTen:
+      'Số vừa được công nhận là 10; lượt sau phải khai số lớn hơn nhưng bài chỉ có 1–10 — không còn tuyên bố hợp lệ.',
+    lockedSuitHint: 'Vị đã khóa cho vòng này.',
   },
   challenge: {
     title: 'đã tuyên bố',
     timeLeft: '{{seconds}}s còn lại',
     playerChallenge: 'Lượt thách thức của {{player}}',
+    eligiblePrompt: 'Thách hoặc chấp nhận trước khi hết giờ.',
+    waitingDeclarer: 'Đang chờ người chơi khác…',
     accept: 'Chấp nhận',
     challenge: 'Thách thức!',
     bluffCaught: 'BỊ BẮT QUỴT!',
+    wrongSuit: 'Sai vị!',
+    wrongNumber: 'Sai số!',
+    raceForClaim: 'Giành quyền — bấm chuông để giữ thách',
+    claimChallenge: 'Giành quyền thách',
+    claimHint: 'Ai bấm trước (theo máy chủ) được chọn sai vị hay sai số.',
+    youHoldChallenge: 'Bạn đã giành quyền thách — chọn sai vị hoặc sai số.',
+    holderMustPick: '{{player}} phải chọn sai vị hoặc sai số.',
+    pickWaitShort: 'Chờ {{player}}',
+    declareRole: 'Tuyên',
+    holderRole: 'Giữ thách',
+    pickHelpAria: 'Hướng dẫn đầy đủ',
+    timeRemainingSr: 'Còn {{seconds}} giây',
+    contextChipStats: '{{hand}} trên tay · {{score}} điểm · {{trophies}} cúp',
+    regionLabel: 'Giai đoạn thách — đồng hồ và thao tác trên bàn',
+    embeddedCaption: 'Thách thức — đồng hồ trên bàn',
   },
   result: {
     realCard: 'Bài thật',
-    wasBluff: 'đã bluff!',
-    challengerWins: 'thách thức đúng!',
+    challenged: 'Thách: {{type}}',
+    suitAttr: 'vị',
+    numberAttr: 'số',
+    challengeCorrect: 'bắt trúng!',
+    challengerTakesPile: 'Người thách lấy xấp vòng.',
+    declarerTakesPile: 'Người tuyên lấy xấp vòng.',
+    challengerPenalty: '{{player}} rút 2 bài (có thể nhận thêm Tối Thượng từ dự trữ).',
     wasTruth: 'NÓI THẬT!',
-    wasTruthMessage: 'nói thật!',
-    challengerLoses: 'thách thức sai!',
-    penalty: '{{player}} rút 2 bài',
+    wasTruthMessage: 'khớp với tuyên bố ở thuộc tính đó.',
+    pileCardCount: 'Xấp tranh chấp: {{count}} lá',
+    challengeTimedOut: 'Hết giờ chọn thách — người tuyên lấy xấp.',
+  },
+  seat: {
+    you: 'Bạn',
+    wonPile: 'Ăn',
+    wonPileHint: 'Xấp bài úp ăn được từ thách',
+    handCards: 'Tay',
+    runningScore: 'Điểm',
+    actionDeclared: 'Đã tuyên bố',
+    actionChallenged: 'Đã thách',
+  },
+  actionLog: {
+    title: 'Nhật ký',
+    expand: 'Mở',
+    collapse: 'Thu',
+    empty: 'Chưa có sự kiện.',
+  },
+  log: {
+    declared: '{{player}} tuyên bố {{type}} {{number}}',
+    challenged: '{{player}} thách thức ({{attr}})',
+    accepted: 'Chấp nhận — lượt tiếp',
+    penaltyWin: '{{winner}} lấy {{count}} lá',
+    trophy: '{{player}} nhận Chiến tích',
+  },
+  scoreboard: {
+    normalCards: 'Bài thường trong xấp: {{count}} × {{points}} đ',
+    wildCards: 'Bài Wild trong xấp: {{count}} × {{points}} đ',
+    trophyCards: 'Chiến tích trong xấp: {{count}} × {{points}} đ',
+    pileSubtotal: 'Cộng xấp: {{value}}',
+    wildHandPenalty: 'Wild còn trên tay: {{count}} × −{{penalty}}',
+    total: 'Tổng: {{value}}',
+    summaryClient: 'Chiến tích: {{trophies}} · Lá trong xấp: {{pile}} (chi tiết khi kết thúc)',
   },
   spice: {
     chili: 'Ớt',
-    pepper: 'Hạt tiêu',
     lemon: 'Chanh',
+    avocado: 'Bơ',
   },
   game: {
     winner: {
       title: 'Kết thúc game',
+      endHeroTitle: '🏆 Kết thúc',
       wins: 'thắng',
-      bluffs: 'Bluff',
-      catches: 'Bắt',
+      tie: 'Hòa — cùng chiến thắng',
+      trophies: 'Chiến tích',
       cardsLeft: 'Bài',
       leave: 'Rời',
       playAgain: 'Chơi lại',
@@ -198,6 +440,7 @@ const viGame = {
       placeholder: 'Nhập tin nhắn...',
       hide: 'Ẩn',
       show: 'Hiện',
+      you: 'Bạn',
     },
     video: {
       title: 'Gọi video',
@@ -211,39 +454,144 @@ const viGame = {
   room: {
     title: 'Phòng Game',
     exit: 'Thoát',
+    exitWithArrow: '← {{label}}',
+    opponents: 'Đối thủ',
+    joinFailedTitle: 'Không vào được phòng',
+    joinFailedDesc: 'Kiểm tra mã phòng hoặc thử lại.',
+    help: 'Trợ giúp',
+    settings: 'Cài đặt',
+  },
+  phase: {
+    challengeHelpAria: 'Giải thích giai đoạn thách',
+    challengeOnTableHint:
+      'Bấm chuông để giành quyền thách, hoặc chấp nhận / thách trước khi hết giờ.',
+    penalty: 'Kết thúc vòng…',
+    nextTurn: 'Lượt tiếp theo…',
+    trophyAwarded: 'Nhận Chiến tích — đang chia lại bài…',
+    penaltyChallengerWins: '{{challenger}} lấy {{count}} lá vào xấp ăn được.',
+    penaltyDeclarerWins: '{{declarer}} lấy xấp. {{challenger}} rút 2 lá.',
+    penaltyFxDrawChip: 'Rút {{count}} lá',
+    penaltyFxRoundChip: 'Xấp vòng · {{count}} lá',
+    trophyTitle: 'Nhận Chiến tích!',
+    trophyBody: '{{player}} nhận Chiến tích (+10). Còn {{remaining}} trên bàn.',
+    trophyRefill: 'Đang chia lại {{count}} lá…',
+    revealImpactNeutral: 'Kết quả vòng',
+    revealImpactLocalWin: 'Bạn thắng vòng!',
+    revealImpactLocalLose: 'Lật bài tàn khốc…',
+  },
+  phases: {
+    lobby: 'Sảnh chờ',
+    gameStart: 'Đang bắt đầu',
+    playerTurn: 'Đánh bài',
+    challengePhase: 'Thách / chấp nhận',
+    reveal: 'Lật bài',
+    penalty: 'Kết vòng',
+    trophyAwarded: 'Chiến tích',
+    nextTurn: 'Lượt sau',
+    endGame: 'Kết thúc',
   },
 };
 
-i18n
-  .use(LanguageDetector)
-  .use(initReactI18next)
-  .init({
-    resources: {
-      en: {
-        common: enCommon,
-        game: enGame,
-      },
-      vi: {
-        common: viCommon,
-        game: viGame,
-      },
-    },
-    fallbackLng: 'en',
-    interpolation: {
-      escapeValue: false,
-    },
-    detection: {
-      order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
-    },
-  });
+const resources = {
+  en: {
+    common: enCommon,
+    game: enGame,
+  },
+  vi: {
+    common: viCommon,
+    game: viGame,
+  },
+} as const;
+
+const i18nInitOptions = {
+  resources,
+  fallbackLng: "en" as const,
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+};
+
+let i18nInitialized = false;
+
+function languageMatches(lng: "en" | "vi"): boolean {
+  const current = i18n.language ?? "";
+  return lng === "vi" ? current.startsWith("vi") : current.startsWith("en");
+}
+
+/** Call at the start of `Providers` so SSR and the client's first paint use the same `lng` (cookie + Accept-Language). */
+export function initI18nForLocale(lng: "en" | "vi"): void {
+  if (!i18nInitialized) {
+    i18n.use(initReactI18next).init({
+      ...i18nInitOptions,
+      lng,
+    });
+    i18nInitialized = true;
+    return;
+  }
+  if (!languageMatches(lng)) {
+    void i18n.changeLanguage(lng);
+  }
+}
+
+function setLocaleCookie(lng: "en" | "vi"): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${STORAGE_KEY}=${lng};path=/;max-age=31536000;SameSite=Lax`;
+}
+
+/**
+ * After hydration: apply explicit localStorage choice, or browser locale if nothing stored.
+ * Server already matched cookie / Accept-Language; this reconciles legacy clients (localStorage only).
+ */
+export function applyStoredOrBrowserLanguage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "en" || stored === "vi") {
+      initI18nForLocale(stored);
+      setLocaleCookie(stored);
+      return;
+    }
+    const nav = navigator.language?.split("-")[0]?.toLowerCase();
+    if (nav === "vi" && !languageMatches("vi")) {
+      initI18nForLocale("vi");
+      setLocaleCookie("vi");
+    }
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
 
 export default i18n;
 
 export function changeLanguage(lang: string) {
-  i18n.changeLanguage(lang);
+  const lng: "en" | "vi" = lang === "vi" ? "vi" : "en";
+  initI18nForLocale(lng);
+  try {
+    localStorage.setItem(STORAGE_KEY, lng);
+    setLocaleCookie(lng);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getCurrentLanguage(): string {
-  return i18n.language || 'en';
+  if (!i18nInitialized) return "en";
+  return i18n.language || "en";
 }
+
+/** Matches root layout `<html lang>` so the client bundle initializes before React hydrates (no init during render). */
+function localeFromDocumentHtml(): "en" | "vi" {
+  if (typeof document === "undefined") return "en";
+  const lang = document.documentElement.lang?.toLowerCase() ?? "";
+  return lang.startsWith("vi") ? "vi" : "en";
+}
+
+function bootstrapClientI18nFromHtml(): void {
+  if (typeof window === "undefined" || i18nInitialized) return;
+  initI18nForLocale(localeFromDocumentHtml());
+}
+
+bootstrapClientI18nFromHtml();

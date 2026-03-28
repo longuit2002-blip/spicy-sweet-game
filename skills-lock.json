@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "skills": {
+    "antigravity-design-expert": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "68abfc94815f20545aa1071eaafe1cf4468297fd588dc916f3c8bb509afb0496"
+    },
+    "nestjs-best-practices": {
+      "source": "xirothedev/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d3b304104f3b402889040e13cd46e017ffff7ea95c90d19910d31bdbbebf7bec"
+    },
+    "openai-image-gen": {
+      "source": "elizaOS/eliza",
+      "sourceType": "github",
+      "computedHash": "17d7b57394fd491c726a9c5abd052107a9c65fc90c784ee6bb82afa646455384"
+    },
+    "vercel-composition-patterns": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "10eb4ec94577b79ae98c63ce3e7f35f8a6a06436a4011bff083b397de6960eeb"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e218e50fe7057a4db91390e579c7db5aafac2394c31a3d8e5fa9444c8fa00726"
+    }
+  }
+}

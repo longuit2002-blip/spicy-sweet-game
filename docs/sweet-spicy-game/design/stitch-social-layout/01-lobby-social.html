@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Spicy Neko Party - Lobby</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Be+Vietnam+Pro:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-surface": "#383833",
+              "surface-container-highest": "#e9e9de",
+              "outline": "#81817a",
+              "surface-container-low": "#fbf9f1",
+              "surface-variant": "#e9e9de",
+              "surface-dim": "#e4e3d8",
+              "on-surface-variant": "#65655f",
+              "secondary": "#007257",
+              "on-primary-container": "#5f102e",
+              "primary-fixed": "#fd8fad",
+              "tertiary": "#6c653a",
+              "surface-container-lowest": "#ffffff",
+              "secondary-dim": "#00654d",
+              "on-secondary-container": "#005d47",
+              "secondary-fixed": "#8ff6d0",
+              "surface-container-high": "#efeee5",
+              "on-secondary-fixed": "#004936",
+              "background": "#fefcf4",
+              "on-primary-fixed-variant": "#6b1a37",
+              "on-secondary": "#ffffff",
+              "primary-dim": "#923a56",
+              "primary": "#a14562",
+              "surface-container": "#f5f4eb",
+              "on-error": "#ffffff",
+              "error-dim": "#a70138",
+              "on-primary": "#ffffff",
+              "secondary-container": "#8ff6d0",
+              "surface": "#fefcf4",
+              "inverse-on-surface": "#9e9d96",
+              "error": "#c12048",
+              "surface-bright": "#fefcf4",
+              "tertiary-fixed-dim": "#eee3ad",
+              "primary-container": "#fd8fad",
+              "on-primary-fixed": "#380016",
+              "tertiary-container": "#fdf2bb",
+              "on-error-container": "#510017",
+              "secondary-fixed-dim": "#81e7c3",
+              "error-container": "#f74b6d",
+              "on-tertiary-fixed": "#4f4820",
+              "on-background": "#383833",
+              "inverse-primary": "#fd8fad",
+              "on-secondary-fixed-variant": "#00684f",
+              "surface-tint": "#a14562",
+              "tertiary-fixed": "#fdf2bb",
+              "primary-fixed-dim": "#ed82a0",
+              "outline-variant": "#bab9b2",
+              "tertiary-dim": "#60592f",
+              "inverse-surface": "#0e0f0a",
+              "on-tertiary-fixed-variant": "#6c653a",
+              "on-tertiary-container": "#625b30",
+              "on-tertiary": "#ffffff",
+              "neko-pink": "#FFB7CE"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Be Vietnam Pro"],
+              "label": ["Plus Jakarta Sans"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bg-pattern {
+            background-image: radial-gradient(circle at 2px 2px, #bab9b2 1px, transparent 0);
+            background-size: 40px 40px;
+            opacity: 0.1;
+        }
+        @keyframes kawaii-bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-kawaii-bounce {
+            animation: kawaii-bounce 2s infinite ease-in-out;
+        }
+        .kawaii-btn-shadow {
+            box-shadow: 0 8px 0 rgba(0,0,0,0.15);
+        }
+        .kawaii-btn-shadow:active {
+            box-shadow: 0 2px 0 rgba(0,0,0,0.15);
+            transform: translateY(6px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #FFB7CE;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface min-h-screen selection:bg-primary-container selection:text-on-primary-container flex overflow-hidden">
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-4 bg-[#fefcf4] dark:bg-[#1a1915] shadow-[0_8px_20px_rgba(161,69,98,0.08)] rounded-b-[3rem]">
+<div class="text-2xl font-black text-[#a14562] dark:text-[#fd8fad] italic font-['Plus_Jakarta_Sans'] tracking-wide">
+        Spicy!
+    </div>
+<div class="flex items-center gap-4">
+<button class="hover:scale-110 transition-transform duration-300 text-[#383833] dark:text-[#e9e9de] p-2">
+<span class="material-symbols-outlined">help</span>
+</button>
+<button class="hover:scale-110 transition-transform duration-300 text-[#383833] dark:text-[#e9e9de] p-2">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center border-2 border-primary overflow-hidden">
+<img alt="Chibi Cat Avatar" class="w-full h-full object-cover" data-alt="Chibi cat avatar icon for player profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-VT5j1zfhBihHqU_-PTSXZ3r8nE9ZrhScTBm-4n6RNQgzrWRy3te4Qz01iywJmS2USDOLL6NCcdAahvrunF2Sxdl-2Q5OP4iwWVjWWoE0_Wmllu8bMJOQvK8ivGBKg75lQsiIRixAaXjDHkRdAs6hHHuNTB8atCAN-bAUOzBbgDRrfX8JH9Wyy0M0LBVv1ny1cQJikap_rwSiu9Sm8EOo5c_xfFPF6W7LAxTD8LG7uHNkTJOlK7Euu_IJ-dITJSJ0a0kP48iwGA"/>
+</div>
+</div>
+</header>
+<main class="flex-grow pt-28 pb-12 px-6 relative overflow-y-auto custom-scrollbar">
+<div class="absolute inset-0 bg-pattern pointer-events-none"></div>
+<div class="max-w-4xl mx-auto relative z-10">
+<div class="text-center mb-12">
+<h1 class="font-headline font-extrabold text-4xl md:text-6xl text-primary mb-2 tracking-tight">
+                Spicy Neko Party
+            </h1>
+<p class="font-label text-on-surface-variant tracking-wider uppercase text-sm font-bold">
+                Lobby ID: <span class="text-secondary">MEOW-404</span> • Waiting for Kitties...
+            </p>
+</div>
+<div class="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center gap-4 border-b-4 border-primary-container shadow-sm hover:translate-y-[-4px] transition-transform">
+<div class="relative">
+<div class="w-24 h-24 rounded-full bg-surface-container-lowest flex items-center justify-center border-4 border-primary shadow-inner">
+<img alt="Cali cat" class="w-16 h-16" data-alt="Cute orange calico cat chibi avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDFC3o3Som7wZ-jFv61asgcxB6kDsBKgDWEmATM5sPArdVzMxKl5vtegwVu_jUK3DfKOA6RSXnZPqcVwbcUnCFciK9mRHmMsDhRf9JNL9gVLADe5AeA4ZbYBBLM3YzaWI0wHHDOECZX4MX9Yim1sb00W7sPDQFRUs2ChKqKGtX3bk9k9UDW6l0hdWMTakj-gVy-A8bu0Hog8feeM9P6tXb9HcLWUW44T74uLtmmtJWOABAFQzyrr3PPueQYPFx4D1xeSAs4eBrBw"/>
+</div>
+<div class="absolute -bottom-2 -right-2 bg-secondary text-white rounded-full px-3 py-1 text-xs font-bold uppercase tracking-tighter">HOST</div>
+</div>
+<div class="text-center">
+<p class="font-headline font-bold text-lg">GingerSnaps</p>
+<p class="text-secondary font-bold text-xs uppercase">Ready</p>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center gap-4 border-b-4 border-primary-container shadow-sm hover:translate-y-[-4px] transition-transform">
+<div class="w-24 h-24 rounded-full bg-surface-container-lowest flex items-center justify-center border-4 border-primary shadow-inner">
+<img alt="Mochi cat" class="w-16 h-16" data-alt="White mochi cat chibi avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8BFVHCWtKeS9dKJIuuB0VDBNgXc-5nQqbKQe39kf5_PYltfgHjEsZSPbu1n2tUVeSj-thFE41O6_dPYGVXKrZBNz21GopIClCYujaWX8obSOKB0kAzYOsMdrsvnp7GINOodxAT8tF8kTx_sGs1r0L6BqaPoC7CR8ddfNUAreSto02K-H85kB6qXojwri7gXLpCDBTHArEKiJQ9fP-0fx0ssG0vIwqJAyJ_foueAeYUy80PcM-2TqUddlvzr8TyPOC-2sOuZvbfg"/>
+</div>
+<div class="text-center">
+<p class="font-headline font-bold text-lg">Mochi_Roll</p>
+<p class="text-secondary font-bold text-xs uppercase">Ready</p>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center gap-4 border-b-4 border-primary-container shadow-sm hover:translate-y-[-4px] transition-transform">
+<div class="w-24 h-24 rounded-full bg-surface-container-lowest flex items-center justify-center border-4 border-primary shadow-inner">
+<img alt="Spicy cat" class="w-16 h-16" data-alt="Tuxedo cat with spicy expression avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5c6rzpo1h8EUBoFmvygN9kGbr4-FRUnRYMtOSM5TTKU9IWZAfzGOiJSp4O35lTBKZE0-Izy1b-FTZpl41m3I2vEfg1qz5kX0q69z4uZDGeQ6GAdhrR9_qnVhFZG-wG2D0Rbg5h42bBTJw6W-8ohX_yU1xJtkxxuSJjXjvBw5H_QmVeR7Ku4ep8FLu2aSeM92wth19GJ1CoVn_j9rGBiZfX8FvcL15h0dN7DOYlsyFeaDoViPPrQO9O_wvzEClek6XoIEw50KEBg"/>
+</div>
+<div class="text-center">
+<p class="font-headline font-bold text-lg">SirSassAlot</p>
+<div class="flex items-center gap-1 justify-center">
+<span class="w-2 h-2 bg-primary-fixed rounded-full"></span>
+<p class="text-on-surface-variant font-bold text-xs uppercase">Choosing hat...</p>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center gap-4 border-b-4 border-primary-container shadow-sm hover:translate-y-[-4px] transition-transform">
+<div class="w-24 h-24 rounded-full bg-surface-container-lowest flex items-center justify-center border-4 border-primary shadow-inner">
+<img alt="Empty slot" class="w-16 h-16 opacity-30 grayscale" data-alt="Cute placeholder for empty player slot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0tU7by4pIXs6aocYo1nLATv3hCY5QzRNyH7wSUNI6va5KiBXY9kzlmLXjLxvrzOQph7zGwoysH58PFUHQ8CeUxDyEIl_JJrW49e-P__JFK3B46ds4BVbK793MJgEW4ZoRPZ5N2vlfwKMlg2BVIDfZVpheOqIt7pCmoMliZESbwqGAR629_Y4u1xf_ReDG4LPkX9QQRrT0FYJKKjicq48LpCPF6YTEN88a7UEQzzlBw86cLpAavjZgtcifm6KHm9iW-yChbjIpHw"/>
+</div>
+<div class="text-center">
+<p class="font-headline font-bold text-lg text-outline-variant">Searching...</p>
+<p class="text-outline-variant font-bold text-xs uppercase italic">Finding kitties</p>
+</div>
+</div>
+<div class="bg-surface-container-low/50 p-6 rounded-xl flex flex-col items-center justify-center gap-4 border-2 border-dashed border-outline-variant opacity-60">
+<span class="material-symbols-outlined text-4xl text-outline-variant">add_circle</span>
+<p class="font-headline font-bold text-sm text-outline-variant uppercase tracking-widest">Invite Friend</p>
+</div>
+<div class="bg-surface-container-low/50 p-6 rounded-xl flex flex-col items-center justify-center gap-4 border-2 border-dashed border-outline-variant opacity-60">
+<span class="material-symbols-outlined text-4xl text-outline-variant">add_circle</span>
+<p class="font-headline font-bold text-sm text-outline-variant uppercase tracking-widest">Invite Friend</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-12">
+<button class="group relative px-16 py-8 bg-gradient-to-b from-primary to-primary-dim text-white font-headline font-black text-3xl rounded-full border-[6px] border-primary-container kawaii-btn-shadow animate-kawaii-bounce transition-all duration-300 overflow-hidden">
+<span class="relative z-10 flex items-center gap-4">
+                    Ready to Pounce!
+                    <span class="material-symbols-outlined text-4xl">play_circle</span>
+</span>
+<div class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</button>
+<div class="flex items-center gap-8 text-on-surface-variant pb-8">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">verified</span>
+<span class="text-xs font-bold uppercase tracking-tight">4/6 Players</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">wifi</span>
+<span class="text-xs font-bold uppercase tracking-tight">24ms Ping</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Floating Action Buttons -->
+<div class="fixed bottom-8 left-8 flex gap-4 z-40">
+<button class="w-16 h-16 bg-surface-container-lowest text-primary rounded-full shadow-lg border-4 border-primary-container flex flex-col items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">playing_cards</span>
+<span class="text-[8px] font-bold uppercase">Cards</span>
+</button>
+<button class="w-16 h-16 bg-surface-container-lowest text-primary rounded-full shadow-lg border-4 border-primary-container flex flex-col items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">theater_comedy</span>
+<span class="text-[8px] font-bold uppercase">Bluff</span>
+</button>
+<button class="w-20 h-20 bg-primary text-white rounded-full shadow-xl border-4 border-primary-container flex flex-col items-center justify-center hover:scale-110 transition-transform -mt-2">
+<span class="material-symbols-outlined text-3xl">shopping_basket</span>
+<span class="text-[10px] font-bold uppercase">Shop</span>
+</button>
+<button class="w-16 h-16 bg-surface-container-lowest text-primary rounded-full shadow-lg border-4 border-primary-container flex flex-col items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">equalizer</span>
+<span class="text-[8px] font-bold uppercase">Stats</span>
+</button>
+</div>
+</main>
+<!-- Social & Chat Side Panel -->
+<aside class="w-80 h-screen bg-surface-container-high border-l border-outline-variant/30 flex flex-col pt-24 pb-6 px-4 z-40">
+<div class="mb-6">
+<h3 class="font-headline font-extrabold text-xl text-primary flex items-center gap-2 mb-4 px-2">
+<span class="material-symbols-outlined">videocam</span>
+            The Pack
+        </h3>
+<div class="grid grid-cols-2 gap-3">
+<!-- Player Video Feeds -->
+<div class="relative aspect-square rounded-2xl bg-surface-container-lowest overflow-hidden border-2 border-neko-pink shadow-inner">
+<img alt="GingerSnaps Feed" class="w-full h-full object-cover grayscale-[0.2]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDFC3o3Som7wZ-jFv61asgcxB6kDsBKgDWEmATM5sPArdVzMxKl5vtegwVu_jUK3DfKOA6RSXnZPqcVwbcUnCFciK9mRHmMsDhRf9JNL9gVLADe5AeA4ZbYBBLM3YzaWI0wHHDOECZX4MX9Yim1sb00W7sPDQFRUs2ChKqKGtX3bk9k9UDW6l0hdWMTakj-gVy-A8bu0Hog8feeM9P6tXb9HcLWUW44T74uLtmmtJWOABAFQzyrr3PPueQYPFx4D1xeSAs4eBrBw"/>
+<div class="absolute bottom-1 left-1 right-1 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-0.5">
+<p class="text-[10px] text-white font-bold truncate">GingerSnaps</p>
+</div>
+</div>
+<div class="relative aspect-square rounded-2xl bg-surface-container-lowest overflow-hidden border-2 border-neko-pink shadow-inner">
+<img alt="Mochi_Roll Feed" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8BFVHCWtKeS9dKJIuuB0VDBNgXc-5nQqbKQe39kf5_PYltfgHjEsZSPbu1n2tUVeSj-thFE41O6_dPYGVXKrZBNz21GopIClCYujaWX8obSOKB0kAzYOsMdrsvnp7GINOodxAT8tF8kTx_sGs1r0L6BqaPoC7CR8ddfNUAreSto02K-H85kB6qXojwri7gXLpCDBTHArEKiJQ9fP-0fx0ssG0vIwqJAyJ_foueAeYUy80PcM-2TqUddlvzr8TyPOC-2sOuZvbfg"/>
+<div class="absolute bottom-1 left-1 right-1 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-0.5">
+<p class="text-[10px] text-white font-bold truncate">Mochi_Roll</p>
+</div>
+</div>
+<div class="relative aspect-square rounded-2xl bg-surface-container-lowest overflow-hidden border-2 border-neko-pink shadow-inner">
+<img alt="SirSassAlot Feed" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5c6rzpo1h8EUBoFmvygN9kGbr4-FRUnRYMtOSM5TTKU9IWZAfzGOiJSp4O35lTBKZE0-Izy1b-FTZpl41m3I2vEfg1qz5kX0q69z4uZDGeQ6GAdhrR9_qnVhFZG-wG2D0Rbg5h42bBTJw6W-8ohX_yU1xJtkxxuSJjXjvBw5H_QmVeR7Ku4ep8FLu2aSeM92wth19GJ1CoVn_j9rGBiZfX8FvcL15h0dN7DOYlsyFeaDoViPPrQO9O_wvzEClek6XoIEw50KEBg"/>
+<div class="absolute bottom-1 left-1 right-1 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-0.5">
+<p class="text-[10px] text-white font-bold truncate">SirSassAlot</p>
+</div>
+</div>
+<div class="relative aspect-square rounded-2xl bg-surface-container-lowest border-2 border-dashed border-outline-variant flex items-center justify-center opacity-40">
+<span class="material-symbols-outlined text-2xl">person_add</span>
+</div>
+</div>
+</div>
+<div class="flex-grow flex flex-col bg-surface-container-lowest rounded-[2rem] border-2 border-neko-pink overflow-hidden shadow-lg">
+<div class="p-4 border-b border-neko-pink bg-neko-pink/10">
+<h3 class="font-headline font-bold text-sm text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">chat_bubble</span>
+                Party Chat
+            </h3>
+</div>
+<div class="flex-grow p-4 overflow-y-auto custom-scrollbar space-y-3">
+<div class="flex flex-col gap-1">
+<p class="text-[10px] font-bold text-secondary px-2">GingerSnaps</p>
+<div class="bg-surface-container-high rounded-2xl rounded-tl-none p-3 text-sm shadow-sm">
+                    Ready to play?? I've got a killer deck! 🌶️
+                </div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<p class="text-[10px] font-bold text-primary px-2">You</p>
+<div class="bg-neko-pink text-on-primary rounded-2xl rounded-tr-none p-3 text-sm shadow-sm">
+                    Almost! Just need 2 more kitties 🐾
+                </div>
+</div>
+<div class="flex flex-col gap-1">
+<p class="text-[10px] font-bold text-secondary px-2">Mochi_Roll</p>
+<div class="bg-surface-container-high rounded-2xl rounded-tl-none p-3 text-sm shadow-sm">
+                    mew! (hi)
+                </div>
+</div>
+</div>
+<div class="p-3 bg-surface-container-high/50 border-t border-neko-pink/20">
+<div class="relative">
+<input class="w-full bg-surface-container-lowest border-2 border-neko-pink rounded-full py-2 px-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-outline-variant/60" placeholder="Say something cute..." type="text"/>
+<button class="absolute right-2 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+<div class="fixed top-32 right-[21rem] flex flex-col gap-4 pointer-events-none z-30">
+<div class="bg-tertiary-container text-on-tertiary-container px-4 py-2 rounded-xl text-sm font-bold shadow-md animate-pulse pointer-events-auto cursor-default border-2 border-tertiary">
+        New spicy deck available! 🌶️
+    </div>
+</div>
+</body></html>

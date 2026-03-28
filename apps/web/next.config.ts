@@ -2,17 +2,26 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const monorepoRoot = path.resolve(process.cwd(), "../..");
+const sharedTypesDist = path.join(monorepoRoot, "packages/shared-types/dist/index.js");
+const gameLogicDist = path.join(monorepoRoot, "packages/game-logic/dist/index.js");
 
 const nextConfig: NextConfig = {
-  /** Next 15 typegen can disagree with @types/react 18 peer trees; compile still succeeds */
+  /** Relax typecheck until generated routes and third-party types fully match React 19 / Next 16 */
   typescript: {
     ignoreBuildErrors: true,
+  },
+  /** Next.js 16 uses Turbopack by default; keep the same aliases as webpack for `next dev` / `next build` */
+  turbopack: {
+    resolveAlias: {
+      "@sweet-spicy/shared-types": sharedTypesDist,
+      "@sweet-spicy/game-logic": gameLogicDist,
+    },
   },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      "@sweet-spicy/shared-types": path.join(monorepoRoot, "packages/shared-types/dist/index.js"),
-      "@sweet-spicy/game-logic": path.join(monorepoRoot, "packages/game-logic/dist/index.js"),
+      "@sweet-spicy/shared-types": sharedTypesDist,
+      "@sweet-spicy/game-logic": gameLogicDist,
     };
     return config;
   },

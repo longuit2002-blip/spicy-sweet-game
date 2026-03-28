@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Be+Vietnam+Pro:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-surface": "#383833",
+              "surface-container-highest": "#e9e9de",
+              "outline": "#81817a",
+              "surface-container-low": "#fbf9f1",
+              "surface-variant": "#e9e9de",
+              "surface-dim": "#e4e3d8",
+              "on-surface-variant": "#65655f",
+              "secondary": "#007257",
+              "on-primary-container": "#5f102e",
+              "primary-fixed": "#fd8fad",
+              "tertiary": "#6c653a",
+              "surface-container-lowest": "#ffffff",
+              "secondary-dim": "#00654d",
+              "on-secondary-container": "#005d47",
+              "secondary-fixed": "#8ff6d0",
+              "surface-container-high": "#efeee5",
+              "on-secondary-fixed": "#004936",
+              "background": "#fefcf4",
+              "on-primary-fixed-variant": "#6b1a37",
+              "on-secondary": "#ffffff",
+              "primary-dim": "#923a56",
+              "primary": "#a14562",
+              "surface-container": "#f5f4eb",
+              "on-error": "#ffffff",
+              "error-dim": "#a70138",
+              "on-primary": "#ffffff",
+              "secondary-container": "#8ff6d0",
+              "surface": "#fefcf4",
+              "inverse-on-surface": "#9e9d96",
+              "error": "#c12048",
+              "surface-bright": "#fefcf4",
+              "tertiary-fixed-dim": "#eee3ad",
+              "primary-container": "#fd8fad",
+              "on-primary-fixed": "#380016",
+              "tertiary-container": "#fdf2bb",
+              "on-error-container": "#510017",
+              "secondary-fixed-dim": "#81e7c3",
+              "error-container": "#f74b6d",
+              "on-tertiary-fixed": "#4f4820",
+              "on-background": "#383833",
+              "inverse-primary": "#fd8fad",
+              "on-secondary-fixed-variant": "#00684f",
+              "surface-tint": "#a14562",
+              "tertiary-fixed": "#fdf2bb",
+              "primary-fixed-dim": "#ed82a0",
+              "outline-variant": "#bab9b2",
+              "tertiary-dim": "#60592f",
+              "inverse-surface": "#0e0f0a",
+              "on-tertiary-fixed-variant": "#6c653a",
+              "on-tertiary-container": "#625b30",
+              "on-tertiary": "#ffffff"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Be Vietnam Pro"],
+              "label": ["Plus Jakarta Sans"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .bubbly-text {
+        text-shadow: 4px 4px 0px rgba(253, 143, 173, 0.3);
+      }
+      .halo-glow {
+        box-shadow: 0 0 60px 20px rgba(253, 143, 173, 0.4);
+      }
+      .cartoon-button-shadow {
+        box-shadow: 0 12px 0px 0px rgba(0, 0, 0, 0.1), 0 20px 30px -10px rgba(161, 69, 98, 0.3);
+      }
+      .cartoon-button-shadow-alt {
+        box-shadow: 0 12px 0px 0px rgba(0, 0, 0, 0.05), 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+      }
+      .cartoon-button:active {
+        transform: translateY(8px) scale(0.98);
+        box-shadow: 0 4px 0px 0px rgba(0, 0, 0, 0.1);
+      }
+      .kawaii-scrollbar::-webkit-scrollbar {
+        width: 8px;
+      }
+      .kawaii-scrollbar::-webkit-scrollbar-track {
+        background: #f5f4eb;
+        border-radius: 9999px;
+      }
+      .kawaii-scrollbar::-webkit-scrollbar-thumb {
+        background: #fd8fad;
+        border-radius: 9999px;
+      }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-screen flex flex-col overflow-x-hidden">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-4 bg-[#fefcf4] dark:bg-[#1a1915] shadow-[0_8px_20px_rgba(161,69,98,0.08)] rounded-b-full">
+<div class="flex items-center gap-3">
+<span class="text-2xl font-black text-[#a14562] dark:text-[#fd8fad] italic font-headline">Spicy!</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-[#383833] dark:text-[#e9e9de] hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="text-[#383833] dark:text-[#e9e9de] hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined">help</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-primary-container overflow-hidden border-2 border-primary">
+<img alt="Chibi Cat Avatar" data-alt="Cute chibi cat avatar profile picture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHliyvO1ROr3r9ceFGMy3Wht46TPCWcrXPfvsY5V7YcHk-BiPg7bLpmV35ik608X6IjVLcHh1P_i-9o73AW7g3IG-0VpUU5ZCmUgpoE-8ZNyDEEXf0uTgHKXl5btjEMY1ZNTi36QJ33hrs8tCbrbZBD_hB4eWYBMSNcT4ErPT-JU660kRHU19EJvWSUEV4AB6YrvcpahiHJkO_ms-tq-tQhZL_WBWpHFv_1pG5NhpF8ErjTfwk78swmw43mOxIxCVGqZZ1dASwZA"/>
+</div>
+</div>
+</header>
+<div class="flex flex-grow pt-28 h-screen overflow-hidden">
+<!-- Main Challenge Content -->
+<main class="flex-grow pb-10 px-4 md:px-8 overflow-y-auto kawaii-scrollbar relative">
+<!-- Challenge Header Section -->
+<div class="text-center mb-8 relative z-10">
+<h1 class="font-headline font-black text-6xl md:text-8xl text-primary tracking-tighter italic uppercase bubbly-text mb-2">CHALLENGE!</h1>
+<p class="text-on-surface-variant font-bold text-lg">Cat Fight! (Wait, just a bluff call)</p>
+</div>
+<!-- The Confrontation Area -->
+<div class="relative grid grid-cols-1 xl:grid-cols-3 gap-8 items-center mb-12 max-w-5xl mx-auto">
+<!-- Nervous Cat Side -->
+<div class="flex flex-col items-center justify-center space-y-4">
+<div class="relative w-48 h-48 md:w-56 md:h-56 bg-surface-container rounded-full overflow-visible border-4 border-dashed border-outline-variant p-4">
+<img alt="Nervous Cat" class="w-full h-full object-cover rounded-full rotate-[-3deg]" data-alt="Close up of a cute nervous looking cat" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBO5yewbhNYykE1Sqt1QnvZnWOBV7aghP1truD9wujR1UA9tZf0J6k5vchjbWdtyS5CgJGS1ToZtolMtbY91BKl9LQztrOr9wVH0f_T2A-fIPMuHwyRQa_DeWvhbEcjLMluvhzgDIke3bfzYqKYxXlm6Wev3auwPL_7PoC7fmns7N7WHFqDZNlvh3DsUTPm8dSUyQBc02Gh01Xy7dmc6k8dMeW0I6ZGDI0ISjlRoGJIzMP3ijdSGmnXySpcpgGKDdVyKtRS5dgl9Q"/>
+<div class="absolute -top-4 -right-4 bg-surface-container-lowest shadow-lg rounded-full px-4 py-2 rotate-[12deg] border-2 border-primary">
+<span class="text-primary font-bold text-lg italic font-headline">Nya!?</span>
+</div>
+</div>
+<div class="text-center">
+<p class="font-headline font-extrabold text-xl text-on-surface">Pawsy McGee</p>
+<div class="flex gap-1 justify-center mt-1">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="w-3 h-3 rounded-full bg-surface-container-highest"></span>
+</div>
+</div>
+</div>
+<!-- Central Highlighted Card -->
+<div class="flex flex-col items-center">
+<div class="relative group">
+<!-- The Glow -->
+<div class="absolute inset-0 halo-glow rounded-full animate-pulse"></div>
+<!-- The Card -->
+<div class="relative w-56 h-72 bg-gradient-to-br from-primary to-primary-fixed rounded-full p-1 shadow-2xl transition-transform group-hover:scale-105">
+<div class="w-full h-full bg-surface-container-lowest rounded-full flex flex-col items-center justify-center p-6 border-4 border-primary">
+<span class="material-symbols-outlined text-6xl text-primary mb-4" style="font-variation-settings: 'FILL' 1;">theater_comedy</span>
+<div class="text-center px-2">
+<span class="font-headline font-black text-2xl text-primary tracking-tight">THE BLUFF</span>
+<div class="w-10 h-1 bg-tertiary-container mx-auto my-3 rounded-full"></div>
+<p class="text-on-surface-variant text-xs font-medium italic leading-tight">Is it a King or just a hungry kitten?</p>
+</div>
+</div>
+</div>
+<span class="material-symbols-outlined absolute -top-8 -left-8 text-tertiary-fixed-dim text-4xl animate-bounce">auto_awesome</span>
+<span class="material-symbols-outlined absolute -bottom-6 -right-6 text-primary-fixed text-3xl">colors_spark</span>
+</div>
+</div>
+<!-- Curious Cat Side -->
+<div class="flex flex-col items-center justify-center space-y-4">
+<div class="relative w-48 h-48 md:w-56 md:h-56 bg-surface-container rounded-full overflow-visible border-4 border-dashed border-outline-variant p-4">
+<img alt="Curious Cat" class="w-full h-full object-cover rounded-full rotate-[3deg]" data-alt="A curious fluffy cat staring intently" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaSwarDysfdnZublTDpJ9cUm-XVq5QAhK8RS7IOZEVx3FLNLXYXVDno6aHnzaQQnIoVBs8gFnGc_XJJ8l2ei-V7WH8Nz1avzJxUt355VkNxKQ8x5vhg7MmLHE18vou1xqa_eH6tY4LV69eMsqXjYVEDGz82iX1QOTN2OzZwDO2c8S6DzWkyf3xBV7sm0S2nyMNIFgxNItFMyqqv0wfT3oBihmUrB5bzF2NcL5YXPS5aM6RtxtAGNDAhWwbDd3ZNS1y4oG6zz2ifQ"/>
+<div class="absolute -top-4 -left-6 bg-surface-container-lowest shadow-lg rounded-full px-4 py-2 rotate-[-8deg] border-2 border-secondary">
+<span class="text-secondary font-bold text-lg italic font-headline">Meow!</span>
+</div>
+</div>
+<div class="text-center">
+<p class="font-headline font-extrabold text-xl text-on-surface">Sir Purr-a-lot</p>
+<div class="flex gap-1 justify-center mt-1">
+<span class="w-3 h-3 rounded-full bg-secondary"></span>
+<span class="w-3 h-3 rounded-full bg-secondary"></span>
+<span class="w-3 h-3 rounded-full bg-secondary"></span>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex flex-col sm:flex-row gap-6 justify-center items-center mt-12 mb-10 max-w-4xl mx-auto">
+<button class="cartoon-button w-full sm:w-auto min-w-[260px] px-10 py-6 bg-gradient-to-b from-primary-fixed to-primary text-white font-headline font-black text-2xl rounded-full border-[6px] border-white cartoon-button-shadow transition-all duration-200 flex flex-col items-center justify-center gap-1 group">
+<span class="material-symbols-outlined text-4xl mb-1 group-hover:scale-125 transition-transform" style="font-variation-settings: 'FILL' 1;">front_hand</span>
+<span class="uppercase tracking-wide bubbly-text">Reveal Paw!</span>
+</button>
+<button class="cartoon-button w-full sm:w-auto min-w-[260px] px-10 py-6 bg-surface-container-highest text-on-surface-variant font-headline font-black text-xl rounded-full border-[6px] border-white cartoon-button-shadow-alt transition-all duration-200 flex flex-col items-center justify-center gap-1 group">
+<span class="material-symbols-outlined text-3xl mb-1 group-hover:rotate-12 transition-transform">sentiment_dissatisfied</span>
+<span class="uppercase tracking-tight opacity-80">Oops, I concede</span>
+</button>
+</div>
+<!-- Floating background icons (Main area) -->
+<div class="absolute top-1/4 left-10 opacity-10 pointer-events-none select-none hidden lg:block">
+<span class="material-symbols-outlined text-9xl text-primary-fixed">pets</span>
+</div>
+</main>
+<!-- Side Panel: Chat & Video -->
+<aside class="w-80 border-l-4 border-dashed border-primary/20 bg-surface-container-lowest flex flex-col hidden lg:flex">
+<!-- Video Feeds -->
+<div class="p-4 space-y-4">
+<div class="relative w-full aspect-video bg-surface-dim rounded-full overflow-hidden border-4 border-white shadow-md">
+<img alt="Player 1 Video" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC6StJHEcHEDldnErCFr0GNxXMrM91ZNpHtgtpOjwzu3InCKWP-T9XFvygDZIY5zkd7O6lCRABef6paWGieVnahryCJaJ1ohzOwqDU22bS5jqgbcyYFSdfpxxfP7A_sDdRvL6fjIBLeOHJFSH4ytv4O_3qmARyQubkHS1Ytkdt-ETeZ_l4i_a_loHzoNI5S7ZrjjP256wmdku2xCRBogwuhGsMR_DiNdrVxX0xf1KUJBko5GUuKEkJIJcFgx4-ziikK_HZD2z7cQA"/>
+<div class="absolute bottom-2 left-4 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Pawsy McGee</div>
+</div>
+<div class="relative w-full aspect-video bg-surface-dim rounded-full overflow-hidden border-4 border-white shadow-md">
+<img alt="Player 2 Video" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAjgbXmyfWtYEl4mZrv7vdvJOAbUAJh7otsZ8WoQVvJ1ftVIOWr65Yv2cUjJrTJiVrXVtJcbFqLcXLnMlGVBvZpAY12T5vC9wJSxgJRYkWDJW2gbBIHSdvXPm_ZJXvQlXGLyH-3NJmH-oWdtrpgEBRk37Y_1DNLaeGgBCZ3oTBcS_qsZzDcksI_JKEQtvPT7v36z6X8Nv-NRpuBDz0MelQ6bPH2VYdd0TuRw7pJ9nwtD8jGsTc0zP-QsF5jCgff8QhhueuEtzaaA"/>
+<div class="absolute bottom-2 left-4 bg-secondary text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Sir Purr-a-lot</div>
+</div>
+</div>
+<!-- Chat Container -->
+<div class="flex-grow flex flex-col p-4 pt-0">
+<div class="flex items-center gap-2 mb-3 px-2">
+<span class="material-symbols-outlined text-primary">chat_bubble</span>
+<span class="font-headline font-bold text-sm uppercase tracking-wider text-on-surface-variant">Cat Lounge</span>
+</div>
+<div class="flex-grow overflow-y-auto kawaii-scrollbar space-y-3 mb-4 text-sm pr-2">
+<div class="bg-surface-container rounded-full rounded-tl-none px-4 py-2">
+<p class="font-bold text-[10px] text-secondary">Sir Purr-a-lot</p>
+<p class="text-on-surface">I see that twitch in your whiskers!</p>
+</div>
+<div class="bg-primary-container/30 rounded-full rounded-tr-none px-4 py-2 ml-4">
+<p class="font-bold text-[10px] text-primary text-right">You</p>
+<p class="text-on-surface text-right">Just a fly, I promise...</p>
+</div>
+<div class="bg-surface-container rounded-full rounded-tl-none px-4 py-2">
+<p class="font-bold text-[10px] text-secondary">Sir Purr-a-lot</p>
+<p class="text-on-surface">Show me the King or go back to sleep!</p>
+</div>
+</div>
+<!-- Chat Input -->
+<div class="mt-auto relative">
+<input class="w-full bg-surface-container rounded-full border-none px-4 py-3 text-sm focus:ring-2 focus:ring-primary placeholder:italic" placeholder="Meow something..." type="text"/>
+<button class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-sm">send</span>
+</button>
+</div>
+</div>
+<!-- Quick Actions Footer -->
+<div class="p-4 grid grid-cols-4 gap-2 border-t-2 border-dashed border-primary/10">
+<button class="flex flex-col items-center gap-1 group">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-xl">playing_cards</span>
+</div>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-xl text-primary" style="font-variation-settings: 'FILL' 1;">theater_comedy</span>
+</div>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-xl">shopping_basket</span>
+</div>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-xl">equalizer</span>
+</div>
+</button>
+</div>
+</aside>
+</div>
+<!-- Background Decoration -->
+<div class="fixed bottom-10 right-[350px] opacity-10 pointer-events-none select-none rotate-12 hidden xl:block">
+<span class="material-symbols-outlined text-8xl text-secondary-fixed">potted_plant</span>
+</div>
+</body></html>

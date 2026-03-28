@@ -9,10 +9,11 @@ export interface RoomPlayer {
   avatarUrl?: string;
   isHost: boolean;
   isReady: boolean;
+  /** Running total from won pile + trophies (derived from game state). */
   score: number;
   hand?: GameCard[];
-  successfulBluffs?: number;
-  successfulChallenges?: number;
+  wonPileCount?: number;
+  trophyCount?: number;
 }
 
 export interface RoomState {

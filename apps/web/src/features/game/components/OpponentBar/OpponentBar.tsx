@@ -1,36 +1,38 @@
-import type { Player } from '@/shared/types/game';
-import { useTranslation } from 'react-i18next';
+import { PlayerSeat } from "@/features/game/components/PlayerSeat/PlayerSeat";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { cn } from "@/lib/utils";
+import type { Player } from "@/shared/types/game";
 
 interface OpponentBarProps {
   players: Player[];
   currentPlayerId: string;
   activePlayerIndex: number;
+  /** Per-opponent short status line (e.g. last action). */
+  lastActionByPlayerId?: Readonly<Record<string, string>>;
 }
 
-export function OpponentBar({ players, currentPlayerId, activePlayerIndex }: OpponentBarProps) {
-  const { t } = useTranslation('common');
+export function OpponentBar({ players, currentPlayerId, activePlayerIndex, lastActionByPlayerId }: OpponentBarProps) {
   const opponents = players.filter((p) => p.id !== currentPlayerId);
+  const compact = useMediaQuery("(max-width: 767px)");
 
   return (
-    <div className="flex justify-center gap-3 sm:gap-4 px-4 py-3">
+    <div
+      className={cn(
+        "flex justify-center gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3",
+        compact && opponents.length >= 3 && "snap-x snap-mandatory overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+      )}
+    >
       {opponents.map((player) => {
         const isActive = players[activePlayerIndex]?.id === player.id;
         return (
-          <div
-            key={player.id}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
-              isActive ? 'bg-primary/10 ring-1 ring-primary animate-pulse-glow' : 'bg-muted/50'
-            }`}
-          >
-            <span className="text-sm font-semibold text-foreground truncate max-w-[80px]">
-              {player.nickname}
-            </span>
-            <div className="flex gap-0.5">
-              {player.hand.map((_, i) => (
-                <div key={i} className="w-3 h-4 bg-card-back rounded-sm border border-border" />
-              ))}
-            </div>
-            <span className="text-xs text-muted-foreground">⭐ {player.score}</span>
+          <div key={player.id} className={cn(compact && "shrink-0 snap-start")}>
+            <PlayerSeat
+              player={player}
+              isActive={isActive}
+              isLocal={false}
+              compact={compact}
+              lastAction={lastActionByPlayerId?.[player.id]}
+            />
           </div>
         );
       })}

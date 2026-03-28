@@ -1,38 +1,43 @@
 import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
+import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
 import type { Server } from "socket.io";
-import { acceptDeclaration, applyPenalty, nextTurn } from "@sweet-spicy/game-logic";
+import { applyPenalty, computePlayerFinalScore, nextTurn, tickChallengePhase } from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
 import type { ServerRoom } from "../room/room.service";
 import { RoomService } from "../room/room.service";
+import { GameBroadcastService } from "./game-broadcast.service";
 
 @Injectable()
 export class GameLoopService {
   private server: Server | null = null;
 
-  constructor(private readonly roomService: RoomService) {}
+  constructor(
+    private readonly roomService: RoomService,
+    private readonly broadcast: GameBroadcastService,
+  ) {}
 
   attachServer(server: Server) {
     this.server = server;
   }
 
-  @Interval(1000)
+  @Interval(GAME_LOOP_TICK_INTERVAL_MS)
   tick() {
     if (!this.server) return;
 
     for (const [roomCode, room] of this.roomService.rooms) {
       if (!room.gameState) continue;
+      const prevPhase = room.gameState.phase;
       let gs: GameState = room.gameState;
 
       if (gs.phase === "CHALLENGE_PHASE") {
-        const nextTimer = Math.max(0, gs.challengeTimer - 1);
-        gs = { ...gs, challengeTimer: nextTimer };
-        if (nextTimer <= 0) {
-          gs = acceptDeclaration(gs);
-        }
+        gs = tickChallengePhase(gs);
         room.gameState = gs;
         this.syncRoomPlayersFromGame(room);
-        this.server.to(roomCode).emit("game:state-update", gs);
+        this.broadcast.emitStateUpdate(this.server, roomCode, gs);
+        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
+          this.broadcast.emitWinner(this.server, roomCode, gs);
+        }
         continue;
       }
 
@@ -44,11 +49,14 @@ export class GameLoopService {
         }
         room.gameState = gs;
         this.syncRoomPlayersFromGame(room);
-        this.server.to(roomCode).emit("game:state-update", gs);
+        this.broadcast.emitStateUpdate(this.server, roomCode, gs);
+        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
+          this.broadcast.emitWinner(this.server, roomCode, gs);
+        }
         continue;
       }
 
-      if (gs.phase === "PENALTY" || gs.phase === "NEXT_TURN") {
+      if (gs.phase === "PENALTY" || gs.phase === "NEXT_TURN" || gs.phase === "TROPHY_AWARDED") {
         const nextTimer = Math.max(0, gs.challengeTimer - 1);
         gs = { ...gs, challengeTimer: nextTimer };
         if (nextTimer <= 0) {
@@ -56,14 +64,9 @@ export class GameLoopService {
         }
         room.gameState = gs;
         this.syncRoomPlayersFromGame(room);
-        this.server.to(roomCode).emit("game:state-update", gs);
-        if (gs.phase === "END_GAME" && gs.winner) {
-          const scores = gs.players.map((p) => ({
-            playerId: p.id,
-            nickname: p.nickname,
-            score: p.score,
-          }));
-          this.server.to(roomCode).emit("game:winner", { winner: gs.winner, scores });
+        this.broadcast.emitStateUpdate(this.server, roomCode, gs);
+        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
+          this.broadcast.emitWinner(this.server, roomCode, gs);
         }
       }
     }
@@ -76,10 +79,10 @@ export class GameLoopService {
       nickname: gp.nickname,
       isHost: room.hostId === gp.id,
       isReady: true,
-      score: gp.score,
+      score: computePlayerFinalScore(gp),
       hand: gp.hand,
-      successfulBluffs: gp.successfulBluffs,
-      successfulChallenges: gp.successfulChallenges,
+      wonPileCount: gp.wonPile.length,
+      trophyCount: gp.trophyCount,
     }));
   }
 }

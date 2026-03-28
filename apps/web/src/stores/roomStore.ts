@@ -5,6 +5,9 @@ interface RoomPlayer {
   nickname: string;
   isReady: boolean;
   isHost?: boolean;
+  /** Present when server syncs game scores onto room players */
+  score?: number;
+  trophyCount?: number;
 }
 
 interface RoomState {

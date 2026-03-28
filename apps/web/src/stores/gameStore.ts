@@ -1,11 +1,12 @@
 import { create } from "zustand";
-import type { GameState, GamePhase, Declaration } from "@/shared/types/game";
+import { CHALLENGE_PHASE_COUNTDOWN_SECONDS } from "@sweet-spicy/game-logic";
+import type { Declaration, GameViewState } from "@/shared/types/game";
 import type { Player } from "@/shared/types/game";
 
 interface GameStore {
-  gameState: GameState | null;
-  setGameState: (state: GameState) => void;
-  updateGameState: (partial: Partial<GameState>) => void;
+  gameState: GameViewState | null;
+  setGameState: (state: GameViewState) => void;
+  updateGameState: (partial: Partial<GameViewState>) => void;
   resetGameState: () => void;
 
   selectedCardId: string | null;
@@ -23,26 +24,38 @@ interface GameStore {
   canChallenge: boolean;
 }
 
+function challengeTimeFromState(gs: GameViewState | null): number {
+  if (!gs) return CHALLENGE_PHASE_COUNTDOWN_SECONDS;
+  return typeof gs.challengeTimer === "number" ? gs.challengeTimer : CHALLENGE_PHASE_COUNTDOWN_SECONDS;
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   gameState: null,
   selectedCardId: null,
   selectedDeclaration: null,
-  challengeTimeLeft: 5,
+  challengeTimeLeft: CHALLENGE_PHASE_COUNTDOWN_SECONDS,
 
-  setGameState: (gameState) => set({ gameState, challengeTimeLeft: 5 }),
+  setGameState: (gameState) =>
+    set({ gameState, challengeTimeLeft: challengeTimeFromState(gameState) }),
 
   updateGameState: (partial) =>
-    set((state) => ({
-      gameState: state.gameState ? { ...state.gameState, ...partial } : null,
-      challengeTimeLeft: 5,
-    })),
+    set((state) => {
+      const next: GameViewState =
+        state.gameState !== null
+          ? ({ ...state.gameState, ...partial } as GameViewState)
+          : ({ ...partial } as GameViewState);
+      return {
+        gameState: next,
+        challengeTimeLeft: challengeTimeFromState(next),
+      };
+    }),
 
   resetGameState: () =>
     set({
       gameState: null,
       selectedCardId: null,
       selectedDeclaration: null,
-      challengeTimeLeft: 5,
+      challengeTimeLeft: CHALLENGE_PHASE_COUNTDOWN_SECONDS,
     }),
 
   setSelectedCard: (cardId) => set({ selectedCardId: cardId }),
@@ -75,22 +88,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 }));
 
-export const getCurrentPlayer = (gameState: GameState | null): Player | null => {
+export const getCurrentPlayer = (gameState: GameViewState | null): Player | null => {
   if (!gameState) return null;
   return gameState.players[gameState.currentPlayerIndex] || null;
-};
-
-export const getGamePhaseLabel = (phase: GamePhase): string => {
-  const labels: Record<GamePhase, string> = {
-    LOBBY: "Waiting for players...",
-    GAME_START: "Game starting...",
-    PLAYER_TURN: "Your turn!",
-    DECLARE: "Declare your card",
-    CHALLENGE_PHASE: "Challenge or accept?",
-    REVEAL: "Revealing card...",
-    PENALTY: "Drawing penalty cards...",
-    NEXT_TURN: "Next turn...",
-    END_GAME: "Game Over!",
-  };
-  return labels[phase];
 };

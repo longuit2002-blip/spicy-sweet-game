@@ -6,13 +6,14 @@ import { useUserStore } from "@/stores/userStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useGameStore } from "@/stores/gameStore";
 import { useChatStore } from "@/stores/chatStore";
-import type { ClientToServerEvents } from "@sweet-spicy/shared-types";
+import type { ChallengeType, ClientGameState, ClientToServerEvents } from "@sweet-spicy/shared-types";
+import { DEFAULT_ROOM_MAX_PLAYERS } from "@sweet-spicy/shared-types";
 
 export function useGameSocket() {
   const { accessToken, isAuthenticated } = useUserStore();
   const { setPlayers, addPlayer, removePlayer, setPlayerReady, setConnected, setRoomCode } =
     useRoomStore();
-  const { setGameState, updateGameState } = useGameStore();
+  const { setGameState } = useGameStore();
   const { addMessage } = useChatStore();
 
   useEffect(() => {
@@ -32,6 +33,14 @@ export function useGameSocket() {
 
     socket.on("connect_error", (error) => {
       console.error("Socket connection error:", error);
+      const msg = error?.message ?? String(error);
+      if (msg.includes("Unauthorized")) {
+        useUserStore.getState().logout();
+        disconnectSocket();
+        if (typeof window !== "undefined" && window.location.pathname.startsWith("/room")) {
+          window.location.assign("/");
+        }
+      }
     });
 
     socket.on("room:joined", (room) => {
@@ -56,12 +65,12 @@ export function useGameSocket() {
       setPlayerReady(playerId, ready);
     });
 
-    socket.on("room:game-start", (gameState) => {
+    socket.on("room:game-start", (gameState: ClientGameState) => {
       setGameState(gameState);
     });
 
-    socket.on("game:state-update", (gameState) => {
-      updateGameState(gameState);
+    socket.on("game:state-update", (gameState: ClientGameState) => {
+      setGameState(gameState);
     });
 
     socket.on("chat:message", (message) => {
@@ -94,7 +103,6 @@ export function useGameSocket() {
     removePlayer,
     setPlayerReady,
     setGameState,
-    updateGameState,
     setConnected,
     setRoomCode,
     addMessage,
@@ -116,7 +124,7 @@ export function useGameSocket() {
     socket.emit("room:join", roomCode, callback);
   }, []);
 
-  const createRoom = useCallback((maxPlayers = 6, callback?: (result: unknown) => void) => {
+  const createRoom = useCallback((maxPlayers = DEFAULT_ROOM_MAX_PLAYERS, callback?: (result: unknown) => void) => {
     const socket = getSocket();
     if (!socket) return;
     socket.emit("room:create", { maxPlayers, isPrivate: false }, callback);
@@ -147,8 +155,15 @@ export function useGameSocket() {
     [emit],
   );
 
-  const challenge = useCallback(() => {
-    emit("game:challenge");
+  const challenge = useCallback(
+    (challengeType: ChallengeType) => {
+      emit("game:challenge", { challengeType });
+    },
+    [emit],
+  );
+
+  const claimChallenge = useCallback(() => {
+    emit("game:claim-challenge");
   }, [emit]);
 
   const acceptDeclaration = useCallback(() => {
@@ -157,7 +172,7 @@ export function useGameSocket() {
 
   const sendChatMessage = useCallback(
     (content: string) => {
-      emit("chat:send", content);
+      emit("chat:send", { content });
     },
     [emit],
   );
@@ -170,6 +185,7 @@ export function useGameSocket() {
     startGame,
     playCard,
     challenge,
+    claimChallenge,
     acceptDeclaration,
     sendChatMessage,
   };

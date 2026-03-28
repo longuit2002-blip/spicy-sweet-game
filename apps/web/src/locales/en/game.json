@@ -1,8 +1,14 @@
 {
   "spice": {
     "chili": "Chili",
-    "pepper": "Pepper",
-    "lemon": "Lemon"
+    "lemon": "Lemon",
+    "avocado": "Avocado"
+  },
+  "hand": {
+    "cardDetailTitle": "Your card",
+    "cardDetailHint": "Drag a card onto the play area, or use Play this card to open the declaration step.",
+    "playThisCard": "Play this card",
+    "dropToPlayAria": "Play area — drop a card from your hand here"
   },
   "declare": {
     "title": "Declare Your Card",

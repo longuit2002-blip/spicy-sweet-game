@@ -1,3 +1,4 @@
+import { UsePipes, ValidationPipe } from "@nestjs/common";
 import {
   ConnectedSocket,
   MessageBody,
@@ -10,12 +11,34 @@ import { JwtService } from "@nestjs/jwt";
 import type { Server, Socket } from "socket.io";
 import {
   acceptDeclaration,
+  claimChallenge,
+  computePlayerFinalScore,
   playCard,
   resolveChallenge,
 } from "@sweet-spicy/game-logic";
-import type { Declaration } from "@sweet-spicy/shared-types";
+import type { Declaration, SocketErrorCode } from "@sweet-spicy/shared-types";
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  DEFAULT_ROOM_MAX_PLAYERS,
+  SOCKET_ERROR_CODE,
+  SOCKET_ERROR_DETAIL_MESSAGE,
+  SOCKET_ERROR_MESSAGE,
+} from "@sweet-spicy/shared-types";
 import { RoomService } from "../room/room.service";
 import { GameLoopService } from "../game/game-loop.service";
+import { GameBroadcastService } from "../game/game-broadcast.service";
+import { SocketRateLimiterService } from "./socket-rate-limiter.service";
+import { RoomCreateDto } from "./dto/room-create.dto";
+import { PlayCardDto } from "./dto/play-card.dto";
+import { ChatSendDto } from "./dto/chat-send.dto";
+import { ChallengeDto } from "./dto/challenge.dto";
+import { parseRoomJoinCode } from "./parse-room-join";
+
+const SOCKET_VALIDATION_PIPE = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: false,
+});
 
 @WebSocketGateway({
   cors: { origin: process.env.CLIENT_URL ?? "*", credentials: true },
@@ -28,7 +51,21 @@ export class RealtimeGateway implements OnGatewayInit {
     private readonly jwt: JwtService,
     private readonly roomService: RoomService,
     private readonly gameLoop: GameLoopService,
+    private readonly broadcast: GameBroadcastService,
+    private readonly rateLimiter: SocketRateLimiterService,
   ) {}
+
+  private emitSocketError(client: Socket, code: SocketErrorCode, message: string): void {
+    client.emit("error", { code, message });
+  }
+
+  private emitRateLimit(client: Socket): void {
+    this.emitSocketError(
+      client,
+      SOCKET_ERROR_CODE.RATE_LIMIT,
+      SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
+    );
+  }
 
   afterInit(server: Server) {
     this.gameLoop.attachServer(server);
@@ -49,13 +86,15 @@ export class RealtimeGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage("room:create")
-  handleCreate(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { maxPlayers?: number; isPrivate?: boolean },
-  ) {
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handleCreate(@ConnectedSocket() client: Socket, @MessageBody() data: RoomCreateDto) {
+    if (!this.rateLimiter.consume(client.id, "room:create")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const userId = client.data.userId as string;
     const nickname = client.data.nickname as string;
-    const room = this.roomService.createRoom(userId, nickname, data?.maxPlayers ?? 6);
+    const room = this.roomService.createRoom(userId, nickname, data.maxPlayers ?? DEFAULT_ROOM_MAX_PLAYERS);
     void client.join(room.roomCode);
     client.data.roomId = room.roomCode;
     const state = this.roomService.toRoomState(room);
@@ -67,16 +106,18 @@ export class RealtimeGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage("room:join")
-  handleJoin(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: string | { roomCode?: string; code?: string },
-  ) {
+  handleJoin(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    if (!this.rateLimiter.consume(client.id, "room:join")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
+    const code = parseRoomJoinCode(payload);
+    if (!code) {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.INVALID_ROOM_CODE);
+      return { success: false, error: SOCKET_ERROR_DETAIL_MESSAGE.INVALID_ROOM_CODE };
+    }
     const userId = client.data.userId as string;
     const nickname = client.data.nickname as string;
-    const code =
-      typeof payload === "string"
-        ? payload
-        : (payload?.roomCode ?? payload?.code ?? "");
     const result = this.roomService.joinRoom(code, userId, nickname);
     if (!result.ok) {
       return { success: false, error: result.error };
@@ -95,6 +136,10 @@ export class RealtimeGateway implements OnGatewayInit {
 
   @SubscribeMessage("room:leave")
   handleLeave(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "room:leave")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const userId = client.data.userId as string;
     const { roomCode, room, newHostId } = this.roomService.leaveRoom(userId);
     if (roomCode && room) {
@@ -109,7 +154,15 @@ export class RealtimeGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage("room:ready")
-  handleReady(@ConnectedSocket() client: Socket, @MessageBody() ready: boolean) {
+  handleReady(@ConnectedSocket() client: Socket, @MessageBody() ready: unknown) {
+    if (!this.rateLimiter.consume(client.id, "room:ready")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
+    if (typeof ready !== "boolean") {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.READY_NOT_BOOLEAN);
+      return { success: false };
+    }
     const userId = client.data.userId as string;
     const room = this.roomService.setReady(userId, ready);
     if (!room) return { success: false };
@@ -120,55 +173,120 @@ export class RealtimeGateway implements OnGatewayInit {
 
   @SubscribeMessage("room:start")
   handleStart(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "room:start")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const userId = client.data.userId as string;
     const result = this.roomService.startGame(userId);
     if (!result.ok) {
-      client.emit("error", { code: "START_FAILED", message: result.error });
+      this.emitSocketError(client, SOCKET_ERROR_CODE.START_FAILED, result.error);
       return { success: false, error: result.error };
     }
     const room = result.room;
     if (room.gameState) {
-      this.server.to(room.roomCode).emit("room:game-start", room.gameState);
+      this.broadcast.emitGameStart(this.server, room.roomCode, room.gameState);
     }
     return { success: true };
   }
 
   @SubscribeMessage("game:play-card")
-  handlePlayCard(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { cardId: string; declaration: Declaration },
-  ) {
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handlePlayCard(@ConnectedSocket() client: Socket, @MessageBody() data: PlayCardDto) {
+    if (!this.rateLimiter.consume(client.id, "game:play-card")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const roomCode = client.data.roomId as string | undefined;
     const userId = client.data.userId as string;
     if (!roomCode) return { success: false };
     const room = this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) return { success: false };
-    const next = playCard(room.gameState, userId, data.cardId, data.declaration);
+    const decl = data.declaration as Declaration;
+    const next = playCard(room.gameState, userId, data.cardId, decl);
     if (!next) {
-      client.emit("error", { code: "INVALID_MOVE", message: "Cannot play this card" });
+      this.emitSocketError(
+        client,
+        SOCKET_ERROR_CODE.INVALID_MOVE,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.INVALID_MOVE] as string,
+      );
       return { success: false };
     }
     room.gameState = next;
     this.syncRoomPlayers(room);
-    this.server.to(roomCode).emit("game:state-update", next);
+    this.broadcast.emitStateUpdate(this.server, roomCode, next);
+    return { success: true };
+  }
+
+  @SubscribeMessage("game:claim-challenge")
+  handleClaimChallenge(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "game:claim-challenge")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
+    const roomCode = client.data.roomId as string | undefined;
+    const userId = client.data.userId as string;
+    if (!roomCode) return { success: false };
+    const room = this.roomService.getRoomByCode(roomCode);
+    if (!room?.gameState) return { success: false };
+    if (room.gameState.phase !== "CHALLENGE_PHASE") {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PHASE, SOCKET_ERROR_DETAIL_MESSAGE.CHALLENGE_WRONG_PHASE);
+      return { success: false };
+    }
+    if (room.gameState.playedCard?.playerId === userId) {
+      this.emitSocketError(
+        client,
+        SOCKET_ERROR_CODE.CANNOT_CHALLENGE_SELF,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.CANNOT_CHALLENGE_SELF] as string,
+      );
+      return { success: false };
+    }
+    const next = claimChallenge(room.gameState, userId);
+    if (!next) {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_MOVE, "Cannot claim challenge now");
+      return { success: false };
+    }
+    room.gameState = next;
+    this.syncRoomPlayers(room);
+    this.broadcast.emitStateUpdate(this.server, roomCode, next);
     return { success: true };
   }
 
   @SubscribeMessage("game:challenge")
-  handleChallenge(@ConnectedSocket() client: Socket) {
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handleChallenge(@ConnectedSocket() client: Socket, @MessageBody() data: ChallengeDto) {
+    if (!this.rateLimiter.consume(client.id, "game:challenge")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const roomCode = client.data.roomId as string | undefined;
     const userId = client.data.userId as string;
     if (!roomCode) return { success: false };
     const room = this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) return { success: false };
-    if (room.gameState.playedCard?.playerId === userId) {
-      client.emit("error", { code: "CANNOT_CHALLENGE_SELF", message: "Cannot challenge yourself" });
+    if (room.gameState.phase !== "CHALLENGE_PHASE") {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PHASE, SOCKET_ERROR_DETAIL_MESSAGE.CHALLENGE_WRONG_PHASE);
       return { success: false };
     }
-    const next = resolveChallenge(room.gameState, userId);
+    if (room.gameState.playedCard?.playerId === userId) {
+      this.emitSocketError(
+        client,
+        SOCKET_ERROR_CODE.CANNOT_CHALLENGE_SELF,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.CANNOT_CHALLENGE_SELF] as string,
+      );
+      return { success: false };
+    }
+    if (
+      room.gameState.challengeStep !== "PICK_TYPE" ||
+      room.gameState.challengeClaimHolderId !== userId
+    ) {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_MOVE, "Only the challenge holder can pick suit or number");
+      return { success: false };
+    }
+    const next = resolveChallenge(room.gameState, userId, data.challengeType);
     room.gameState = next;
     this.syncRoomPlayers(room);
-    this.server.to(roomCode).emit("game:state-update", next);
+    this.broadcast.emitStateUpdate(this.server, roomCode, next);
     if (next.challengeResult) {
       this.server.to(roomCode).emit("game:challenge-result", next.challengeResult);
     }
@@ -177,32 +295,47 @@ export class RealtimeGateway implements OnGatewayInit {
 
   @SubscribeMessage("game:accept")
   handleAccept(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "game:accept")) {
+      this.emitRateLimit(client);
+      return { success: false };
+    }
     const roomCode = client.data.roomId as string | undefined;
     const userId = client.data.userId as string;
     if (!roomCode) return { success: false };
     const room = this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) return { success: false };
+    if (room.gameState.phase !== "CHALLENGE_PHASE") {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PHASE, SOCKET_ERROR_DETAIL_MESSAGE.ACCEPT_WRONG_PHASE);
+      return { success: false };
+    }
     if (room.gameState.playedCard?.playerId === userId) {
       return { success: false };
     }
     const next = acceptDeclaration(room.gameState);
     room.gameState = next;
     this.syncRoomPlayers(room);
-    this.server.to(roomCode).emit("game:state-update", next);
+    this.broadcast.emitStateUpdate(this.server, roomCode, next);
     return { success: true };
   }
 
   @SubscribeMessage("chat:send")
-  handleChat(@ConnectedSocket() client: Socket, @MessageBody() content: string) {
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handleChat(@ConnectedSocket() client: Socket, @MessageBody() body: ChatSendDto) {
+    if (!this.rateLimiter.consume(client.id, "chat:send")) {
+      this.emitSocketError(client, SOCKET_ERROR_CODE.RATE_LIMIT, SOCKET_ERROR_DETAIL_MESSAGE.TOO_MANY_MESSAGES);
+      return { success: false };
+    }
     const roomCode = client.data.roomId as string | undefined;
     const userId = client.data.userId as string;
     const nickname = client.data.nickname as string;
-    if (!roomCode || !content?.trim()) return { success: false };
+    if (!roomCode) return { success: false };
+    const content = body.content.trim();
+    if (!content) return { success: false };
     const msg = {
       id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       playerId: userId,
       nickname,
-      content: content.trim().slice(0, 200),
+      content: content.slice(0, CHAT_MESSAGE_MAX_LENGTH),
       type: "text" as const,
       timestamp: new Date().toISOString(),
     };
@@ -271,10 +404,10 @@ export class RealtimeGateway implements OnGatewayInit {
       nickname: gp.nickname,
       isHost: room.hostId === gp.id,
       isReady: true,
-      score: gp.score,
+      score: computePlayerFinalScore(gp),
       hand: gp.hand,
-      successfulBluffs: gp.successfulBluffs,
-      successfulChallenges: gp.successfulChallenges,
+      wonPileCount: gp.wonPile.length,
+      trophyCount: gp.trophyCount,
     }));
   }
 }

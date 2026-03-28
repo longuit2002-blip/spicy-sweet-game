@@ -1,1 +1,2 @@
-export { ChallengePhase } from './ChallengePhase';
+export { ChallengePhase } from "./ChallengePhase";
+export type { ChallengePhaseProps } from "./ChallengePhase";

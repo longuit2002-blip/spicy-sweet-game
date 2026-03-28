@@ -1,8 +1,14 @@
 {
   "spice": {
     "chili": "Ớt",
-    "pepper": "Tiêu",
-    "lemon": "Chanh"
+    "lemon": "Chanh",
+    "avocado": "Bơ"
+  },
+  "hand": {
+    "cardDetailTitle": "Chi tiết lá bài",
+    "cardDetailHint": "Kéo lá lên vùng đánh, hoặc bấm Chơi lá này để mở bước tuyên bố.",
+    "playThisCard": "Chơi lá này",
+    "dropToPlayAria": "Vùng đánh — thả lá từ tay vào đây"
   },
   "declare": {
     "title": "Tuyên bố lá bài",

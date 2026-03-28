@@ -53,10 +53,10 @@ export default {
         },
         chili: "hsl(var(--chili))",
         "chili-glow": "hsl(var(--chili-glow))",
-        pepper: "hsl(var(--pepper))",
-        "pepper-glow": "hsl(var(--pepper-glow))",
         lemon: "hsl(var(--lemon))",
         "lemon-glow": "hsl(var(--lemon-glow))",
+        avocado: "hsl(var(--avocado))",
+        "avocado-glow": "hsl(var(--avocado-glow))",
         "card-face": "hsl(var(--card-face))",
         "card-back": "hsl(var(--card-back))",
         sidebar: {

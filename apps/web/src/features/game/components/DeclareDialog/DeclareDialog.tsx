@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { MAX_DECLARATION_RANK } from '@sweet-spicy/game-logic';
 import type { Declaration, SpiceType, GameCard } from '@/shared/types/game';
 import { SPICE_EMOJI, SPICE_LABEL } from '@/shared/types/game';
 import { Button } from '@/components/ui/button';
@@ -12,22 +13,54 @@ interface DeclareDialogProps {
   onOpenChange: (open: boolean) => void;
   card: GameCard | null;
   onDeclare: (declaration: Declaration) => void;
+  /** When set, suit is locked for this round — UI fixes declaration to this spice. */
+  lockedSuit?: SpiceType | null;
+  /** Minimum rank allowed this turn (from last resolved play). */
+  minDeclarationNumber?: number;
+  /** Maximum rank allowed this turn (10 normally; 3 right after a resolved 10). */
+  maxDeclarationNumber?: number;
 }
 
-const TYPES: SpiceType[] = ['chili', 'pepper', 'lemon'];
+const TYPES: SpiceType[] = ["chili", "lemon", "avocado"];
 const NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-export function DeclareDialog({ open, onOpenChange, card, onDeclare }: DeclareDialogProps) {
-  const { t, i18n } = useTranslation('game');
+/** Coerce prop (avoids `\"9\" + 1` → `\"91\"` from loose JSON / bad merges). */
+function normalizeMinDeclaration(raw: number | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.floor(n));
+}
+
+function normalizeMaxDeclaration(raw: number | undefined, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(MAX_DECLARATION_RANK, Math.max(1, Math.floor(n)));
+}
+
+export function DeclareDialog({
+  open,
+  onOpenChange,
+  card,
+  onDeclare,
+  lockedSuit = null,
+  minDeclarationNumber = 1,
+  maxDeclarationNumber = MAX_DECLARATION_RANK,
+}: DeclareDialogProps) {
+  const { t, i18n } = useTranslation("game");
   const [selectedType, setSelectedType] = useState<SpiceType | null>(null);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
 
+  const minDecl = normalizeMinDeclaration(minDeclarationNumber);
+  const maxDecl = normalizeMaxDeclaration(maxDeclarationNumber, MAX_DECLARATION_RANK);
+  const effectiveMax = Math.max(minDecl, Math.min(maxDecl, MAX_DECLARATION_RANK));
+  const allowedNumbers = NUMBERS.filter((n) => n >= minDecl && n <= effectiveMax);
+
   useEffect(() => {
     if (open) {
-      setSelectedType(null);
+      setSelectedType(lockedSuit ?? null);
       setSelectedNumber(null);
     }
-  }, [open]);
+  }, [open, minDecl, effectiveMax, lockedSuit]);
 
   const handleDeclare = () => {
     if (selectedType && selectedNumber) {
@@ -53,26 +86,26 @@ export function DeclareDialog({ open, onOpenChange, card, onDeclare }: DeclareDi
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-md"
       onClick={handleClose}
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 20 }}
-        className="bg-card border border-border rounded-xl p-6 w-full max-w-sm shadow-card"
+        className="game-glass-panel w-full max-w-sm rounded-3xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display text-lg text-foreground text-center flex-1">{t('declare.title')}</h3>
-          <Button variant="ghost" size="sm" onClick={toggleLanguage} className="text-xs h-7 px-2">
+          <h3 className="flex-1 text-center text-lg font-semibold text-foreground">{t('declare.title')}</h3>
+          <Button variant="ghost" size="sm" onClick={toggleLanguage} className="h-7 rounded-full px-2 text-xs">
             {i18n.language === 'vi' ? '🇻🇳 EN' : '🇬🇧 VI'}
           </Button>
         </div>
 
         {card && (
-          <div className="mb-4 p-3 bg-muted rounded-lg flex items-center gap-3">
-            <div className="w-10 h-14 bg-primary/20 rounded flex items-center justify-center">
+          <div className="mb-4 flex items-center gap-3 rounded-2xl bg-muted/80 p-3">
+            <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-primary/15">
               <span className="text-xl">
                 {SPICE_EMOJI[card.type]}
               </span>
@@ -86,45 +119,59 @@ export function DeclareDialog({ open, onOpenChange, card, onDeclare }: DeclareDi
           </div>
         )}
 
-        <p className="text-muted-foreground text-sm mb-2">{t('declare.chooseType')}</p>
-        <div className="flex gap-2 mb-4">
-          {TYPES.map((type) => (
-            <button
-              key={type}
-              onClick={() => setSelectedType(type)}
-              className={cn(
-                'flex-1 py-3 rounded-lg border-2 text-center transition-all',
-                selectedType === type
-                  ? 'border-primary bg-primary/10 shadow-glow'
-                  : 'border-border bg-muted hover:border-muted-foreground/40'
-              )}
-            >
-              <span className="text-2xl">{SPICE_EMOJI[type]}</span>
-              <p className="text-xs text-foreground mt-1">{t(`spice.${type}`)}</p>
-            </button>
-          ))}
-        </div>
+        <p className="text-muted-foreground text-sm mb-2">{t("declare.chooseType")}</p>
+        {lockedSuit != null ? (
+          <div className="mb-4 rounded-2xl border-2 border-primary/40 bg-primary/10 p-3 text-center">
+            <span className="text-2xl">{SPICE_EMOJI[lockedSuit]}</span>
+            <p className="text-sm font-medium mt-1">{t(`spice.${lockedSuit}`)}</p>
+            <p className="text-xs text-muted-foreground">{t("declare.lockedSuitHint")}</p>
+          </div>
+        ) : (
+          <div className="flex gap-2 mb-4">
+            {TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setSelectedType(type)}
+                className={cn(
+                  "flex-1 rounded-2xl border-2 py-3 text-center transition-all",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background motion-safe:active:scale-[0.98]",
+                  selectedType === type
+                    ? "border-primary bg-primary/12 shadow-kawaii"
+                    : "border-border/40 bg-card/90 hover:border-muted-foreground/30",
+                )}
+              >
+                <span className="text-2xl">{SPICE_EMOJI[type]}</span>
+                <p className="text-xs text-foreground mt-1">{t(`spice.${type}`)}</p>
+              </button>
+            ))}
+          </div>
+        )}
 
         <p className="text-muted-foreground text-sm mb-2">{t('declare.chooseNumber')}</p>
         <div className="grid grid-cols-5 gap-2 mb-6">
-          {NUMBERS.map((num) => (
+          {allowedNumbers.map((num) => (
             <button
               key={num}
               onClick={() => setSelectedNumber(num)}
               className={cn(
-                'py-2 rounded-lg border-2 font-bold transition-all',
+                "rounded-xl border-2 py-2 font-bold transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background motion-safe:active:scale-[0.98]",
                 selectedNumber === num
-                  ? 'border-primary bg-primary/10 text-primary shadow-glow'
-                  : 'border-border bg-muted text-foreground hover:border-muted-foreground/40'
+                  ? "border-primary bg-primary/12 text-primary shadow-kawaii"
+                  : "border-border/40 bg-card/90 text-foreground hover:border-muted-foreground/30",
               )}
             >
               {num}
             </button>
           ))}
         </div>
+        {allowedNumbers.length === 0 && (
+          <p className="text-sm text-destructive mb-4 text-center">{t('declare.noValid')}</p>
+        )}
 
         {selectedType && selectedNumber && (
-          <div className="mb-4 p-3 bg-gradient-fire/10 rounded-lg text-center">
+          <div className="mb-4 rounded-2xl bg-primary/10 p-3 text-center">
             <p className="text-xs text-muted-foreground mb-1">{t('declare.preview')}</p>
             <p className="text-lg font-bold">
               {SPICE_EMOJI[selectedType]} {selectedNumber}
@@ -136,11 +183,12 @@ export function DeclareDialog({ open, onOpenChange, card, onDeclare }: DeclareDi
         )}
 
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={handleClose}>
+          <Button variant="outline" className="flex-1 rounded-full border-border/40" onClick={handleClose}>
             {t('declare.cancel')}
           </Button>
           <Button
-            className="flex-1 bg-gradient-fire text-primary-foreground"
+            variant="kawaii"
+            className="flex-1 rounded-full"
             disabled={!selectedType || !selectedNumber}
             onClick={handleDeclare}
           >

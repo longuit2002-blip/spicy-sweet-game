@@ -54,16 +54,16 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
   ];
 
   return (
-    <div className="flex flex-col h-full bg-card">
-      <div className="flex items-center justify-between px-3 py-2 border-b">
+    <div className="flex h-full flex-col bg-transparent">
+      <div className="flex items-center justify-between px-3 py-3">
         <div className="flex items-center gap-2">
-          <MessageCircle className="h-4 w-4" />
-          <span className="text-sm font-medium">{t('game.chat.title')}</span>
+          <MessageCircle className="h-4 w-4 text-primary" />
+          <span className="text-sm font-semibold">{t('game.chat.title')}</span>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs"
+          className="h-7 rounded-full text-xs"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           {isExpanded ? t('game.chat.hide') : t('game.chat.show')}
@@ -72,7 +72,7 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
 
       {isExpanded && (
         <>
-          <ScrollArea className="flex-1 p-3">
+          <ScrollArea className="flex-1 p-3 pt-0">
             <div className="space-y-3">
               {demoMessages.map((msg) => (
                 <div
@@ -88,12 +88,12 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
                   )}
                   <span
                     className={cn(
-                      'inline-block px-2 py-1 rounded-lg',
+                      'inline-block rounded-2xl px-3 py-1.5',
                       msg.type === 'system'
-                        ? 'bg-muted/50'
+                        ? 'bg-muted/60'
                         : msg.playerId === currentUserId
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
+                          ? 'bg-gradient-kawaii-cta text-primary-foreground shadow-sm'
+                          : 'bg-card/90 shadow-sm'
                     )}
                   >
                     {msg.content}
@@ -104,19 +104,20 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
             </div>
           </ScrollArea>
 
-          <div className="p-2 border-t">
+          <div className="border-t border-border/20 p-2">
             <div className="flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={t('game.chat.placeholder')}
-                className="h-8"
+                className="h-10 rounded-full border-border/30 bg-muted/50 focus-visible:ring-primary/40"
                 disabled={!onSendMessage}
               />
               <Button
                 size="icon"
-                className="h-8 w-8"
+                variant="kawaii"
+                className="h-10 w-10 shrink-0 rounded-full"
                 onClick={handleSend}
                 disabled={!input.trim() || !onSendMessage}
               >
