@@ -2,9 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
 import type { Server } from "socket.io";
-import { applyPenalty, computePlayerFinalScore, nextTurn, tickChallengePhase } from "@sweet-spicy/game-logic";
+import { applyPenalty, nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
-import type { ServerRoom } from "../room/room.service";
 import { RoomService } from "../room/room.service";
 import { GameBroadcastService } from "./game-broadcast.service";
 
@@ -33,7 +32,7 @@ export class GameLoopService {
       if (gs.phase === "CHALLENGE_PHASE") {
         gs = tickChallengePhase(gs);
         room.gameState = gs;
-        this.syncRoomPlayersFromGame(room);
+        this.roomService.syncRoomPlayersFromGame(room);
         this.broadcast.emitStateUpdate(this.server, roomCode, gs);
         if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
           this.broadcast.emitWinner(this.server, roomCode, gs);
@@ -42,13 +41,9 @@ export class GameLoopService {
       }
 
       if (gs.phase === "REVEAL") {
-        const nextTimer = Math.max(0, gs.challengeTimer - 1);
-        gs = { ...gs, challengeTimer: nextTimer };
-        if (nextTimer <= 0) {
-          gs = applyPenalty(gs);
-        }
+        gs = tickRevealPhase(gs);
         room.gameState = gs;
-        this.syncRoomPlayersFromGame(room);
+        this.roomService.syncRoomPlayersFromGame(room);
         this.broadcast.emitStateUpdate(this.server, roomCode, gs);
         if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
           this.broadcast.emitWinner(this.server, roomCode, gs);
@@ -63,26 +58,12 @@ export class GameLoopService {
           gs = nextTurn(gs);
         }
         room.gameState = gs;
-        this.syncRoomPlayersFromGame(room);
+        this.roomService.syncRoomPlayersFromGame(room);
         this.broadcast.emitStateUpdate(this.server, roomCode, gs);
         if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
           this.broadcast.emitWinner(this.server, roomCode, gs);
         }
       }
     }
-  }
-
-  private syncRoomPlayersFromGame(room: ServerRoom) {
-    if (!room.gameState) return;
-    room.players = room.gameState.players.map((gp) => ({
-      id: gp.id,
-      nickname: gp.nickname,
-      isHost: room.hostId === gp.id,
-      isReady: true,
-      score: computePlayerFinalScore(gp),
-      hand: gp.hand,
-      wonPileCount: gp.wonPile.length,
-      trophyCount: gp.trophyCount,
-    }));
   }
 }

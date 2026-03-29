@@ -12,7 +12,6 @@ import type { Server, Socket } from "socket.io";
 import {
   acceptDeclaration,
   claimChallenge,
-  computePlayerFinalScore,
   drawAndPassTurn,
   playCard,
   resolveChallenge,
@@ -27,6 +26,7 @@ import {
 } from "@sweet-spicy/shared-types";
 import { RoomService } from "../room/room.service";
 import { GameLoopService } from "../game/game-loop.service";
+import { GameBotDriverService } from "../game/game-bot-driver.service";
 import { GameBroadcastService } from "../game/game-broadcast.service";
 import { SocketRateLimiterService } from "./socket-rate-limiter.service";
 import { RoomCreateDto } from "./dto/room-create.dto";
@@ -52,6 +52,7 @@ export class RealtimeGateway implements OnGatewayInit {
     private readonly jwt: JwtService,
     private readonly roomService: RoomService,
     private readonly gameLoop: GameLoopService,
+    private readonly gameBotDriver: GameBotDriverService,
     private readonly broadcast: GameBroadcastService,
     private readonly rateLimiter: SocketRateLimiterService,
   ) {}
@@ -70,6 +71,7 @@ export class RealtimeGateway implements OnGatewayInit {
 
   afterInit(server: Server) {
     this.gameLoop.attachServer(server);
+    this.gameBotDriver.attachServer(server);
     server.use((socket, next) => {
       try {
         const token = socket.handshake.auth?.token as string | undefined;
@@ -170,6 +172,25 @@ export class RealtimeGateway implements OnGatewayInit {
     const roomCode = room.roomCode;
     this.server.to(roomCode).emit("room:player-ready", { playerId: userId, ready });
     return { success: true };
+  }
+
+  @SubscribeMessage("room:add-bot")
+  handleAddBot(@ConnectedSocket() client: Socket) {
+    if (!this.rateLimiter.consume(client.id, "room:add-bot")) {
+      this.emitRateLimit(client);
+      return { success: false as const, error: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string };
+    }
+    const userId = client.data.userId as string;
+    const result = this.roomService.addLobbyBot(userId);
+    if (!result.ok) {
+      /** Expected validation errors: return via ack only so clients do not receive global `error` spam. */
+      return { success: false as const, error: result.error };
+    }
+    const roomCode = result.room.roomCode;
+    const bot = result.player;
+    this.server.to(roomCode).emit("room:player-joined", bot);
+    const state = this.roomService.toRoomState(result.room);
+    return { success: true as const, room: state, player: bot };
   }
 
   @SubscribeMessage("room:start")
@@ -425,16 +446,6 @@ export class RealtimeGateway implements OnGatewayInit {
   }
 
   private syncRoomPlayers(room: import("../room/room.service").ServerRoom) {
-    if (!room.gameState) return;
-    room.players = room.gameState.players.map((gp) => ({
-      id: gp.id,
-      nickname: gp.nickname,
-      isHost: room.hostId === gp.id,
-      isReady: true,
-      score: computePlayerFinalScore(gp),
-      hand: gp.hand,
-      wonPileCount: gp.wonPile.length,
-      trophyCount: gp.trophyCount,
-    }));
+    this.roomService.syncRoomPlayersFromGame(room);
   }
 }

@@ -25,6 +25,7 @@ import {
   isRoundResolutionInterstitialPhase,
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
 } from "@/lib/game-room.constants";
+import { PlayfieldRevealActionStrip } from "@/features/game/components/PlayfieldRevealActionStrip";
 
 type BoardPlayer = GamePlayer | ClientGamePlayer;
 
@@ -124,6 +125,7 @@ function BoardViewImpl({
   handDragActiveRef,
   onDrawPassPileDragSession,
   challengeResult = null,
+  challengeTimer = 0,
   penaltyFxSnapshot = null,
 }: BoardViewProps) {
   const { drawStackRef, roundPileRailRef } = usePlaymatAnchors();
@@ -169,6 +171,9 @@ function BoardViewImpl({
 
   const isChallenge = phase === GAME_PHASE.CHALLENGE_PHASE;
   const showChallengeInline = isChallenge && playedCard != null && inlineChallenge != null;
+  const showRevealActionStrip =
+    phase === GAME_PHASE.REVEAL && playedCard != null && challengeResult != null;
+  const showPlayfieldActionStrip = showChallengeInline || showRevealActionStrip;
 
   const tableauDuelProps = {
     drawPileCount,
@@ -187,10 +192,11 @@ function BoardViewImpl({
   /**
    * Center the scroll column on large viewports when there is an on-table claim or an active turn.
    * PENALTY / NEXT_TURN / trophy panels live in {@link GameTableDeclarationSection} (not the strip below).
+   * When Challenge/Reveal action UI lives below the duel band, skip centering — otherwise `justify-center`
+   * floats the strip in the remaining scroll height and leaves a false “void” under the claim card.
    */
-  /** REVEAL excluded: vertical centering with `playedCard` forces tall flex and scroll; top-align REVEAL instead. */
   const verticallyCenterPlayfieldInScroll =
-    (playedCard != null && phase !== GAME_PHASE.REVEAL) || phase === GAME_PHASE.PLAYER_TURN;
+    (!showPlayfieldActionStrip && playedCard != null) || phase === GAME_PHASE.PLAYER_TURN;
 
   const playfieldInterstitial = isRoundResolutionInterstitialPhase(phase);
 
@@ -254,6 +260,7 @@ function BoardViewImpl({
           playDropZone={playDropZone}
           challengeResult={challengeResult}
           challengeOutcomeNames={challengeOutcomeNames}
+          challengeTimer={challengeTimer}
           localPlayerId={localPlayerId}
           roundPileAnchorRef={roundPileRailRef}
           roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
@@ -296,13 +303,25 @@ function BoardViewImpl({
         "flex w-full flex-col",
         (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
         playfieldInterstitial ? "gap-2 sm:gap-3" : "gap-3 sm:gap-4",
-        revealPlayedInScroll && "justify-center",
+        /** Packs action strip under the card; avoid vertical centering in a `flex-1` slot (creates a visual “void”). */
+        revealPlayedInScroll && !showPlayfieldActionStrip && "justify-center",
         verticallyCenterPlayfieldInScroll && "lg:justify-center",
-        showChallengeInline && "items-center gap-2 sm:gap-3",
+        showPlayfieldActionStrip && "items-center gap-2 sm:gap-3",
       )}
     >
-      {showChallengeInline && playedCard && inlineChallenge ? (
-        <ChallengePhase variant="embedded" playedCard={playedCard} {...inlineChallenge} />
+      {showPlayfieldActionStrip ? (
+        <div className="flex w-full min-h-0 flex-col items-center gap-2 sm:gap-3">
+          {showChallengeInline && playedCard && inlineChallenge ? (
+            <ChallengePhase variant="embedded" playedCard={playedCard} {...inlineChallenge} />
+          ) : null}
+          {showRevealActionStrip && challengeResult ? (
+            <PlayfieldRevealActionStrip
+              challengeResult={challengeResult}
+              challengeTimer={challengeTimer}
+              challengeOutcomeNames={challengeOutcomeNames}
+            />
+          ) : null}
+        </div>
       ) : null}
 
       <div
@@ -383,6 +402,7 @@ function BoardViewImpl({
         phase={phase}
         challengeResult={challengeResult}
         localPlayerId={localPlayerId}
+        challengeTimer={challengeTimer}
       />
       <RoundResolutionFxOverlay
         phase={phase}

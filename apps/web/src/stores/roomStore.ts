@@ -1,10 +1,12 @@
 import { create } from "zustand";
+import { DEFAULT_ROOM_MAX_PLAYERS } from "@sweet-spicy/shared-types";
 
 interface RoomPlayer {
   id: string;
   nickname: string;
   isReady: boolean;
   isHost?: boolean;
+  isBot?: boolean;
   /** Present when server syncs game scores onto room players */
   score?: number;
   trophyCount?: number;
@@ -17,6 +19,7 @@ interface RoomState {
   maxPlayers: number;
 
   setRoomCode: (code: string) => void;
+  setMaxPlayers: (max: number) => void;
   setPlayers: (players: RoomPlayer[]) => void;
   addPlayer: (player: RoomPlayer) => void;
   removePlayer: (playerId: string) => void;
@@ -29,16 +32,19 @@ export const useRoomStore = create<RoomState>((set) => ({
   code: null,
   players: [],
   isConnected: false,
-  maxPlayers: 6,
+  maxPlayers: DEFAULT_ROOM_MAX_PLAYERS,
 
   setRoomCode: (code) => set({ code }),
+
+  setMaxPlayers: (maxPlayers) => set({ maxPlayers }),
 
   setPlayers: (players) => set({ players }),
 
   addPlayer: (player) =>
-    set((state) => ({
-      players: [...state.players, player],
-    })),
+    set((state) => {
+      if (state.players.some((p) => p.id === player.id)) return state;
+      return { players: [...state.players, player] };
+    }),
 
   removePlayer: (playerId) =>
     set((state) => ({
@@ -57,5 +63,6 @@ export const useRoomStore = create<RoomState>((set) => ({
       code: null,
       players: [],
       isConnected: false,
+      maxPlayers: DEFAULT_ROOM_MAX_PLAYERS,
     }),
 }));

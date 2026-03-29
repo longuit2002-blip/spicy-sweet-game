@@ -12,7 +12,26 @@ export const CHALLENGE_CLAIM_RACE_SECONDS = 20;
 /** After a claim, holder must pick wrong suit vs wrong number. */
 export const CHALLENGE_PICK_TYPE_SECONDS = 20;
 
-/** Pause after REVEAL / before PENALTY, and after PENALTY / NEXT_TURN before advancing. */
+/**
+ * First seconds of `REVEAL`: choice is “locked” (suit vs number); clients keep the card face-down until `challengeTimer` crosses {@link REVEAL_REMAIN_AFTER_LOCK_THRESHOLD}.
+ */
+export const REVEAL_LOCK_COUNTDOWN_SECONDS = 3;
+
+/**
+ * After the lock window: time for the slow flip animation plus a short beat to read the face before penalty.
+ * Sum of integer seconds should cover ~`PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS` on the client plus dwell.
+ */
+export const REVEAL_POST_LOCK_HOLD_SECONDS = 8;
+
+/** Initial `challengeTimer` entering `REVEAL` — lock segment + post-lock segment (server ticks once per second). */
+export const REVEAL_PHASE_COUNTDOWN_SECONDS =
+  REVEAL_LOCK_COUNTDOWN_SECONDS + REVEAL_POST_LOCK_HOLD_SECONDS;
+
+/** While `challengeTimer` is strictly greater than this, all clients are in the lock window (`REVEAL_LOCK_COUNTDOWN_SECONDS` ticks). */
+export const REVEAL_REMAIN_AFTER_LOCK_THRESHOLD =
+  REVEAL_PHASE_COUNTDOWN_SECONDS - REVEAL_LOCK_COUNTDOWN_SECONDS;
+
+/** Pause after PENALTY / NEXT_TURN / TROPHY before advancing — not used for the main REVEAL countdown. */
 export const PHASE_STEP_PAUSE_SECONDS = 2;
 
 /** Number of cards drawn as a failed-challenge penalty. */

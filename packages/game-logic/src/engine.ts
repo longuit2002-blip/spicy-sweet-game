@@ -19,6 +19,7 @@ import {
   PENALTY_DRAW_COUNT,
   PHASE_STEP_PAUSE_SECONDS,
   REFILL_HAND_SIZE,
+  REVEAL_PHASE_COUNTDOWN_SECONDS,
   TOTAL_TROPHIES,
   TOTAL_WILD_CARDS,
   TROPHY_CARD_POINTS,
@@ -136,9 +137,10 @@ function cardPassesChallengeAttribute(
 
 /**
  * `true` when the real card does **not** match the declaration on the challenged attribute
- * (the declarer was bluffing on that attribute) — the **challenger wins** the table pile in
- * {@link applyPenalty}. `false` means the card matches; the declarer wins the pile and the
- * challenger draws the penalty.
+ * (the declarer was bluffing on that attribute) — in {@link applyPenalty} the **challenger**
+ * wins the table pile and the **declarer** draws {@link PENALTY_DRAW_COUNT} (+ optional Total Wild).
+ * `false` means the card matches on that attribute; the declarer wins the pile and the challenger
+ * draws the penalty.
  */
 export function isChallengeCorrect(
   card: GameCard,
@@ -286,8 +288,12 @@ export function createPlayer(id: string, nickname: string): GamePlayer {
   };
 }
 
-export function createLobbyPlayer(nickname: string): GamePlayer {
-  return createPlayer(generateId(), nickname);
+export function createLobbyPlayer(nickname: string, options?: { isBot?: boolean }): GamePlayer {
+  const p = createPlayer(generateId(), nickname);
+  if (options?.isBot) {
+    return { ...p, isBot: true };
+  }
+  return p;
 }
 
 export function createInitialState(roomCode: string): GameState {
@@ -546,7 +552,7 @@ export function resolveChallenge(
     ...state,
     phase: "REVEAL",
     challengeResult: result,
-    challengeTimer: PHASE_STEP_PAUSE_SECONDS,
+    challengeTimer: REVEAL_PHASE_COUNTDOWN_SECONDS,
     challengeStep: null,
     challengeClaimHolderId: null,
   };
@@ -574,7 +580,7 @@ export function resolveChallengeTimeout(state: GameState): GameState {
     ...state,
     phase: "REVEAL",
     challengeResult: result,
-    challengeTimer: PHASE_STEP_PAUSE_SECONDS,
+    challengeTimer: REVEAL_PHASE_COUNTDOWN_SECONDS,
     challengeStep: null,
     challengeClaimHolderId: null,
   };
@@ -594,6 +600,16 @@ export function tickChallengePhase(state: GameState): GameState {
     return resolveChallengeTimeout(state);
   }
   return acceptDeclaration(state);
+}
+
+/** Server + offline: one REVEAL countdown tick; applies penalty when timer reaches 0. */
+export function tickRevealPhase(state: GameState): GameState {
+  if (state.phase !== "REVEAL") return state;
+  const nextTimer = Math.max(0, state.challengeTimer - 1);
+  if (nextTimer > 0) {
+    return { ...state, challengeTimer: nextTimer };
+  }
+  return applyPenalty(state);
 }
 
 export function applyPenalty(state: GameState): GameState {
@@ -618,20 +634,25 @@ export function applyPenalty(state: GameState): GameState {
     };
   }
 
-  if (!challengeCorrect) {
-    const chIdx = players.findIndex((p) => p.id === challengerId);
-    if (chIdx !== -1) {
-      const drawn = drawFromDrawPile(drawPile, PENALTY_DRAW_COUNT);
-      drawPile = drawn.drawPile;
-      let hand = [...players[chIdx].hand, ...drawn.drawn];
-      const hasTotalWild = hand.some((c) => c.kind === "total-wild");
-      if (!hasTotalWild && supremeReserve > 0) {
-        const tw = createTotalWildCard();
-        supremeReserve -= 1;
-        hand = [...hand, tw];
-      }
-      players[chIdx] = { ...players[chIdx], hand };
+  const grantPenaltyDraw = (targetId: string) => {
+    const idx = players.findIndex((p) => p.id === targetId);
+    if (idx === -1) return;
+    const drawn = drawFromDrawPile(drawPile, PENALTY_DRAW_COUNT);
+    drawPile = drawn.drawPile;
+    let hand = [...players[idx]!.hand, ...drawn.drawn];
+    const hasTotalWild = hand.some((c) => c.kind === "total-wild");
+    if (!hasTotalWild && supremeReserve > 0) {
+      const tw = createTotalWildCard();
+      supremeReserve -= 1;
+      hand = [...hand, tw];
     }
+    players[idx] = { ...players[idx]!, hand };
+  };
+
+  if (challengeCorrect) {
+    grantPenaltyDraw(playerId);
+  } else {
+    grantPenaltyDraw(challengerId);
   }
 
   const loserIdx = players.findIndex((p) => p.id === loserId);

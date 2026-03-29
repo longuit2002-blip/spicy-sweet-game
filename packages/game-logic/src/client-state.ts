@@ -19,6 +19,7 @@ function toClientPlayer(p: GamePlayer, viewerPlayerId: string): ClientGamePlayer
     score: computePlayerFinalScore(p),
     isReady: p.isReady,
     isHost: p.isHost,
+    ...(p.isBot === true ? { isBot: true as const } : {}),
   };
 }
 

@@ -14,6 +14,7 @@ const EVENT_LIMITS: Readonly<Record<string, number>> = {
   "room:join": 12,
   "room:ready": 20,
   "room:start": 4,
+  "room:add-bot": 10,
   "room:leave": 10,
 };
 

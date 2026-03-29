@@ -84,6 +84,9 @@ export function ChallengeOutcomeCallout({
           <span className="font-semibold">{challenger}</span> {t("result.challengeCorrect")}
         </p>
         <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{t("result.challengerTakesPile")}</p>
+        <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+          {t("result.declarerPenaltyBluffCaught", { player: declarer })}
+        </p>
       </>
     ) : (
       <>

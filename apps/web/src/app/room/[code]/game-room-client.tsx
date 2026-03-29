@@ -18,7 +18,7 @@ import {
   resolveChallenge,
   claimChallenge,
   tickChallengePhase,
-  applyPenalty,
+  tickRevealPhase,
   nextTurn,
   minDeclarationRankForState,
   maxDeclarationRankForState,
@@ -107,7 +107,7 @@ export function GameRoomClient() {
   const nick = searchParams.get("nick") ?? DEFAULT_LOBBY_NICKNAME;
 
   const { user } = useUserStore();
-  const { players: roomPlayers, isConnected } = useRoomStore();
+  const { players: roomPlayers, isConnected, maxPlayers: roomMaxPlayers } = useRoomStore();
   const { gameState } = useGameStore();
 
   const socketApi = useGameSocket();
@@ -130,6 +130,8 @@ export function GameRoomClient() {
   const handDragActiveRef = useRef(false);
   const [drawPileDragActive, setDrawPileDragActive] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isAddingLobbyBot, setIsAddingLobbyBot] = useState(false);
   const [botNames] = useState<string[]>(() => [...OFFLINE_BOT_DISPLAY_NAMES]);
   const [gameLog, setGameLog] = useState<readonly { id: string; text: string; at: number }[]>([]);
   const [lastActionByPlayerId, setLastActionByPlayerId] = useState<
@@ -158,6 +160,16 @@ export function GameRoomClient() {
   const revealPileCardCount = tablePileCount + 1;
   const displayCode = code === NEW_ROOM_ROUTE_SEGMENT ? "MEOW-???" : code;
 
+  const serverLobbySynced =
+    isConnected && code !== NEW_ROOM_ROUTE_SEGMENT && roomPlayers.length > 0;
+  const lobbyHeadcount = serverLobbySynced ? roomPlayers.length : currentGameState.players.length;
+  const canAddLobbyBot =
+    (localPlayer?.isHost ?? false) &&
+    lobbyHeadcount < roomMaxPlayers &&
+    !isCreatingRoom &&
+    !isAddingLobbyBot &&
+    (!isConnected || serverLobbySynced);
+
   const isMainGamePhase =
     currentGameState.phase === GAME_PHASE.PLAYER_TURN ||
     currentGameState.phase === GAME_PHASE.CHALLENGE_PHASE ||
@@ -169,11 +181,17 @@ export function GameRoomClient() {
   // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (!isConnected) setIsAddingLobbyBot(false);
+  }, [isConnected]);
+
+  useEffect(() => {
     if (!user?.id || !isConnected) return;
     if (code === NEW_ROOM_ROUTE_SEGMENT) {
       if (createOnce.current) return;
       createOnce.current = true;
+      setIsCreatingRoom(true);
       socketApi.createRoom(DEFAULT_ROOM_MAX_PLAYERS, (result: unknown) => {
+        setIsCreatingRoom(false);
         const r = result as { success?: boolean; room?: { roomCode?: string } };
         if (r?.success && r?.room?.roomCode) {
           router.replace(`/room/${r.room.roomCode}`);
@@ -212,6 +230,7 @@ export function GameRoomClient() {
         trophyCount: p.trophyCount ?? 0,
         isReady: p.isReady,
         isHost: p.isHost,
+        ...(p.isBot ? { isBot: true as const } : {}),
       })),
     }));
   }, [isConnected, roomPlayers, code]);
@@ -304,8 +323,9 @@ export function GameRoomClient() {
           const declarer = currentGameState.players.find((p) => p.id === r.playerId);
           if (r.challengeCorrect) {
             addLog(
-              t("log.penaltyWin", {
-                winner: challenger?.nickname ?? t("common.unknownPlayer"),
+              t("log.penaltyBluffCaught", {
+                challenger: challenger?.nickname ?? t("common.unknownPlayer"),
+                declarer: declarer?.nickname ?? t("common.unknownPlayer"),
                 count: snap.pileCardCount,
               }),
             );
@@ -345,8 +365,10 @@ export function GameRoomClient() {
     pileCardCount: number;
   } | null>(null);
 
-  /** Challenger hand card ids at end of REVEAL — used to diff exact draw-pile cards after `applyPenalty`. */
+  /** Challenger hand card ids at end of REVEAL — diff penalty draws when challenger pays. */
   const challengerHandBeforePenaltyRef = useRef<readonly string[] | null>(null);
+  /** Declarer hand ids at end of REVEAL — diff penalty draws when declarer is caught bluffing. */
+  const declarerHandBeforePenaltyRef = useRef<readonly string[] | null>(null);
 
   useEffect(() => {
     if (currentGameState.phase === GAME_PHASE.REVEAL && currentGameState.challengeResult) {
@@ -354,9 +376,11 @@ export function GameRoomClient() {
         result: currentGameState.challengeResult,
         pileCardCount: revealPileCardCount,
       };
-      const cid = currentGameState.challengeResult.challengerId;
-      const challenger = currentGameState.players.find((p) => p.id === cid);
+      const cr = currentGameState.challengeResult;
+      const challenger = currentGameState.players.find((p) => p.id === cr.challengerId);
       challengerHandBeforePenaltyRef.current = challenger ? challenger.hand.map((c) => c.id) : null;
+      const declarer = currentGameState.players.find((p) => p.id === cr.playerId);
+      declarerHandBeforePenaltyRef.current = declarer ? declarer.hand.map((c) => c.id) : null;
     }
   }, [currentGameState.phase, currentGameState.challengeResult, revealPileCardCount, currentGameState.players]);
 
@@ -365,15 +389,25 @@ export function GameRoomClient() {
     const snap = penaltySnapshotRef.current;
     if (!snap) return null;
     let penaltyDrawnCards: readonly GameCard[] | undefined;
-    if (!snap.result.challengeCorrect && snap.result.challengerId === localPlayerId) {
-      const challenger = currentGameState.players.find((p) => p.id === localPlayerId);
-      const prevIds = challengerHandBeforePenaltyRef.current;
-      if (challenger && prevIds) {
-        const prefixOk = prevIds.every((id, idx) => challenger.hand[idx]?.id === id);
-        if (prefixOk && challenger.hand.length >= prevIds.length + PENALTY_DRAW_COUNT) {
-          penaltyDrawnCards = challenger.hand.slice(prevIds.length, prevIds.length + PENALTY_DRAW_COUNT);
-        }
+    const r = snap.result;
+    const diffPenaltyDraw = (prevIds: readonly string[] | null, handOwner: typeof currentGameState.players[0] | undefined) => {
+      if (!handOwner || !prevIds) return undefined;
+      const prefixOk = prevIds.every((id, idx) => handOwner.hand[idx]?.id === id);
+      if (prefixOk && handOwner.hand.length >= prevIds.length + PENALTY_DRAW_COUNT) {
+        return handOwner.hand.slice(prevIds.length, prevIds.length + PENALTY_DRAW_COUNT);
       }
+      return undefined;
+    };
+    if (r.challengeCorrect && r.playerId === localPlayerId) {
+      penaltyDrawnCards = diffPenaltyDraw(
+        declarerHandBeforePenaltyRef.current,
+        currentGameState.players.find((p) => p.id === localPlayerId),
+      );
+    } else if (!r.challengeCorrect && r.challengerId === localPlayerId) {
+      penaltyDrawnCards = diffPenaltyDraw(
+        challengerHandBeforePenaltyRef.current,
+        currentGameState.players.find((p) => p.id === localPlayerId),
+      );
     }
     return { result: snap.result, pileCardCount: snap.pileCardCount, penaltyDrawnCards };
   }, [currentGameState.phase, currentGameState.players, localPlayerId]);
@@ -391,14 +425,6 @@ export function GameRoomClient() {
   ]);
 
   // ── Phase auto-advance (offline) ──────────────────────────────────────────
-
-  const   handleRevealContinue = useCallback(() => {
-    if (isOnlineMode) return;
-    setLocalGameState((prev) => {
-      if (prev.phase !== GAME_PHASE.REVEAL || !prev.challengeResult) return prev;
-      return applyPenalty(prev);
-    });
-  }, [isOnlineMode]);
 
   const handleNextTurn = useCallback(() => {
     if (isOnlineMode) return;
@@ -418,11 +444,16 @@ export function GameRoomClient() {
   }, [isOnlineMode, currentGameState.phase]);
 
   useEffect(() => {
-    if (currentGameState.phase === GAME_PHASE.REVEAL) {
-      const timer = setTimeout(handleRevealContinue, OFFLINE_PHASE_AUTO_ADVANCE_MS);
-      return () => clearTimeout(timer);
-    }
-  }, [currentGameState.phase, handleRevealContinue]);
+    if (isOnlineMode) return;
+    if (currentGameState.phase !== GAME_PHASE.REVEAL) return;
+    const id = setInterval(() => {
+      setLocalGameState((prev) => {
+        if (prev.phase !== GAME_PHASE.REVEAL) return prev;
+        return tickRevealPhase(prev);
+      });
+    }, OFFLINE_CHALLENGE_TICK_MS);
+    return () => clearInterval(id);
+  }, [isOnlineMode, currentGameState.phase]);
 
   useEffect(() => {
     if (
@@ -503,19 +534,50 @@ export function GameRoomClient() {
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const addBot = useCallback(() => {
-    if (currentGameState.players.length >= DEFAULT_ROOM_MAX_PLAYERS) return;
+    if (lobbyHeadcount >= roomMaxPlayers) return;
+    if (!(localPlayer?.isHost ?? false)) return;
+
+    if (serverLobbySynced) {
+      if (isAddingLobbyBot) return;
+      setIsAddingLobbyBot(true);
+      socketApi.addLobbyBot((result) => {
+        setIsAddingLobbyBot(false);
+        if (!result.success) {
+          toast({
+            variant: "destructive",
+            title: t("room.addBotFailedTitle"),
+            description: result.error ?? t("room.addBotFailedDesc"),
+          });
+        }
+      });
+      return;
+    }
+
+    if (isConnected) return;
+
     const usedNames = currentGameState.players.map((p) => p.nickname);
     const available = botNames.filter((n) => !usedNames.includes(n));
     const name =
       available[0] ?? t("lobby.botFallbackName", { n: currentGameState.players.length });
-    const bot = createLobbyPlayer(name);
+    const bot = createLobbyPlayer(name, { isBot: true });
     bot.isReady = true;
 
     setLocalGameState((prev) => ({
       ...prev,
       players: [...prev.players, bot],
     }));
-  }, [currentGameState.players.length, currentGameState.players, botNames, t]);
+  }, [
+    botNames,
+    currentGameState.players,
+    isConnected,
+    isAddingLobbyBot,
+    lobbyHeadcount,
+    localPlayer?.isHost,
+    roomMaxPlayers,
+    serverLobbySynced,
+    socketApi.addLobbyBot,
+    t,
+  ]);
 
   const handleStartGame = () => {
     if (isConnected && roomPlayers.length >= MIN_PLAYERS_TO_START) {
@@ -688,14 +750,18 @@ export function GameRoomClient() {
                   const isChallenger = r.challengerId === localPlayerId;
                   let chip: ReactNode = null;
                   if (r.challengeCorrect) {
-                    if (isChallenger) {
-                      chip = (
+                    chip = (
+                      <>
                         <span className={chipClass}>
                           <Icon name="layers" size={18} aria-hidden />
                           {t("phase.penaltyFxRoundChip", { count: pileN })}
                         </span>
-                      );
-                    }
+                        <span className={chipClass}>
+                          <Icon name="playing_cards" size={18} aria-hidden />
+                          {t("phase.penaltyFxDrawChip", { count: PENALTY_DRAW_COUNT })}
+                        </span>
+                      </>
+                    );
                   } else if (isDeclarer) {
                     chip = (
                       <span className={chipClass}>
@@ -731,6 +797,7 @@ export function GameRoomClient() {
                     <p className="min-w-0 flex-1 text-sm font-medium leading-relaxed text-foreground sm:text-base sm:leading-relaxed">
                       {t("phase.penaltyChallengerWins", {
                         challenger: challenger.nickname,
+                        declarer: declarer.nickname,
                         count: pileN,
                       })}
                     </p>
@@ -856,6 +923,9 @@ export function GameRoomClient() {
               localPlayer={localPlayer}
               displayCode={displayCode}
               isConnected={isConnected}
+              isCreatingRoom={isCreatingRoom}
+              roomMaxPlayers={roomMaxPlayers}
+              canAddBot={canAddLobbyBot}
               onAddBot={addBot}
               onStartGame={handleStartGame}
               onToggleReady={handleToggleReady}
@@ -878,6 +948,7 @@ export function GameRoomClient() {
                   drawPileCount={drawPileCount}
                   supremeReserve={currentGameState.supremeReserve}
                   trophiesRemaining={currentGameState.trophiesRemaining}
+                  challengeTimer={currentGameState.challengeTimer}
                   drawPassAction={
                     isMyTurn &&
                     currentGameState.phase === GAME_PHASE.PLAYER_TURN &&

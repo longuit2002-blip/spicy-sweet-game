@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import {
   DEFAULT_ROOM_MAX_PLAYERS,
@@ -9,6 +10,7 @@ import {
 import {
   computePlayerFinalScore,
   createInitialState,
+  pickNextLobbyBotNickname,
   startGame as engineStartGame,
   generateRoomCode,
 } from "@sweet-spicy/game-logic";
@@ -107,8 +109,11 @@ export class RoomService {
 
     let newHostId: string | undefined;
     if (room.hostId === userId) {
-      room.hostId = room.players[0].id;
-      room.players[0].isHost = true;
+      const nextHost = room.players.find((p) => !p.isBot) ?? room.players[0]!;
+      room.hostId = nextHost.id;
+      for (const p of room.players) {
+        p.isHost = p.id === room.hostId;
+      }
       newHostId = room.hostId;
     }
 
@@ -123,6 +128,31 @@ export class RoomService {
     const player = room.players.find((p) => p.id === userId);
     if (player) player.isReady = ready;
     return room;
+  }
+
+  addLobbyBot(hostUserId: string): { ok: true; room: ServerRoom; player: RoomPlayer } | { ok: false; error: string } {
+    const roomCode = this.userToRoom.get(hostUserId);
+    if (!roomCode) return { ok: false, error: "Not in a room" };
+    const room = this.rooms.get(roomCode);
+    if (!room) return { ok: false, error: "Room not found" };
+    if (room.hostId !== hostUserId) return { ok: false, error: "Only the host can add bots" };
+    if (room.status !== "WAITING") return { ok: false, error: "Bots can only be added in the lobby" };
+    if (room.players.length >= room.maxPlayers) return { ok: false, error: "Room is full" };
+
+    const nickname = pickNextLobbyBotNickname(room.players.map((p) => p.nickname));
+    const player: RoomPlayer = {
+      id: `bot:${randomUUID()}`,
+      nickname,
+      isHost: false,
+      isReady: true,
+      isBot: true,
+      score: 0,
+      hand: [],
+      wonPileCount: 0,
+      trophyCount: 0,
+    };
+    room.players.push(player);
+    return { ok: true, room, player };
   }
 
   startGame(hostId: string): { ok: true; room: ServerRoom } | { ok: false; error: string } {
@@ -146,6 +176,7 @@ export class RoomService {
       trophyCount: 0,
       isReady: p.isReady,
       isHost: p.isHost,
+      ...(p.isBot ? { isBot: true as const } : {}),
     }));
     gs = engineStartGame(gs);
     room.gameState = gs;
@@ -158,6 +189,7 @@ export class RoomService {
       hand: gp.hand,
       wonPileCount: gp.wonPile.length,
       trophyCount: gp.trophyCount,
+      ...(gp.isBot ? { isBot: true as const } : {}),
     }));
     return { ok: true, room };
   }
@@ -169,5 +201,21 @@ export class RoomService {
   getRoomForUser(userId: string): ServerRoom | undefined {
     const code = this.userToRoom.get(userId);
     return code ? this.rooms.get(code) : undefined;
+  }
+
+  /** Keep `room.players` in sync with authoritative `room.gameState` (hands, scores, flags). */
+  syncRoomPlayersFromGame(room: ServerRoom): void {
+    if (!room.gameState) return;
+    room.players = room.gameState.players.map((gp) => ({
+      id: gp.id,
+      nickname: gp.nickname,
+      isHost: room.hostId === gp.id,
+      isReady: true,
+      score: computePlayerFinalScore(gp),
+      hand: gp.hand,
+      wonPileCount: gp.wonPile.length,
+      trophyCount: gp.trophyCount,
+      ...(gp.isBot ? { isBot: true as const } : {}),
+    }));
   }
 }

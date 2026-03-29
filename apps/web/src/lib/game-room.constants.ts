@@ -1,6 +1,9 @@
 import {
   CHALLENGE_PHASE_COUNTDOWN_SECONDS,
   PHASE_STEP_PAUSE_SECONDS,
+  REVEAL_LOCK_COUNTDOWN_SECONDS,
+  REVEAL_PHASE_COUNTDOWN_SECONDS,
+  REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
 } from "@sweet-spicy/game-logic";
 import {
   DEFAULT_ROOM_MAX_PLAYERS,
@@ -10,7 +13,14 @@ import {
   type GamePhase,
 } from "@sweet-spicy/shared-types";
 
-export { CHALLENGE_PHASE_COUNTDOWN_SECONDS, DEFAULT_ROOM_MAX_PLAYERS, MIN_PLAYERS_TO_START };
+export {
+  CHALLENGE_PHASE_COUNTDOWN_SECONDS,
+  DEFAULT_ROOM_MAX_PLAYERS,
+  MIN_PLAYERS_TO_START,
+  REVEAL_LOCK_COUNTDOWN_SECONDS,
+  REVEAL_PHASE_COUNTDOWN_SECONDS,
+  REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
+};
 
 /** Phases where the virtual tabletop (opponents row, table, action log, hand strip) is shown. */
 export function isTabletopLayoutPhase(phase: GamePhase): boolean {
@@ -74,6 +84,13 @@ export const DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS = "top-1 sm:top-2" as const;
 
 /** Full-screen REVEAL impact overlay (above table; PENALTY card flights use a separate layer). */
 export const CHALLENGE_REVEAL_IMPACT_Z = 62;
+
+/**
+ * After the reveal outcome mounts, auto-dismiss the overlay (ms). Ideally this lines up with the
+ * server leaving `REVEAL`; until then this only controls how long the “Kết quả vòng” beat stays on screen
+ * (`REVEAL_POST_LOCK_HOLD_SECONDS` still covers most of post-flip phase).
+ */
+export const CHALLENGE_REVEAL_IMPACT_HOLD_MS = 2800;
 
 /** Normalized timeline: card-back flight completes before flip to drawn faces (see `RoundResolutionFxOverlay`). */
 export const ROUND_RESOLUTION_DRAW_FLIP_AT = 0.68;

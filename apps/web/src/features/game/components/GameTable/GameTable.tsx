@@ -31,6 +31,7 @@ import {
   GAME_DRAW_PASS_DRAG_PAYLOAD,
   getCardIdFromDragDataTransfer,
   isRoundResolutionInterstitialPhase,
+  REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
 } from "@/lib/game-room.constants";
 
 /** Drop a hand card onto the empty play slot (HTML5 DnD). */
@@ -70,6 +71,10 @@ export interface GameTableProps {
   /** Shown with {@link challengeResult} for inline outcome copy (REVEAL callout). */
   challengeOutcomeNames?: { challenger: string; declarer: string } | null;
   /**
+   * Mirrors server `challengeTimer` during {@link GAME_PHASE.REVEAL} for the drama countdown bar.
+   */
+  challengeTimer?: number;
+  /**
    * When set, REVEAL result chips show only **this** seat’s consequence (won pile vs penalty draw).
    * Omit on standalone {@link GameTable} for a neutral two-line fallback when truth resolves.
    */
@@ -97,17 +102,11 @@ const PLAY_CARD_STACK_LEAD_IN_SECONDS = 0.02;
 const REDUCED_CARD_MOTION_DURATION_SECONDS = 0.16;
 
 /**
- * Non-challenge played declaration block min-height (must match `motion` when `playedCard != null`).
- * Caps in rem keep very large viewports from forcing excess scroll vs opponents + hand strip.
+ * When a claim is on the table (declare → challenge → reveal): one min-height so the card column
+ * does not jump across phases. Caps in rem keep very large viewports from forcing excess scroll.
  */
-const DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE =
+const DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM =
   "sm:min-h-[min(56vh,38rem)] lg:min-h-[min(62vh,44rem)]";
-
-/**
- * REVEAL: height follows the hero card + copy only. A fixed `min-h` here stacked with a large
- * `aspect-[2/3]` REVEAL card forced the board column taller than the viewport; see BoardView strip reservation.
- */
-const DECLARATION_PLAYFIELD_MIN_H_REVEAL = "min-h-0";
 
 /**
  * Shared shell: empty `PLAYER_TURN` drop zone and round-resolution panel (PENALTY / NEXT_TURN / TROPHY).
@@ -120,23 +119,25 @@ const DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT =
  * Side rails (contested pile) stay **top-aligned** in the row so `items-center` does not vertically
  * recenter them when declaration `min-h` changes (declare vs REVEAL vs challenge).
  */
+/**
+ * Round pile stays column 1 on all breakpoints (no separate mobile row) so the anchor does not jump.
+ * Mobile: `auto | 1fr`; `sm+`: `1fr | auto | 1fr` with symmetric spacers.
+ */
 const PLAYFIELD_SIDE_RAIL_GRID_CLASS =
-  "grid w-full min-w-0 flex-1 grid-cols-1 content-center items-center gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:content-start sm:items-start lg:gap-x-4";
+  "grid w-full min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:gap-y-0 lg:gap-x-4";
 
-/** Challenge-phase declaration column is shorter — only used when `phase === CHALLENGE_PHASE`. */
-const DECLARATION_PLAYFIELD_MIN_H_CHALLENGE =
-  "sm:min-h-[min(34vh,20rem)] lg:min-h-[min(40vh,26rem)]";
+/** Shared wrapper: `roundPileAnchorRef` target for FX; always visible (not `hidden sm:flex`). */
+const PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS =
+  "col-start-1 row-start-1 flex min-w-0 shrink-0 items-start justify-end self-start pr-0.5 sm:pr-2";
 
 const PILE_STACK_VISIBLE_MAX = 6;
 const TABLEAU_STACK_DEPTH = 4;
 
-/** Played / empty play-slot width — REVEAL uses a larger hero size. */
-const PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT =
+/** Played claim on table and PLAYER_TURN drop slot: one width all phases (declare / challenge / reveal). */
+const PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED =
   "w-[12rem] sm:w-[13rem] lg:w-[15.5rem]";
-const PLAYFIELD_CLAIM_CARD_WIDTH_REVEAL =
-  "w-[14.5rem] sm:w-[16rem] lg:w-[19rem]";
-/** PLAYER_TURN drag target: same footprint as {@link PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT}. */
-const PLAYFIELD_DROP_SLOT_CARD_BOX = PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT;
+/** PLAYER_TURN drag target: same footprint as played claim card. */
+const PLAYFIELD_DROP_SLOT_CARD_BOX = PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED;
 
 /** Empty play slot (`PLAYER_TURN`): locked suit + chain rank on one line, rule text below. */
 function PlayerTurnDeclareContextPanel({
@@ -356,70 +357,80 @@ function TableauFaceDownStack({
 /** Max face-down layers drawn in playfield side rails (decorative, not pile logic). */
 const PLAYFIELD_RAIL_STACK_CAP = 2;
 
-function PlayfieldRoundPileRail({
-  tablePileCount,
-  compact = false,
-  className,
-}: {
-  tablePileCount: number;
-  compact?: boolean;
-  className?: string;
-}) {
+function PlayfieldRoundPileRail({ tablePileCount, className }: { tablePileCount: number; className?: string }) {
   const { t } = useTranslation("game");
+  const reducedMotion = useReducedMotion() === true;
   const visualLayers =
     tablePileCount <= 0 ? 0 : Math.min(tablePileCount, PLAYFIELD_RAIL_STACK_CAP);
 
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-1.5 text-center text-muted-foreground",
+        "flex flex-col items-center gap-2 text-center text-muted-foreground motion-reduce:transition-none",
         className,
       )}
     >
-      <p
-        className={cn(
-          "max-w-[6rem] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none",
-          compact ? "text-[10px]" : "text-[11px] sm:text-xs",
-        )}
-      >
+      <p className="max-w-[7rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-xs">
         {t("table.contestedPile")}
       </p>
-      <div
+      <motion.div
         className={cn(
-          "relative shrink-0",
-          compact ? "h-[4.5rem] w-12" : "h-[5.75rem] w-[4.25rem] sm:h-28 sm:w-16",
+          "relative h-[6.25rem] w-[4.125rem] shrink-0 rounded-xl p-0.5 ring-1 ring-primary/20 ring-offset-2 ring-offset-background sm:h-[7.5rem] sm:w-[4.625rem]",
+          visualLayers > 0 && "shadow-[0_8px_28px_-4px_hsl(var(--primary)/0.18)]",
         )}
+        animate={
+          reducedMotion || visualLayers === 0
+            ? {}
+            : {
+                boxShadow: [
+                  "0 0 0 0px hsl(var(--primary) / 0)",
+                  "0 0 22px 3px hsl(var(--primary) / 0.22)",
+                  "0 0 0 0px hsl(var(--primary) / 0)",
+                ],
+              }
+        }
+        transition={
+          reducedMotion || visualLayers === 0
+            ? { duration: 0 }
+            : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }
+        }
       >
-        {visualLayers === 0 ? (
-          <div
-            className="absolute inset-0 rounded-md border border-dashed border-border/55 bg-transparent"
-            aria-hidden
-          />
-        ) : (
-          Array.from({ length: visualLayers }).map((_, i) => (
+        <motion.div
+          className="relative h-full w-full"
+          animate={reducedMotion || visualLayers === 0 ? {} : { y: [0, -2, 0] }}
+          transition={
+            reducedMotion ? { duration: 0 } : { duration: 3.2, repeat: Infinity, ease: "easeInOut" }
+          }
+        >
+          {visualLayers === 0 ? (
             <div
-              key={i}
-              className="absolute rounded-md border-2 border-card-back/90 bg-card-back/90 shadow-sm"
-              style={{
-                width: compact ? "3rem" : "3.5rem",
-                height: compact ? "4rem" : "4.65rem",
-                left: i * (compact ? 2 : 3),
-                top: i * (compact ? -2 : -2),
-                zIndex: i,
-              }}
+              className="absolute inset-0 rounded-md border-2 border-dashed border-border/55 bg-muted/5"
               aria-hidden
             />
-          ))
-        )}
-      </div>
-      <strong
-        className={cn(
-          "tabular-nums font-bold text-foreground",
-          compact ? "text-sm" : "text-sm sm:text-base",
-        )}
+          ) : (
+            Array.from({ length: visualLayers }).map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "absolute rounded-lg border-2 border-card-back/90 bg-card-back/95 shadow-md sm:rounded-md",
+                  "h-[5.125rem] w-[3.75rem] sm:h-[5.75rem] sm:w-[4.125rem]",
+                )}
+                style={{ left: i * 4, top: i * -3, zIndex: i }}
+                aria-hidden
+              />
+            ))
+          )}
+        </motion.div>
+      </motion.div>
+      <motion.strong
+        className="text-base font-bold tabular-nums text-foreground sm:text-lg"
+        key={tablePileCount}
+        initial={reducedMotion ? false : { scale: 1 }}
+        animate={reducedMotion ? {} : { scale: [1, 1.12, 1] }}
+        transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
       >
         {tablePileCount}
-      </strong>
+      </motion.strong>
     </div>
   );
 }
@@ -786,6 +797,7 @@ export type GameTableDeclarationSectionProps = Pick<
   | "playDropZone"
   | "challengeResult"
   | "challengeOutcomeNames"
+  | "challengeTimer"
   | "localPlayerId"
   | "roundPileAnchorRef"
   | "roundResolutionPanel"
@@ -803,12 +815,18 @@ export function GameTableDeclarationSection({
   playDropZone = null,
   challengeResult = null,
   challengeOutcomeNames = null,
+  challengeTimer = 0,
   localPlayerId = "",
   roundPileAnchorRef = null,
   roundResolutionPanel = null,
 }: GameTableDeclarationSectionProps) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
+
+  const inRevealLock =
+    phase === GAME_PHASE.REVEAL &&
+    challengeResult != null &&
+    challengeTimer > REVEAL_REMAIN_AFTER_LOCK_THRESHOLD;
 
   const isPlayDropTarget =
     playDropZone != null && phase === GAME_PHASE.PLAYER_TURN && playedCard == null;
@@ -842,30 +860,35 @@ export function GameTableDeclarationSection({
   const pileLayers = Math.min(tablePileCount, PILE_STACK_VISIBLE_MAX);
 
   const showDeclaredCardFace =
-    phase === GAME_PHASE.REVEAL && playedCard != null && playedCard.card != null;
+    phase === GAME_PHASE.REVEAL &&
+    playedCard != null &&
+    playedCard.card != null &&
+    !inRevealLock;
 
   /** Plain-text outcome for assistive tech (visual outcome is portal FX + PENALTY strip). */
   const revealOutcomeSrText = useMemo(() => {
     if (phase !== GAME_PHASE.REVEAL || challengeResult == null || !showDeclaredCardFace) return null;
     const challenger = (challengeOutcomeNames?.challenger ?? "").trim() || DEFAULT_LOBBY_NICKNAME;
     const declarer = (challengeOutcomeNames?.declarer ?? "").trim() || DEFAULT_LOBBY_NICKNAME;
-    const { challengeCorrect, timedOut } = challengeResult;
+    const { challengeCorrect, timedOut, challengeType } = challengeResult;
+    const axisWord =
+      challengeType === "suit" ? t("result.suitAttr") : t("result.numberAttr");
+    const axisLead = t("result.challenged", { type: axisWord });
     const timeoutBranch = timedOut === true && !challengeCorrect;
     if (timeoutBranch) {
-      return [
-        t("result.challengeTimedOut"),
-        t("result.declarerTakesPile"),
-        t("result.challengerPenalty", { player: challenger }),
-      ].join(" ");
+      return [axisLead, t("result.challengeTimedOut"), t("result.declarerTakesPile"), t("result.challengerPenalty", { player: challenger })].join(" ");
     }
     if (challengeCorrect) {
       return [
+        axisLead,
         t("challenge.bluffCaught"),
         `${challenger} ${t("result.challengeCorrect")}`,
         t("result.challengerTakesPile"),
+        t("result.declarerPenaltyBluffCaught", { player: declarer }),
       ].join(" ");
     }
     return [
+      axisLead,
       t("result.wasTruth"),
       `${declarer} ${t("result.wasTruthMessage")}`,
       t("result.challengerPenalty", { player: challenger }),
@@ -873,11 +896,17 @@ export function GameTableDeclarationSection({
     ].join(" ");
   }, [phase, challengeResult, showDeclaredCardFace, challengeOutcomeNames, t]);
 
-  const isChallengePhaseLayout = phase === GAME_PHASE.CHALLENGE_PHASE;
-
   const claimFlipAriaLabel = useMemo(() => {
     if (playedCard == null) return "";
     const claimLine = `${t("table.claimIs")}: ${SPICE_LABEL[playedCard.declaration.type]} ${playedCard.declaration.number}`;
+    const lockedReveal =
+      phase === GAME_PHASE.REVEAL &&
+      challengeResult != null &&
+      playedCard.card != null &&
+      challengeTimer > REVEAL_REMAIN_AFTER_LOCK_THRESHOLD;
+    if (lockedReveal) {
+      return `${t("table.a11y.faceDownPlay")} — ${claimLine}. ${t("challenge.revealLockAria")}`;
+    }
     const base =
       phase === GAME_PHASE.REVEAL && playedCard.card != null
         ? `${t("table.a11y.currentClaimDetails")} — ${claimLine}`
@@ -893,9 +922,13 @@ export function GameTableDeclarationSection({
       return `${base}. ${t("result.wasTruth")}`;
     }
     return base;
-  }, [playedCard, phase, challengeResult, t]);
+  }, [playedCard, phase, challengeResult, challengeTimer, t]);
 
   const roundInterstitialEmpty = playedCard == null && isRoundResolutionInterstitialPhase(phase);
+
+  /** Challenge / REVEAL: action strip is in BoardView below this band — avoid tall `min-h` + vertical centering (false gap above BLUFF). */
+  const compactPlayedClaimBand =
+    phase === GAME_PHASE.CHALLENGE_PHASE || phase === GAME_PHASE.REVEAL;
 
   return (
     <div className="relative min-h-0 w-full">
@@ -914,24 +947,16 @@ export function GameTableDeclarationSection({
               : PLAY_CARD_TO_TABLE_SPRING
           }
             className={cn(
-              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:py-4",
-              phase === GAME_PHASE.REVEAL ? "lg:max-w-7xl" : "lg:max-w-4xl",
-              isChallengePhaseLayout
-                ? DECLARATION_PLAYFIELD_MIN_H_CHALLENGE
-                : phase === GAME_PHASE.REVEAL
-                  ? DECLARATION_PLAYFIELD_MIN_H_REVEAL
-                  : DECLARATION_PLAYFIELD_MIN_H_NON_CHALLENGE,
+              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 [perspective:1200px] py-2 sm:py-4 lg:max-w-4xl",
+              compactPlayedClaimBand ? "justify-start" : "justify-center",
+              compactPlayedClaimBand ? "min-h-0" : DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM,
             )}
           >
-            <div className="flex justify-center px-1 sm:hidden">
-              <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
-            </div>
-
-            {/* `1fr auto 1fr` keeps the card column on the same vertical axis as centered content below (e.g. BLUFF). */}
+            {/* `1fr auto 1fr` on sm+: round pile column 1 is stable vs mobile `auto | 1fr` (no separate top row). */}
             <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
               <div
                 ref={roundPileAnchorRef ?? undefined}
-                className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
+                className={PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS}
               >
                 <motion.div
                   className="rounded-2xl"
@@ -962,32 +987,18 @@ export function GameTableDeclarationSection({
                 </motion.div>
               </div>
 
-              <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
-                <div
-                  className={cn(
-                    "flex w-full flex-col items-center gap-2 px-1 text-center sm:gap-2.5",
-                    phase === GAME_PHASE.REVEAL
-                      ? "max-w-[min(100%,26rem)] sm:max-w-[min(100%,28rem)]"
-                      : "max-w-[min(100%,18rem)]",
-                  )}
-                >
+              <div
+                className={cn(
+                  "col-start-2 flex w-full min-w-0 flex-col items-center justify-self-center sm:col-start-2",
+                  compactPlayedClaimBand ? "justify-start" : "justify-center",
+                )}
+              >
+                <div className="flex w-full max-w-[min(100%,26rem)] flex-col items-center gap-2 px-1 text-center sm:max-w-[min(100%,28rem)] sm:gap-2.5">
                   <div className="w-full">
-                    <p
-                      className={cn(
-                        "font-bold uppercase leading-tight tracking-wide text-muted-foreground",
-                        phase === GAME_PHASE.REVEAL ? "text-xs sm:text-sm" : "text-[10px]",
-                      )}
-                    >
+                    <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground">
                       {t("table.currentClaim")}
                     </p>
-                    <p
-                      className={cn(
-                        "mt-1 font-headline font-semibold tabular-nums leading-snug text-foreground",
-                        phase === GAME_PHASE.REVEAL
-                          ? "text-2xl sm:text-3xl"
-                          : "text-lg sm:text-xl",
-                      )}
-                    >
+                    <p className="mt-1 font-headline text-lg font-semibold tabular-nums leading-snug text-foreground sm:text-xl">
                       {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{" "}
                       <span className="text-primary">{playedCard.declaration.number}</span>
                     </p>
@@ -1009,9 +1020,7 @@ export function GameTableDeclarationSection({
                         <div
                           className={cn(
                             "relative z-[1] aspect-[2/3] shrink-0 overflow-hidden rounded-md",
-                            phase === GAME_PHASE.REVEAL
-                              ? PLAYFIELD_CLAIM_CARD_WIDTH_REVEAL
-                              : PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT,
+                            PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED,
                           )}
                         >
                           {pileLayers > 0 &&
@@ -1056,7 +1065,7 @@ export function GameTableDeclarationSection({
                 </div>
               </div>
 
-              <div className="hidden min-w-0 sm:block" aria-hidden />
+              <div className="hidden min-w-0 sm:col-start-3 sm:block" aria-hidden />
             </div>
           </motion.div>
       ) : roundInterstitialEmpty && roundResolutionPanel != null ? (
@@ -1067,17 +1076,11 @@ export function GameTableDeclarationSection({
           transition={{ duration: REDUCED_CARD_MOTION_DURATION_SECONDS }}
           className={cn(DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT, "w-full shrink-0")}
         >
-          <div className="flex justify-center px-1 sm:hidden">
-            <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
-          </div>
           <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
-            <div
-              ref={roundPileAnchorRef ?? undefined}
-              className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
-            >
+            <div ref={roundPileAnchorRef ?? undefined} className={PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS}>
               <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
             </div>
-            <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+            <div className="col-start-2 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
               <AnimatePresence mode="wait" initial={false}>
                 {roundResolutionPanel != null ? (
                   <motion.div
@@ -1093,7 +1096,7 @@ export function GameTableDeclarationSection({
                 ) : null}
               </AnimatePresence>
             </div>
-            <div className="hidden min-w-0 sm:block" aria-hidden />
+            <div className="hidden min-w-0 sm:col-start-3 sm:block" aria-hidden />
           </div>
         </motion.div>
       ) : roundInterstitialEmpty ? (
@@ -1125,19 +1128,12 @@ export function GameTableDeclarationSection({
         >
             {phase === GAME_PHASE.PLAYER_TURN ? (
               <>
-                <div className="flex justify-center px-1 sm:hidden">
-                  <PlayfieldRoundPileRail compact tablePileCount={tablePileCount} className="min-w-0" />
-                </div>
-
                 <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
-                  <div
-                    ref={roundPileAnchorRef ?? undefined}
-                    className="hidden min-w-0 sm:flex sm:items-start sm:justify-end sm:pr-2"
-                  >
+                  <div ref={roundPileAnchorRef ?? undefined} className={PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS}>
                     <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
                   </div>
 
-                  <div className="col-start-1 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+                  <div className="col-start-2 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
                     <div className="flex w-full max-w-[min(100%,32rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
                       {showEmptyStateTurnLine ? (
                         <p className="text-sm text-muted-foreground">
@@ -1208,7 +1204,7 @@ export function GameTableDeclarationSection({
                     </div>
                   </div>
 
-                  <div className="hidden min-w-0 sm:block" aria-hidden />
+                  <div className="hidden min-w-0 sm:col-start-3 sm:block" aria-hidden />
                 </div>
               </>
             ) : (
@@ -1217,7 +1213,7 @@ export function GameTableDeclarationSection({
                   <div
                     className={cn(
                       "relative aspect-[2/3]",
-                      PLAYFIELD_CLAIM_CARD_WIDTH_DEFAULT,
+                      PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED,
                     )}
                     aria-label={t("table.a11y.playSlot")}
                   >
@@ -1276,6 +1272,7 @@ export function GameTablePlayfield(props: GameTablePlayfieldProps) {
         playDropZone={props.playDropZone}
         challengeResult={props.challengeResult}
         challengeOutcomeNames={props.challengeOutcomeNames}
+        challengeTimer={props.challengeTimer}
         localPlayerId={props.localPlayerId}
         roundPileAnchorRef={props.roundPileAnchorRef}
         roundResolutionPanel={props.roundResolutionPanel ?? null}

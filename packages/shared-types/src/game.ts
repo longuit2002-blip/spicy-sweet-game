@@ -32,6 +32,7 @@ export interface GamePlayer {
   trophyCount: number;
   isReady: boolean;
   isHost?: boolean;
+  isBot?: boolean;
 }
 
 /** Single source of truth for phase literals — use instead of raw strings in comparisons. */
@@ -58,9 +59,10 @@ export interface PlayedCard {
 export interface ChallengeResult {
   /**
    * From `game-logic` / `isChallengeCorrect`: **`true`** = the real card does **not** match the
-   * declaration on the **challenged** attribute (bluff caught) → challenger wins the table pile.
-   * **`false`** = the card matches that attribute (truth on the challenge) → declarer wins the table
-   * pile and the challenger draws the penalty from the deck (see `applyPenalty`).
+   * declaration on the **challenged** attribute (bluff caught) → challenger wins the table pile and
+   * the declarer draws the penalty from the deck. **`false`** = the card matches that attribute
+   * (truth on the challenge) → declarer wins the table pile and the challenger draws the penalty
+   * (see `applyPenalty`).
    */
   challengeCorrect: boolean;
   challengeType: ChallengeType;
@@ -112,6 +114,7 @@ export interface ClientGamePlayer {
   score: number;
   isReady: boolean;
   isHost?: boolean;
+  isBot?: boolean;
 }
 
 /** During CHALLENGE_PHASE the real card is null until reveal. */

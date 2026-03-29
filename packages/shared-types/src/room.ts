@@ -14,6 +14,8 @@ export interface RoomPlayer {
   hand?: GameCard[];
   wonPileCount?: number;
   trophyCount?: number;
+  /** Server-added lobby / game bot (no real socket). */
+  isBot?: boolean;
 }
 
 export interface RoomState {
@@ -39,6 +41,13 @@ export interface CreateRoomData {
 export interface CreateRoomResult {
   success: boolean;
   room?: RoomState;
+  error?: string;
+}
+
+export interface AddLobbyBotResult {
+  success: boolean;
+  room?: RoomState;
+  player?: RoomPlayer;
   error?: string;
 }
 

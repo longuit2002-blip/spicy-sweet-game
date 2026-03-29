@@ -1,7 +1,22 @@
 import type { ChallengeType, ClientGameState, Declaration, ChallengeResult } from "./game.js";
-import type { RoomPlayer, RoomState, JoinResult, CreateRoomData, CreateRoomResult, Score } from "./room.js";
+import type {
+  RoomPlayer,
+  RoomState,
+  JoinResult,
+  CreateRoomData,
+  CreateRoomResult,
+  AddLobbyBotResult,
+  Score,
+} from "./room.js";
 
-export type { JoinResult, CreateRoomData, CreateRoomResult, RoomState, RoomPlayer };
+export type {
+  JoinResult,
+  CreateRoomData,
+  CreateRoomResult,
+  AddLobbyBotResult,
+  RoomState,
+  RoomPlayer,
+};
 import type { ChatMessage } from "./chat.js";
 import type { SocketError } from "./auth.js";
 
@@ -41,6 +56,7 @@ export interface ClientToServerEvents {
   "room:leave": () => void;
   "room:ready": (ready: boolean) => void;
   "room:start": () => void;
+  "room:add-bot": (callback?: (result: AddLobbyBotResult) => void) => void;
 
   "game:play-card": (data: { cardId: string; declaration: Declaration }) => void;
   /** Draw one from the main pile and skip declaration (authoritative server). */

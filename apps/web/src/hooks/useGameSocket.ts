@@ -6,13 +6,25 @@ import { useUserStore } from "@/stores/userStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useGameStore } from "@/stores/gameStore";
 import { useChatStore } from "@/stores/chatStore";
-import type { ChallengeType, ClientGameState, ClientToServerEvents } from "@sweet-spicy/shared-types";
+import type {
+  AddLobbyBotResult,
+  ChallengeType,
+  ClientGameState,
+  ClientToServerEvents,
+} from "@sweet-spicy/shared-types";
 import { DEFAULT_ROOM_MAX_PLAYERS } from "@sweet-spicy/shared-types";
 
 export function useGameSocket() {
   const { accessToken, isAuthenticated } = useUserStore();
-  const { setPlayers, addPlayer, removePlayer, setPlayerReady, setConnected, setRoomCode } =
-    useRoomStore();
+  const {
+    setPlayers,
+    addPlayer,
+    removePlayer,
+    setPlayerReady,
+    setConnected,
+    setRoomCode,
+    setMaxPlayers,
+  } = useRoomStore();
   const { setGameState } = useGameStore();
   const { addMessage } = useChatStore();
 
@@ -46,6 +58,7 @@ export function useGameSocket() {
     socket.on("room:joined", (room) => {
       setPlayers(room.players.map((p) => ({ ...p, isReady: p.isReady ?? false })));
       setRoomCode(room.roomCode);
+      setMaxPlayers(room.maxPlayers);
     });
 
     socket.on("room:player-joined", (player) => {
@@ -54,6 +67,7 @@ export function useGameSocket() {
         nickname: player.nickname,
         isReady: player.isReady ?? false,
         isHost: player.isHost,
+        ...(player.isBot ? { isBot: true } : {}),
       });
     });
 
@@ -105,6 +119,7 @@ export function useGameSocket() {
     setGameState,
     setConnected,
     setRoomCode,
+    setMaxPlayers,
     addMessage,
   ]);
 
@@ -144,6 +159,16 @@ export function useGameSocket() {
   const startGame = useCallback(() => {
     emit("room:start");
   }, [emit]);
+
+  const addLobbyBot = useCallback((callback?: (result: AddLobbyBotResult) => void) => {
+    const socket = getSocket();
+    if (!socket) return;
+    if (callback) {
+      socket.emit("room:add-bot", callback);
+    } else {
+      socket.emit("room:add-bot");
+    }
+  }, []);
 
   const playCard = useCallback(
     (cardId: string, declaration: { type: string; number: number }) => {
@@ -187,6 +212,7 @@ export function useGameSocket() {
     leaveRoom,
     setReady,
     startGame,
+    addLobbyBot,
     playCard,
     drawPass,
     challenge,

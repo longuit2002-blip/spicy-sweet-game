@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { ChallengeType, ClientPlayedCard, PlayedCard, Player } from "@/shared/types/game";
@@ -10,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { SNAPPY_SPRING } from "@/features/game/animations";
 import { Icon } from "@/components/ui/icon";
 import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
+import { useSmoothCountdownRemainder } from "@/features/game/hooks/use-smooth-countdown-remainder";
 
 const CONTEXT_STRIP_MAX_PIPS = 6;
 
@@ -17,39 +17,6 @@ const CONTEXT_STRIP_MAX_PIPS = 6;
 const EMBEDDED_PICK_ICON_SIZE = 52;
 /** Standalone glass panel — match embedded legibility. */
 const DEFAULT_PICK_ICON_SIZE = 52;
-
-/**
- * Between server integer ticks, linearly decreases remaining time so the bar moves smoothly.
- */
-function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMotion: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  const tickStartRef = useRef(Date.now());
-  const prevTimeRef = useRef(timeLeftSeconds);
-
-  useEffect(() => {
-    if (prevTimeRef.current !== timeLeftSeconds) {
-      tickStartRef.current = Date.now();
-      prevTimeRef.current = timeLeftSeconds;
-    }
-  }, [timeLeftSeconds]);
-
-  useEffect(() => {
-    if (reducedMotion) return;
-    let raf = 0;
-    const tick = () => {
-      setNow(Date.now());
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [reducedMotion]);
-
-  const elapsed = reducedMotion ? 0 : (now - tickStartRef.current) / 1000;
-  if (timeLeftSeconds <= 0) return 0;
-  const raw = timeLeftSeconds - elapsed;
-  /** Do not drift below server second until the next tick (handles delayed socket updates). */
-  return Math.max(timeLeftSeconds - 1, Math.max(0, raw));
-}
 
 function ChallengePickContextChip({
   roleLabel,
@@ -309,14 +276,96 @@ export function ChallengePhase({
         <>
           <p className="sr-only">{pickInstructionSr}</p>
           {!isHolder ? (
-            <p
+            <div
               className={cn(
-                "mb-2 text-center text-xs leading-snug text-muted-foreground sm:mb-2.5 sm:text-sm",
+                "mb-2 flex w-full flex-col items-center gap-2.5 sm:mb-3 sm:gap-3",
                 isEmbedded && "px-1",
               )}
+              role="region"
+              aria-label={t("challenge.pickWaitShort", { player: holder.nickname })}
             >
-              {t("challenge.pickWaitShort", { player: holder.nickname })}
-            </p>
+              <div className="text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-foreground sm:text-xs">
+                  {t("challenge.spectatorPickTitle")}
+                </p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground sm:text-sm">
+                  {t("challenge.spectatorPickSubline", { player: holder.nickname })}
+                </p>
+              </div>
+              <p className="sr-only">{t("challenge.spectatorPickGhostCaption")}</p>
+              <div
+                className={cn(
+                  "flex w-full flex-nowrap items-stretch justify-center gap-3 sm:gap-4",
+                  isEmbedded && "mx-auto max-w-2xl px-0.5 sm:px-1",
+                )}
+                aria-hidden
+              >
+                <div
+                  className={cn(
+                    "pointer-events-none min-w-0 flex-1 opacity-50 grayscale-[0.25]",
+                    isEmbedded
+                      ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
+                      : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/40 bg-muted/25 text-center shadow-inner",
+                      isEmbedded
+                        ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
+                        : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
+                    )}
+                  >
+                    <Icon
+                      name="style"
+                      size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
+                      className="text-muted-foreground"
+                      fill={1}
+                    />
+                    <span
+                      className={cn(
+                        "font-headline font-bold leading-tight text-muted-foreground",
+                        isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
+                      )}
+                    >
+                      {t("challenge.wrongSuit")}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "pointer-events-none min-w-0 flex-1 opacity-50 grayscale-[0.25]",
+                    isEmbedded
+                      ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
+                      : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/40 bg-muted/25 text-center shadow-inner",
+                      isEmbedded
+                        ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
+                        : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
+                    )}
+                  >
+                    <Icon
+                      name="counter_1"
+                      size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
+                      className="text-muted-foreground"
+                      fill={1}
+                    />
+                    <span
+                      className={cn(
+                        "font-headline font-bold leading-tight text-muted-foreground",
+                        isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
+                      )}
+                    >
+                      {t("challenge.wrongNumber")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : null}
 
           {canAct && isHolder ? (

@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { useUserStore, loginAsGuest } from "@/stores/userStore";
 import { changeLanguage, getCurrentLanguage } from "@/lib/i18n";
 import { useTheme } from "next-themes";
-import { Moon, Sun } from "lucide-react";
+import { Loader2, Moon, Sun } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function HomeClient() {
   const router = useRouter();
@@ -73,18 +74,18 @@ export function HomeClient() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md px-1 sm:px-0"
       >
-        <div className="text-center mb-10">
+        <div className="text-center mb-9 sm:mb-10">
           <motion.h1
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
             transition={{ type: "spring", stiffness: 200 }}
-            className="font-display text-5xl sm:text-6xl text-gradient-fire mb-3"
+            className="font-display text-5xl sm:text-6xl text-gradient-fire mb-3 tracking-tight"
           >
             Sweet & Spicy
           </motion.h1>
-          <p className="text-muted-foreground text-lg">
+          <p className="text-muted-foreground text-base sm:text-lg leading-relaxed">
             🌶️ {t("app.subtitle")} ⚫
           </p>
         </div>
@@ -123,25 +124,40 @@ export function HomeClient() {
           </motion.div>
         )}
 
-        <div className="bg-card border border-border rounded-xl p-6 shadow-card space-y-6">
-          <div>
-            <label className="text-sm text-muted-foreground mb-1.5 block">{t("home.nickname")}</label>
+        <div
+          className={cn(
+            "space-y-6 rounded-2xl border border-border/80 bg-card/95 p-6 shadow-card backdrop-blur-sm sm:p-7",
+          )}
+        >
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="home-nickname">
+              {t("home.nickname")}
+            </label>
             <Input
+              id="home-nickname"
               placeholder={t("home.enterNickname")}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               maxLength={16}
               disabled={isLoading}
-              className="bg-muted border-border text-foreground placeholder:text-muted-foreground/50"
+              className="h-11 bg-muted/80 border-border text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
 
           <Button
+            type="button"
             className="w-full bg-gradient-fire text-primary-foreground font-semibold text-lg h-12 shadow-fire"
             onClick={handleCreate}
             disabled={!nickname.trim() || isLoading}
           >
-            {isLoading ? "Creating..." : t("home.createRoom")}
+            {isLoading ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                {t("home.creatingRoom")}
+              </span>
+            ) : (
+              t("home.createRoom")
+            )}
           </Button>
 
           <div className="flex items-center gap-3">
@@ -157,11 +173,12 @@ export function HomeClient() {
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               maxLength={4}
               disabled={isLoading}
-              className="bg-muted border-border text-foreground placeholder:text-muted-foreground/50 uppercase tracking-widest text-center font-bold"
+              className="h-11 min-w-0 flex-1 bg-muted/80 border-border text-foreground placeholder:text-muted-foreground/50 uppercase tracking-widest text-center font-bold"
             />
             <Button
+              type="button"
               variant="outline"
-              className="px-6"
+              className="h-11 shrink-0 px-5 sm:px-6 font-semibold"
               onClick={handleJoin}
               disabled={!nickname.trim() || joinCode.length < 4 || isLoading}
             >
