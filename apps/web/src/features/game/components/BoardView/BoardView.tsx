@@ -1,9 +1,25 @@
 "use client";
 
-import { useMemo, type ReactNode, type RefObject } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  type DragCancelEvent,
+  type DragEndEvent,
+  type DragStartEvent,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from "@dnd-kit/core";
+import { useCallback, useMemo, useState, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { GameTableDeclarationSection, GameTableTableauSection } from "@/features/game/components/GameTable";
+import {
+  DuelDrawPassDragGhost,
+  GameTableDeclarationSection,
+  GameTableTableauSection,
+} from "@/features/game/components/GameTable";
 import type { DrawPassActionConfig, GameTablePlayfieldProps } from "@/features/game/components/GameTable";
 import { PlaymatAnchorProvider, usePlaymatAnchors } from "@/features/game/components/playmat-anchors";
 import {
@@ -16,16 +32,28 @@ import { useOpponentTurnSfx } from "@/features/game/hooks/use-opponent-turn-sfx"
 import { OpponentsTurnCarousel } from "@/features/game/components/BoardView/OpponentsTurnCarousel";
 import { ChallengePhase } from "@/features/game/components/ChallengePhase/ChallengePhase";
 import type { ChallengePhaseProps } from "@/features/game/components/ChallengePhase/ChallengePhase";
-import type { GamePlayer, ClientGamePlayer } from "@/shared/types/game";
+import { SpiceCard } from "@/features/game/components/SpiceCard";
+import { DeclareDragPreviewHandProvider } from "@/features/game/dnd/declare-drag-preview-hand-context";
+import type { GamePlayer, ClientGamePlayer, GameCard } from "@/shared/types/game";
 import { GAME_PHASE } from "@/shared/types/game";
 import { cn } from "@/lib/utils";
 import { SNAPPY_SPRING } from "@/features/game/animations";
 import {
   DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
   isRoundResolutionInterstitialPhase,
+  REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
 } from "@/lib/game-room.constants";
 import { PlayfieldRevealActionStrip } from "@/features/game/components/PlayfieldRevealActionStrip";
+import {
+  GAME_DND_DROP_HAND_DRAW_PASS,
+  GAME_DND_DROP_PLAY_ZONE,
+  GAME_DND_POINTER_ACTIVATION_DISTANCE_PX,
+  GAME_DND_TOUCH_ACTIVATION_DELAY_MS,
+  GAME_DND_TOUCH_ACTIVATION_TOLERANCE_PX,
+  isGameDndDeclareCardData,
+  isGameDndDrawPassData,
+} from "@/features/game/dnd/game-dnd-ids";
 
 type BoardPlayer = GamePlayer | ClientGamePlayer;
 
@@ -84,13 +112,20 @@ export interface BoardViewProps extends Omit<GameTablePlayfieldProps, "roundReso
   /** While dragging a card from the local hand — highlights the center play slot. */
   handDragActive?: boolean;
   /**
-   * Same session as {@link handDragActive}, set synchronously in `PlayerHand` drag start/end (before React state).
+   * Same session as {@link handDragActive}, set synchronously at dnd-kit drag start/end (before React state).
    */
   handDragActiveRef: RefObject<boolean>;
   /** Draw-and-pass: drag the duel draw pile onto the local hand (`PLAYER_TURN` only). */
   drawPassAction?: DrawPassActionConfig | null;
   /** Drive hand-strip highlight while the draw pile drag is active. */
   onDrawPassPileDragSession?: (active: boolean) => void;
+  /** While dragging a declare card from hand — highlights play zone (mirrors former PlayerHand `onDragSessionChange`). */
+  onHandCardDragSessionChange?: (active: boolean) => void;
+  /**
+   * Local hand snapshot for declare {@link DragOverlay}. When non-empty, the dragged card renders in the overlay
+   * so it is not clipped by the hand strip’s horizontal scroll container.
+   */
+  declareDragPreviewCards?: readonly GameCard[] | null;
 }
 
 export function BoardView(props: BoardViewProps) {
@@ -124,10 +159,14 @@ function BoardViewImpl({
   handDragActive = false,
   handDragActiveRef,
   onDrawPassPileDragSession,
+  onHandCardDragSessionChange,
+  declareDragPreviewCards = null,
   challengeResult = null,
   challengeTimer = 0,
   penaltyFxSnapshot = null,
 }: BoardViewProps) {
+  const [drawPassOverlayVisible, setDrawPassOverlayVisible] = useState(false);
+  const [declareOverlayCardId, setDeclareOverlayCardId] = useState<string | null>(null);
   const { drawStackRef, roundPileRailRef } = usePlaymatAnchors();
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
@@ -171,8 +210,16 @@ function BoardViewImpl({
 
   const isChallenge = phase === GAME_PHASE.CHALLENGE_PHASE;
   const showChallengeInline = isChallenge && playedCard != null && inlineChallenge != null;
+  /**
+   * Only while the choice is locked (`challengeTimer` above {@link REVEAL_REMAIN_AFTER_LOCK_THRESHOLD}).
+   * After lock, the card flips and {@link ChallengeRevealImpactOverlay} carries axis + outcome — keeping the strip
+   * (flip copy: challenging / wrong axis) duplicates that and reads like a second, conflicting state.
+   */
   const showRevealActionStrip =
-    phase === GAME_PHASE.REVEAL && playedCard != null && challengeResult != null;
+    phase === GAME_PHASE.REVEAL &&
+    playedCard != null &&
+    challengeResult != null &&
+    challengeTimer > REVEAL_REMAIN_AFTER_LOCK_THRESHOLD;
   const showPlayfieldActionStrip = showChallengeInline || showRevealActionStrip;
 
   const tableauDuelProps = {
@@ -230,9 +277,87 @@ function BoardViewImpl({
     drawPassAction != null
       ? {
           active: true,
-          onDragSessionChange: onDrawPassPileDragSession ?? (() => undefined),
+          onDrawPass: drawPassAction.onDrawPass,
         }
       : null;
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: GAME_DND_POINTER_ACTIVATION_DISTANCE_PX },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: GAME_DND_TOUCH_ACTIVATION_DELAY_MS,
+        tolerance: GAME_DND_TOUCH_ACTIVATION_TOLERANCE_PX,
+      },
+    }),
+  );
+
+  const handleBoardDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const data = event.active.data.current;
+      if (isGameDndDrawPassData(data)) {
+        setDrawPassOverlayVisible(true);
+        onDrawPassPileDragSession?.(true);
+      } else if (isGameDndDeclareCardData(data)) {
+        setDeclareOverlayCardId(data.cardId);
+        handDragActiveRef.current = true;
+        onHandCardDragSessionChange?.(true);
+      }
+    },
+    [handDragActiveRef, onDrawPassPileDragSession, onHandCardDragSessionChange],
+  );
+
+  const handleBoardDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setDrawPassOverlayVisible(false);
+      setDeclareOverlayCardId(null);
+      const data = event.active.data.current;
+      const { over } = event;
+      if (isGameDndDrawPassData(data)) {
+        onDrawPassPileDragSession?.(false);
+        if (over != null && over.id === GAME_DND_DROP_HAND_DRAW_PASS) {
+          drawPassAction?.onDrawPass();
+        }
+        return;
+      }
+      if (isGameDndDeclareCardData(data)) {
+        handDragActiveRef.current = false;
+        onHandCardDragSessionChange?.(false);
+        if (over != null && over.id === GAME_DND_DROP_PLAY_ZONE) {
+          playDropZone?.onCardDrop(data.cardId);
+        }
+      }
+    },
+    [
+      drawPassAction,
+      handDragActiveRef,
+      onDrawPassPileDragSession,
+      onHandCardDragSessionChange,
+      playDropZone,
+    ],
+  );
+
+  const handleBoardDragCancel = useCallback(
+    (event: DragCancelEvent) => {
+      setDrawPassOverlayVisible(false);
+      setDeclareOverlayCardId(null);
+      const data = event.active.data.current;
+      if (isGameDndDrawPassData(data)) {
+        onDrawPassPileDragSession?.(false);
+      } else if (isGameDndDeclareCardData(data)) {
+        handDragActiveRef.current = false;
+        onHandCardDragSessionChange?.(false);
+      }
+    },
+    [handDragActiveRef, onDrawPassPileDragSession, onHandCardDragSessionChange],
+  );
+
+  const declareDragPreviewHand = declareDragPreviewCards ?? [];
+  const declareOverlayCard = useMemo((): GameCard | null => {
+    if (declareOverlayCardId == null) return null;
+    return declareDragPreviewHand.find((c) => c.id === declareOverlayCardId) ?? null;
+  }, [declareOverlayCardId, declareDragPreviewHand]);
 
   /**
    * Duel band: center column sets in-flow height; trophy + draw use `absolute` anchored from the
@@ -243,10 +368,14 @@ function BoardViewImpl({
     <div className="relative w-full min-w-0 overflow-visible">
       <div
         className={cn(
-          "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 pb-1 pt-1 sm:px-4",
-          "md:w-[min(100%,max(18rem,calc(100%-21rem)))]",
-          "lg:w-[min(100%,max(20rem,calc(100%-25rem)))]",
-          "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(22rem,calc(100%-28rem)))]",
+          mergeRoundResolutionInTable
+            ? "relative z-10 mx-auto w-full min-w-0 max-w-6xl px-3 pb-1 pt-1 sm:px-4 xl:max-w-7xl"
+            : [
+                "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 pb-1 pt-1 sm:px-4",
+                "md:w-[min(100%,max(18rem,calc(100%-21rem)))]",
+                "lg:w-[min(100%,max(20rem,calc(100%-25rem)))]",
+                "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(22rem,calc(100%-28rem)))]",
+              ],
         )}
       >
         <GameTableDeclarationSection
@@ -311,16 +440,44 @@ function BoardViewImpl({
     >
       {showPlayfieldActionStrip ? (
         <div className="flex w-full min-h-0 flex-col items-center gap-2 sm:gap-3">
-          {showChallengeInline && playedCard && inlineChallenge ? (
-            <ChallengePhase variant="embedded" playedCard={playedCard} {...inlineChallenge} />
-          ) : null}
-          {showRevealActionStrip && challengeResult ? (
-            <PlayfieldRevealActionStrip
-              challengeResult={challengeResult}
-              challengeTimer={challengeTimer}
-              challengeOutcomeNames={challengeOutcomeNames}
-            />
-          ) : null}
+          <AnimatePresence mode="wait" initial={false}>
+            {showChallengeInline && playedCard && inlineChallenge ? (
+              <motion.div
+                key="playfield-strip-challenge"
+                initial={reducedMotion ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? undefined : { opacity: 0, y: -10 }}
+                transition={
+                  reducedMotion
+                    ? { type: "tween", duration: 0.15, ease: [0.2, 0.8, 0.2, 1] }
+                    : SNAPPY_SPRING
+                }
+                className="flex w-full min-h-0 flex-col items-center"
+              >
+                <ChallengePhase variant="embedded" playedCard={playedCard} {...inlineChallenge} />
+              </motion.div>
+            ) : showRevealActionStrip && challengeResult ? (
+              <motion.div
+                key="playfield-strip-reveal"
+                initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? undefined : { opacity: 0, y: -8 }}
+                transition={
+                  reducedMotion
+                    ? { type: "tween", duration: 0.15, ease: [0.2, 0.8, 0.2, 1] }
+                    : SNAPPY_SPRING
+                }
+                className="flex w-full min-h-0 flex-col items-center"
+              >
+                <PlayfieldRevealActionStrip
+                  challengeResult={challengeResult}
+                  challengeTimer={challengeTimer}
+                  challengeOutcomeNames={challengeOutcomeNames}
+                  localPlayerId={localPlayerId}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       ) : null}
 
@@ -423,23 +580,36 @@ function BoardViewImpl({
             </div>
           ) : null}
 
-          <div className="relative z-10 mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible px-1 sm:px-2 lg:mx-0 lg:max-w-none lg:w-full lg:px-0">
-            {playfieldStageColumn}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={pointerWithin}
+            onDragStart={handleBoardDragStart}
+            onDragEnd={handleBoardDragEnd}
+            onDragCancel={handleBoardDragCancel}
+          >
+            <DeclareDragPreviewHandProvider cards={declareDragPreviewHand}>
+              <div className="relative z-10 mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible px-1 sm:px-2 lg:mx-0 lg:max-w-none lg:w-full lg:px-0">
+                {playfieldStageColumn}
 
-            {phase === GAME_PHASE.PLAYER_TURN && (
-              <p className="shrink-0 px-1 pt-2 text-center text-sm text-muted-foreground sm:pt-2">
-                <span className="font-semibold text-foreground">{currentPlayer?.nickname}</span>
-                &nbsp;
-                {isMyTurn ? t("turn.yourTurn") : t("turn.waitingTurn", { player: currentPlayer?.nickname })}
-              </p>
-            )}
-
-            {tableFooter != null ? (
-              <div className="w-full shrink-0 -mx-1 bg-transparent px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 sm:-mx-2 sm:px-6 sm:pt-3">
-                {tableFooter}
+                {tableFooter != null ? (
+                  <div className="w-full shrink-0 -mx-1 bg-transparent px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 sm:-mx-2 sm:px-6 sm:pt-3">
+                    {tableFooter}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            </DeclareDragPreviewHandProvider>
+            <DragOverlay dropAnimation={{ duration: 220, easing: "ease" }}>
+              {drawPassOverlayVisible ? (
+                <div className="cursor-grabbing drop-shadow-xl">
+                  <DuelDrawPassDragGhost />
+                </div>
+              ) : declareOverlayCard != null ? (
+                <div className="cursor-grabbing drop-shadow-xl">
+                  <SpiceCard card={declareOverlayCard} size="hand" isDragging />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </div>
       </div>
     </div>

@@ -40,7 +40,7 @@ import { GAME_PHASE, getDrawPileCount } from "@/shared/types/game";
 import { useGameStore } from "@/stores/gameStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useUserStore } from "@/stores/userStore";
-import { PenaltyPhaseFlyingCardStack } from "@/features/game/components/PenaltyPhaseFlyingCardStack";
+import { RoundPenaltyPhasePanel } from "@/features/game/components/RoundPenaltyPhasePanel";
 import { PlayerHand } from "@/features/game/components/PlayerHand";
 import { DeclareDialog } from "@/features/game/components/DeclareDialog";
 import { CardInspectDialog } from "@/features/game/components/CardInspectDialog";
@@ -723,99 +723,18 @@ export function GameRoomClient() {
           : undefined;
         const pileN = snap?.pileCardCount ?? 0;
         return (
-          <div className="mx-auto w-full max-w-md px-1.5 text-center sm:max-w-lg sm:px-2">
+          <div className="w-full px-0">
             {r && challenger && declarer ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={SNAPPY_SPRING}
-                className={cn(
-                  "flex w-full flex-col gap-2.5 rounded-md border px-3 py-2.5 shadow-sm sm:gap-3 sm:px-4 sm:py-3",
-                  r.challengeCorrect
-                    ? "border-destructive/35 bg-destructive/[0.07]"
-                    : "border-secondary/45 bg-secondary/[0.09]",
-                )}
-              >
-                <p className="text-[11px] font-bold uppercase leading-tight tracking-[0.12em] text-muted-foreground sm:text-xs">
-                  {t("phase.penalty")}
-                </p>
-                {(() => {
-                  const chipClass = cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-headline text-xs font-bold uppercase tracking-wide sm:gap-2 sm:px-3 sm:py-1.5 sm:text-sm",
-                    r.challengeCorrect
-                      ? "border-destructive/25 bg-background/60 text-foreground"
-                      : "border-secondary/30 bg-background/60 text-foreground",
-                  );
-                  const isDeclarer = r.playerId === localPlayerId;
-                  const isChallenger = r.challengerId === localPlayerId;
-                  let chip: ReactNode = null;
-                  if (r.challengeCorrect) {
-                    chip = (
-                      <>
-                        <span className={chipClass}>
-                          <Icon name="layers" size={18} aria-hidden />
-                          {t("phase.penaltyFxRoundChip", { count: pileN })}
-                        </span>
-                        <span className={chipClass}>
-                          <Icon name="playing_cards" size={18} aria-hidden />
-                          {t("phase.penaltyFxDrawChip", { count: PENALTY_DRAW_COUNT })}
-                        </span>
-                      </>
-                    );
-                  } else if (isDeclarer) {
-                    chip = (
-                      <span className={chipClass}>
-                        <Icon name="layers" size={18} aria-hidden />
-                        {t("phase.penaltyFxRoundChip", { count: pileN })}
-                      </span>
-                    );
-                  } else if (isChallenger) {
-                    chip = (
-                      <span className={chipClass}>
-                        <Icon name="playing_cards" size={18} aria-hidden />
-                        {t("phase.penaltyFxDrawChip", { count: PENALTY_DRAW_COUNT })}
-                      </span>
-                    );
-                  }
-                  return (
-                    <div className="flex min-h-[2.875rem] w-full flex-wrap items-center justify-center gap-2 sm:min-h-[3rem]">
-                      {chip}
-                    </div>
-                  );
-                })()}
-                <div className="flex items-start gap-2 text-left sm:gap-2.5">
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/50 bg-background/50 sm:h-10 sm:w-10">
-                    {r.timedOut && !r.challengeCorrect ? (
-                      <Icon name="timer_off" size={20} className="text-destructive" aria-hidden />
-                    ) : r.challengeCorrect ? (
-                      <Icon name="gpp_bad" size={20} className="text-destructive" fill={1} aria-hidden />
-                    ) : (
-                      <Icon name="verified" size={20} className="text-secondary" fill={1} aria-hidden />
-                    )}
-                  </span>
-                  {r.challengeCorrect ? (
-                    <p className="min-w-0 flex-1 text-sm font-medium leading-relaxed text-foreground sm:text-base sm:leading-relaxed">
-                      {t("phase.penaltyChallengerWins", {
-                        challenger: challenger.nickname,
-                        declarer: declarer.nickname,
-                        count: pileN,
-                      })}
-                    </p>
-                  ) : (
-                    <p className="min-w-0 flex-1 text-sm font-medium leading-relaxed text-foreground sm:text-base sm:leading-relaxed">
-                      {t("phase.penaltyDeclarerWins", {
-                        declarer: declarer.nickname,
-                        challenger: challenger.nickname,
-                      })}
-                    </p>
-                  )}
-                </div>
-                <div className="border-t border-border/15 pt-2">
-                  <PenaltyPhaseFlyingCardStack pileCardCount={pileN} compact />
-                </div>
-              </motion.div>
+              <RoundPenaltyPhasePanel
+                result={r}
+                challenger={challenger}
+                declarer={declarer}
+                pileCardCount={pileN}
+                penaltyDrawCount={PENALTY_DRAW_COUNT}
+                localPlayerId={localPlayerId}
+              />
             ) : (
-              <p className="text-sm leading-relaxed text-muted-foreground">{t("phase.penalty")}</p>
+              <p className="text-center text-sm leading-relaxed text-muted-foreground">{t("phase.penalty")}</p>
             )}
           </div>
         );
@@ -959,6 +878,11 @@ export function GameRoomClient() {
                   handDragActive={handDragActive}
                   handDragActiveRef={handDragActiveRef}
                   onDrawPassPileDragSession={setDrawPileDragActive}
+                  onHandCardDragSessionChange={(active) => {
+                    handDragActiveRef.current = active;
+                    setHandDragActive(active);
+                  }}
+                  declareDragPreviewCards={localPlayer?.hand ?? []}
                   playDropZone={
                     isMyTurn &&
                     currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
@@ -1008,10 +932,6 @@ export function GameRoomClient() {
                             <PlayerHand
                               cards={localPlayer.hand}
                               onInspectCard={handleInspectCard}
-                              onDragSessionChange={(active) => {
-                                handDragActiveRef.current = active;
-                                setHandDragActive(active);
-                              }}
                               selectedCardId={selectedCard}
                               disabled={
                                 !isMyTurn || currentGameState.phase !== GAME_PHASE.PLAYER_TURN
@@ -1023,7 +943,6 @@ export function GameRoomClient() {
                                   ? {
                                       active: true,
                                       pileDragActive: drawPileDragActive,
-                                      onDrop: handleDrawPass,
                                     }
                                   : null
                               }

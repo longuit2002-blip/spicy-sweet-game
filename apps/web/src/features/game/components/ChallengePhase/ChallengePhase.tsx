@@ -1,22 +1,34 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { ChallengeType, ClientPlayedCard, PlayedCard, Player } from "@/shared/types/game";
 import type { ChallengeStep } from "@/shared/types/game";
 import { SPICE_EMOJI, SPICE_LABEL } from "@/shared/types/game";
 import { cn } from "@/lib/utils";
-import { SNAPPY_SPRING } from "@/features/game/animations";
+import {
+  CHALLENGE_STEP_CROSSFADE_TRANSITION,
+  CHALLENGE_STEP_CROSSFADE_TRANSITION_REDUCED,
+  SNAPPY_SPRING,
+} from "@/features/game/animations";
 import { Icon } from "@/components/ui/icon";
 import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
 import { useSmoothCountdownRemainder } from "@/features/game/hooks/use-smooth-countdown-remainder";
+import {
+  CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS,
+  CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS,
+  CHALLENGE_AXIS_TILE_COL_CLASS,
+  CHALLENGE_AXIS_TILE_ICON_SIZE,
+  CHALLENGE_AXIS_TILE_ROW_CLASS,
+  CHALLENGE_AXIS_TILE_SPECTATOR_WRAP_CLASS,
+  ChallengeAxisPlayfieldTile,
+  ChallengerAxisIdentityStrip,
+} from "@/features/game/components/challenge-axis";
+
+/** Standalone pick icon size (non-embedded). */
+const DEFAULT_PICK_ICON_SIZE = CHALLENGE_AXIS_TILE_ICON_SIZE;
 
 const CONTEXT_STRIP_MAX_PIPS = 6;
-
-/** Embedded board: pick tiles — sized for touch / readability on the playfield strip. */
-const EMBEDDED_PICK_ICON_SIZE = 52;
-/** Standalone glass panel — match embedded legibility. */
-const DEFAULT_PICK_ICON_SIZE = 52;
 
 function ChallengePickContextChip({
   roleLabel,
@@ -112,7 +124,7 @@ function ChallengePickTimeBar({
     <div
       className={cn(
         "mx-auto w-full max-w-[min(26rem,calc(100%-1rem))] px-1",
-        embeddedCompact ? "mt-1.5" : "mt-3",
+        embeddedCompact ? "mt-1" : "mt-3",
       )}
       role="timer"
       aria-label={t("challenge.timeRemainingSr", { seconds: displaySeconds })}
@@ -193,7 +205,7 @@ export function ChallengePhase({
   const showPickSpotlight =
     isPick && playerWhoPlayed && holder && !isEmbedded;
 
-  const pickSpotlight = showPickSpotlight ? (
+  const pickSpotlightBlock = showPickSpotlight ? (
     <div className="mb-3 flex justify-center px-1">
       {isHolder ? (
         <ChallengePickContextChip focal roleLabel={t("challenge.declareRole")} player={playerWhoPlayed} />
@@ -203,13 +215,15 @@ export function ChallengePhase({
     </div>
   ) : null;
 
+  const challengeStepCrossFade = reducedMotion
+    ? CHALLENGE_STEP_CROSSFADE_TRANSITION_REDUCED
+    : CHALLENGE_STEP_CROSSFADE_TRANSITION;
+
   return (
     <div
       className={cn(
         "relative w-full",
-        isEmbedded
-          ? "mx-auto mt-0 flex w-full max-w-lg shrink-0 flex-col items-center pt-2 sm:max-w-xl sm:pt-3 lg:max-w-2xl"
-          : "game-glass-panel max-w-lg rounded-2xl p-4 sm:p-5",
+        isEmbedded ? cn(CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS, "mt-0") : "game-glass-panel max-w-lg rounded-2xl p-4 sm:p-5",
       )}
       role="region"
       aria-label={t("challenge.regionLabel")}
@@ -226,248 +240,212 @@ export function ChallengePhase({
         </>
       ) : null}
 
-      {isPick ? pickSpotlight : null}
-
-      {isRace && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={SNAPPY_SPRING}
-          className={cn("mb-4 flex flex-col items-center gap-2", isEmbedded && "mb-2 gap-1.5")}
-        >
-          <motion.button
-            type="button"
-            disabled={!canAct}
-            onClick={onClaimChallenge}
-            whileTap={reducedMotion || !canAct ? undefined : { scale: 0.96 }}
-            className={cn(
-              "bluff-bubble bouncy-action relative flex h-24 w-24 flex-col items-center justify-center overflow-hidden rounded-full border-[6px] border-white/40 sm:h-28 sm:w-28",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
-              !canAct && "pointer-events-none opacity-50",
-            )}
-            aria-label={`${t("challenge.claimChallenge")} — ${t("challenge.timeLeft", { seconds: displaySeconds })}`}
-          >
-            {/* Depleted body — stays visible as the pink “juice” drains toward the bottom. */}
-            <div
-              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/40 via-primary/30 to-black/25"
-              aria-hidden
-            />
-            <div
+      <div
+        className={cn(
+          "grid w-full grid-cols-1 grid-rows-1 [&>*]:col-start-1 [&>*]:row-start-1",
+          !isEmbedded && "mb-4",
+          isEmbedded && "mb-2 min-h-0",
+        )}
+      >
+        <AnimatePresence mode="sync" initial={false}>
+          {isRace ? (
+            <motion.div
+              key="challenge-claim-race"
               className={cn(
-                "pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-primary via-primary to-primary/85 transition-none",
-                urgent && "from-destructive via-destructive to-destructive/90",
+                "col-start-1 row-start-1 flex w-full flex-col items-center justify-self-stretch gap-2",
+                isEmbedded && "gap-1.5",
               )}
-              style={{ height: `${bluffFillHeightPercent}%` }}
-              aria-hidden
-            />
-            <span className="relative z-[2] flex flex-col items-center gap-0.5">
-              <span className="font-headline text-lg font-black tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)] sm:text-xl">
-                {t("board.bluff")}
-              </span>
-              <span className="text-base font-bold tabular-nums leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)] sm:text-lg">
-                {displaySeconds}
-              </span>
-            </span>
-          </motion.button>
-        </motion.div>
-      )}
-
-      {isPick && holder ? (
-        <>
-          <p className="sr-only">{pickInstructionSr}</p>
-          {!isHolder ? (
-            <div
-              className={cn(
-                "mb-2 flex w-full flex-col items-center gap-2.5 sm:mb-3 sm:gap-3",
-                isEmbedded && "px-1",
-              )}
-              role="region"
-              aria-label={t("challenge.pickWaitShort", { player: holder.nickname })}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={challengeStepCrossFade}
             >
-              <div className="text-center">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-foreground sm:text-xs">
-                  {t("challenge.spectatorPickTitle")}
-                </p>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground sm:text-sm">
-                  {t("challenge.spectatorPickSubline", { player: holder.nickname })}
-                </p>
-              </div>
-              <p className="sr-only">{t("challenge.spectatorPickGhostCaption")}</p>
-              <div
+              <motion.button
+                type="button"
+                disabled={!canAct}
+                onClick={onClaimChallenge}
+                whileTap={reducedMotion || !canAct ? undefined : { scale: 0.96 }}
                 className={cn(
-                  "flex w-full flex-nowrap items-stretch justify-center gap-3 sm:gap-4",
-                  isEmbedded && "mx-auto max-w-2xl px-0.5 sm:px-1",
+                  "bluff-bubble bouncy-action relative flex h-24 w-24 flex-col items-center justify-center overflow-hidden rounded-full border-[6px] border-white/40 sm:h-28 sm:w-28",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
+                  !canAct && "pointer-events-none opacity-50",
                 )}
-                aria-hidden
+                aria-label={`${t("challenge.claimChallenge")} — ${t("challenge.timeLeft", { seconds: displaySeconds })}`}
               >
+                {/* Depleted body — stays visible as the pink “juice” drains toward the bottom. */}
+                <div
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/40 via-primary/30 to-black/25"
+                  aria-hidden
+                />
                 <div
                   className={cn(
-                    "pointer-events-none min-w-0 flex-1 opacity-50 grayscale-[0.25]",
-                    isEmbedded
-                      ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
-                      : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
+                    "pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-primary via-primary to-primary/85 transition-none",
+                    urgent && "from-destructive via-destructive to-destructive/90",
                   )}
-                >
-                  <div
-                    className={cn(
-                      "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/40 bg-muted/25 text-center shadow-inner",
-                      isEmbedded
-                        ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
-                        : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
-                    )}
-                  >
-                    <Icon
-                      name="style"
-                      size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
-                      className="text-muted-foreground"
-                      fill={1}
-                    />
-                    <span
-                      className={cn(
-                        "font-headline font-bold leading-tight text-muted-foreground",
-                        isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
-                      )}
-                    >
-                      {t("challenge.wrongSuit")}
-                    </span>
-                  </div>
-                </div>
-                <div
-                  className={cn(
-                    "pointer-events-none min-w-0 flex-1 opacity-50 grayscale-[0.25]",
-                    isEmbedded
-                      ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
-                      : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/40 bg-muted/25 text-center shadow-inner",
-                      isEmbedded
-                        ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
-                        : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
-                    )}
-                  >
-                    <Icon
-                      name="counter_1"
-                      size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
-                      className="text-muted-foreground"
-                      fill={1}
-                    />
-                    <span
-                      className={cn(
-                        "font-headline font-bold leading-tight text-muted-foreground",
-                        isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
-                      )}
-                    >
-                      {t("challenge.wrongNumber")}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  style={{ height: `${bluffFillHeightPercent}%` }}
+                  aria-hidden
+                />
+                <span className="relative z-[2] flex flex-col items-center gap-0.5">
+                  <span className="font-headline text-lg font-black tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)] sm:text-xl">
+                    {t("board.bluff")}
+                  </span>
+                  <span className="text-base font-bold tabular-nums leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)] sm:text-lg">
+                    {displaySeconds}
+                  </span>
+                </span>
+              </motion.button>
+            </motion.div>
           ) : null}
 
-          {canAct && isHolder ? (
-            <div
-              className={cn(
-                "flex flex-nowrap items-stretch justify-center gap-3 sm:gap-4",
-                isEmbedded && "mx-auto w-full max-w-2xl px-0.5 sm:px-1",
-              )}
+          {isPick && holder ? (
+            <motion.div
+              key="challenge-pick-type"
+              className="col-start-1 row-start-1 w-full min-w-0 justify-self-stretch"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={challengeStepCrossFade}
             >
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: reducedMotion ? 0 : 0.06, ...SNAPPY_SPRING }}
-                className={cn(
-                  "min-w-0 flex-1",
-                  isEmbedded
-                    ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
-                    : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onChallenge(localPlayerId, "suit")}
-                  className={cn(
-                    "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-primary/35 bg-card text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
-                    "hover:border-primary/55 hover:bg-card hover:shadow-md hover:ring-2 hover:ring-primary/20",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
-                    "motion-safe:active:scale-[0.98]",
-                    isEmbedded
-                      ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
-                      : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
-                  )}
-                  aria-label={`${t("challenge.wrongSuit")}. ${t("challenge.youHoldChallenge")}`}
-                >
-                  <Icon
-                    name="style"
-                    size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
-                    className="text-primary"
-                    fill={1}
-                  />
-                  <span
-                    className={cn(
-                      "font-headline font-bold leading-tight text-foreground",
-                      isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
-                    )}
-                  >
-                    {t("challenge.wrongSuit")}
-                  </span>
-                </button>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: reducedMotion ? 0 : 0.1, ...SNAPPY_SPRING }}
-                className={cn(
-                  "min-w-0 flex-1",
-                  isEmbedded
-                    ? "max-w-[calc(50%-0.4rem)] min-w-[8rem] sm:min-w-[10.5rem] sm:max-w-none"
-                    : "w-full max-w-[13rem] min-w-[10rem] flex-1 sm:flex-none",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onChallenge(localPlayerId, "number")}
-                  className={cn(
-                    "flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-primary/35 bg-card text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
-                    "hover:border-primary/55 hover:bg-card hover:shadow-md hover:ring-2 hover:ring-primary/20",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
-                    "motion-safe:active:scale-[0.98]",
-                    isEmbedded
-                      ? "min-h-[7.75rem] gap-2.5 px-3 py-3.5 sm:min-h-[9rem] sm:gap-3 sm:px-5 sm:py-4"
-                      : "aspect-[4/5] min-h-[8.25rem] gap-2.5 rounded-md p-4",
-                  )}
-                  aria-label={`${t("challenge.wrongNumber")}. ${t("challenge.youHoldChallenge")}`}
-                >
-                  <Icon
-                    name="counter_1"
-                    size={isEmbedded ? EMBEDDED_PICK_ICON_SIZE : DEFAULT_PICK_ICON_SIZE}
-                    className="text-primary"
-                    fill={1}
-                  />
-                  <span
-                    className={cn(
-                      "font-headline font-bold leading-tight text-foreground",
-                      isEmbedded ? "text-sm sm:text-base" : "text-base sm:text-lg",
-                    )}
-                  >
-                    {t("challenge.wrongNumber")}
-                  </span>
-                </button>
-              </motion.div>
-            </div>
-          ) : null}
+              {pickSpotlightBlock}
 
-          <ChallengePickTimeBar
-            displaySeconds={displaySeconds}
-            smoothRemainFraction={smoothProgress}
-            urgent={urgent}
-            embeddedCompact={isEmbedded}
-          />
-        </>
-      ) : null}
+              {isEmbedded ? (
+                /* ── Embedded playfield band (fixed height) ───────────────────── */
+                <div className={cn(CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS, "gap-1.5 sm:gap-2")}>
+                  <ChallengerAxisIdentityStrip
+                    className="shrink-0"
+                    phase="pick"
+                    nickname={holder.nickname}
+                    isLocalPlayer={isHolder}
+                    hint={pickInstructionSr || null}
+                    pickCountdown={{
+                      smoothRemainFraction: smoothProgress,
+                      displaySeconds,
+                      urgent,
+                    }}
+                  />
+
+                  <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    {!isHolder ? (
+                      <div
+                        className={CHALLENGE_AXIS_TILE_ROW_CLASS}
+                        role="region"
+                        aria-label={t("challenge.pickWaitShort", { player: holder.nickname })}
+                      >
+                        <p className="sr-only">{t("challenge.spectatorPickGhostCaption")}</p>
+                        <div className={cn(CHALLENGE_AXIS_TILE_COL_CLASS, CHALLENGE_AXIS_TILE_SPECTATOR_WRAP_CLASS)} aria-hidden>
+                          <ChallengeAxisPlayfieldTile axis="suit" emphasis="inactive" />
+                        </div>
+                        <div className={cn(CHALLENGE_AXIS_TILE_COL_CLASS, CHALLENGE_AXIS_TILE_SPECTATOR_WRAP_CLASS)} aria-hidden>
+                          <ChallengeAxisPlayfieldTile axis="number" emphasis="inactive" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={CHALLENGE_AXIS_TILE_ROW_CLASS}>
+                        <div className={CHALLENGE_AXIS_TILE_COL_CLASS}>
+                          <ChallengeAxisPlayfieldTile
+                            axis="suit"
+                            emphasis="active"
+                            activeEmphasisStyle="pickMuted"
+                            as="button"
+                            onClick={() => onChallenge(localPlayerId, "suit")}
+                            aria-label={`${t("challenge.wrongSuit")}. ${t("challenge.youHoldChallenge")}`}
+                          />
+                        </div>
+                        <div className={CHALLENGE_AXIS_TILE_COL_CLASS}>
+                          <ChallengeAxisPlayfieldTile
+                            axis="number"
+                            emphasis="active"
+                            activeEmphasisStyle="pickMuted"
+                            as="button"
+                            onClick={() => onChallenge(localPlayerId, "number")}
+                            aria-label={`${t("challenge.wrongNumber")}. ${t("challenge.youHoldChallenge")}`}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* ── Standalone glass panel ────────────────────────────────────── */
+                <div className="flex flex-col gap-2">
+                  <ChallengerAxisIdentityStrip
+                    className="mb-1 w-full shrink-0"
+                    phase="pick"
+                    nickname={holder.nickname}
+                    isLocalPlayer={isHolder}
+                    hint={pickInstructionSr || null}
+                  />
+
+                  {!isHolder ? (
+                    <div
+                      className="mb-1.5 flex w-full justify-center gap-3 sm:gap-4"
+                      role="region"
+                      aria-label={t("challenge.pickWaitShort", { player: holder.nickname })}
+                    >
+                      <p className="sr-only">{t("challenge.spectatorPickGhostCaption")}</p>
+                      <div className="pointer-events-none w-full max-w-[13rem] flex-1 opacity-50 saturate-50 sm:flex-none">
+                        <div className="flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-muted-foreground/50 bg-muted/30 p-4 text-center shadow-inner">
+                          <Icon name="style" size={DEFAULT_PICK_ICON_SIZE} className="text-muted-foreground" fill={1} />
+                          <span className="font-headline text-base font-bold leading-tight text-muted-foreground sm:text-lg">{t("challenge.wrongSuit")}</span>
+                        </div>
+                      </div>
+                      <div className="pointer-events-none w-full max-w-[13rem] flex-1 opacity-50 saturate-50 sm:flex-none">
+                        <div className="flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-muted-foreground/50 bg-muted/30 p-4 text-center shadow-inner">
+                          <Icon name="counter_1" size={DEFAULT_PICK_ICON_SIZE} className="text-muted-foreground" fill={1} />
+                          <span className="font-headline text-base font-bold leading-tight text-muted-foreground sm:text-lg">{t("challenge.wrongNumber")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {canAct && isHolder ? (
+                    <div className="flex w-full justify-center gap-3 sm:gap-4">
+                      <div className="w-full max-w-[13rem] flex-1 sm:flex-none">
+                        <button
+                          type="button"
+                          onClick={() => onChallenge(localPlayerId, "suit")}
+                          className={cn(
+                            "flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-primary/40 bg-primary/10 p-4 text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
+                            "hover:border-primary/55 hover:bg-primary/16 hover:shadow-md",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
+                            "motion-safe:active:scale-[0.98]",
+                          )}
+                          aria-label={`${t("challenge.wrongSuit")}. ${t("challenge.youHoldChallenge")}`}
+                        >
+                          <Icon name="style" size={DEFAULT_PICK_ICON_SIZE} className="text-primary" fill={1} />
+                          <span className="font-headline text-base font-bold leading-tight text-foreground sm:text-lg">{t("challenge.wrongSuit")}</span>
+                        </button>
+                      </div>
+                      <div className="w-full max-w-[13rem] flex-1 sm:flex-none">
+                        <button
+                          type="button"
+                          onClick={() => onChallenge(localPlayerId, "number")}
+                          className={cn(
+                            "flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-primary/40 bg-primary/10 p-4 text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
+                            "hover:border-primary/55 hover:bg-primary/16 hover:shadow-md",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
+                            "motion-safe:active:scale-[0.98]",
+                          )}
+                          aria-label={`${t("challenge.wrongNumber")}. ${t("challenge.youHoldChallenge")}`}
+                        >
+                          <Icon name="counter_1" size={DEFAULT_PICK_ICON_SIZE} className="text-primary" fill={1} />
+                          <span className="font-headline text-base font-bold leading-tight text-foreground sm:text-lg">{t("challenge.wrongNumber")}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <ChallengePickTimeBar
+                    displaySeconds={displaySeconds}
+                    smoothRemainFraction={smoothProgress}
+                    urgent={urgent}
+                  />
+                </div>
+              )}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

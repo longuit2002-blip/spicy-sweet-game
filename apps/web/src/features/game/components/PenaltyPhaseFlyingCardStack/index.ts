@@ -1,1 +1,5 @@
-export { PenaltyPhaseFlyingCardStack, type PenaltyPhaseFlyingCardStackProps } from "./PenaltyPhaseFlyingCardStack";
+export {
+  PenaltyPhaseFlyingCardStack,
+  type PenaltyPhaseFlyingCardStackProps,
+  type PenaltyPhaseStackDensity,
+} from "./PenaltyPhaseFlyingCardStack";

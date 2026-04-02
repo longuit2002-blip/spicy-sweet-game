@@ -1,4 +1,5 @@
 export {
+  DuelDrawPassDragGhost,
   GameTable,
   GameTablePlayfield,
   GameTableTableauSection,

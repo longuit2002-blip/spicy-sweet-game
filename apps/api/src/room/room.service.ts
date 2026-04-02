@@ -42,6 +42,9 @@ export class RoomService {
   }
 
   createRoom(userId: string, nickname: string, maxPlayers = DEFAULT_ROOM_MAX_PLAYERS): ServerRoom {
+    if (this.userToRoom.has(userId)) {
+      this.leaveRoom(userId);
+    }
     const roomCode = generateRoomCode();
     const player: RoomPlayer = {
       id: userId,
@@ -69,6 +72,10 @@ export class RoomService {
 
   joinRoom(roomCode: string, userId: string, nickname: string): { ok: true; room: ServerRoom } | { ok: false; error: string } {
     const code = roomCode.toUpperCase();
+    const previousCode = this.userToRoom.get(userId);
+    if (previousCode && previousCode !== code) {
+      this.leaveRoom(userId);
+    }
     const room = this.rooms.get(code);
     if (!room) return { ok: false, error: "Room not found" };
     if (room.status !== "WAITING") return { ok: false, error: "Game already in progress" };
@@ -130,11 +137,27 @@ export class RoomService {
     return room;
   }
 
-  addLobbyBot(hostUserId: string): { ok: true; room: ServerRoom; player: RoomPlayer } | { ok: false; error: string } {
-    const roomCode = this.userToRoom.get(hostUserId);
-    if (!roomCode) return { ok: false, error: "Not in a room" };
-    const room = this.rooms.get(roomCode);
-    if (!room) return { ok: false, error: "Room not found" };
+  addLobbyBot(
+    hostUserId: string,
+    socketRoomCode?: string | null,
+  ): { ok: true; room: ServerRoom; player: RoomPlayer } | { ok: false; error: string } {
+    const normalizedSocketCode = socketRoomCode ? socketRoomCode.toUpperCase() : undefined;
+    let room: ServerRoom | undefined = normalizedSocketCode ? this.rooms.get(normalizedSocketCode) : undefined;
+    if (room && !room.players.some((p) => p.id === hostUserId)) {
+      room = undefined;
+    }
+    if (!room) {
+      const mappedCode = this.userToRoom.get(hostUserId);
+      room = mappedCode ? this.rooms.get(mappedCode) : undefined;
+    }
+    if (!room) return { ok: false, error: "Not in a room" };
+    if (!room.players.some((p) => p.id === hostUserId)) {
+      return { ok: false, error: "Not in this room" };
+    }
+    const mapCode = this.userToRoom.get(hostUserId);
+    if (mapCode !== room.roomCode) {
+      this.userToRoom.set(hostUserId, room.roomCode);
+    }
     if (room.hostId !== hostUserId) return { ok: false, error: "Only the host can add bots" };
     if (room.status !== "WAITING") return { ok: false, error: "Bots can only be added in the lobby" };
     if (room.players.length >= room.maxPlayers) return { ok: false, error: "Room is full" };

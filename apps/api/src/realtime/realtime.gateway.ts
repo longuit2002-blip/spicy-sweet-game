@@ -97,6 +97,10 @@ export class RealtimeGateway implements OnGatewayInit {
     }
     const userId = client.data.userId as string;
     const nickname = client.data.nickname as string;
+    const prevSocketRoom = client.data.roomId as string | undefined;
+    if (prevSocketRoom) {
+      void client.leave(prevSocketRoom);
+    }
     const room = this.roomService.createRoom(userId, nickname, data.maxPlayers ?? DEFAULT_ROOM_MAX_PLAYERS);
     void client.join(room.roomCode);
     client.data.roomId = room.roomCode;
@@ -124,6 +128,10 @@ export class RealtimeGateway implements OnGatewayInit {
     const result = this.roomService.joinRoom(code, userId, nickname);
     if (!result.ok) {
       return { success: false, error: result.error };
+    }
+    const prevSocketRoom = client.data.roomId as string | undefined;
+    if (prevSocketRoom && prevSocketRoom !== result.room.roomCode) {
+      void client.leave(prevSocketRoom);
     }
     void client.join(result.room.roomCode);
     client.data.roomId = result.room.roomCode;
@@ -181,7 +189,8 @@ export class RealtimeGateway implements OnGatewayInit {
       return { success: false as const, error: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string };
     }
     const userId = client.data.userId as string;
-    const result = this.roomService.addLobbyBot(userId);
+    const socketRoomCode = client.data.roomId as string | undefined;
+    const result = this.roomService.addLobbyBot(userId, socketRoomCode);
     if (!result.ok) {
       /** Expected validation errors: return via ack only so clients do not receive global `error` spam. */
       return { success: false as const, error: result.error };

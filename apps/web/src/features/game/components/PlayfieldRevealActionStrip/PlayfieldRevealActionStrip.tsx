@@ -1,126 +1,155 @@
 "use client";
 
 import { useMemo } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { ChallengeResult } from "@/shared/types/game";
+import { PHASE_EASE_OUT, SNAPPY_SPRING } from "@/features/game/animations";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/ui/icon";
 import { DEFAULT_LOBBY_NICKNAME, REVEAL_REMAIN_AFTER_LOCK_THRESHOLD } from "@/lib/game-room.constants";
+import {
+  CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS,
+  CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS,
+  ChallengerAxisIdentityStrip,
+} from "@/features/game/components/challenge-axis";
 import { RevealChallengeAxisTilesRow } from "./reveal-challenge-axis-tiles-row";
-
-/**
- * REVEAL phase UI below the claim card (same stack as {@link ChallengePhase} embedded strip).
- * Lock vs post-lock share a fixed inner height so the adjacent claim card does not shift mid-phase.
- */
-const REVEAL_ACTION_STRIP_INNER_HEIGHT_CLASS = "h-[10.5rem] sm:h-[11.25rem]";
 
 export interface PlayfieldRevealActionStripProps {
   challengeResult: ChallengeResult;
   challengeTimer: number;
   challengeOutcomeNames?: { challenger: string; declarer: string } | null;
+  localPlayerId: string;
   className?: string;
+}
+
+function axisDisplayFromType(ct: ChallengeResult["challengeType"]): "wild" | "number" {
+  return ct === "suit" ? "wild" : "number";
 }
 
 export function PlayfieldRevealActionStrip({
   challengeResult,
   challengeTimer,
   challengeOutcomeNames = null,
+  localPlayerId,
   className,
 }: PlayfieldRevealActionStripProps) {
   const { t } = useTranslation("game");
+  const reducedMotion = useReducedMotion() === true;
+  const transition = reducedMotion
+    ? { type: "tween" as const, duration: 0.14, ease: PHASE_EASE_OUT }
+    : SNAPPY_SPRING;
+
+  const challengerDisplayName = useMemo(
+    () => (challengeOutcomeNames?.challenger ?? "").trim() || DEFAULT_LOBBY_NICKNAME,
+    [challengeOutcomeNames?.challenger],
+  );
 
   const inRevealLock = challengeTimer > REVEAL_REMAIN_AFTER_LOCK_THRESHOLD;
-  const revealLockDisplaySeconds = inRevealLock
+  const lockSecondsLeft = inRevealLock
     ? Math.max(0, challengeTimer - REVEAL_REMAIN_AFTER_LOCK_THRESHOLD)
     : 0;
 
-  const revealLockSrText = useMemo(() => {
+  const isLocalChallenger = localPlayerId === challengeResult.challengerId;
+  const axisDisplay = axisDisplayFromType(challengeResult.challengeType);
+
+  const flipAriaLabel =
+    challengeResult.challengeType === "suit"
+      ? t("challenge.revealAxisSuit")
+      : t("challenge.revealAxisNumber");
+
+  const flipAxisTitle =
+    axisDisplay === "wild" ? t("challenge.wrongSuit") : t("challenge.wrongNumber");
+
+  const srText = useMemo(() => {
     if (!inRevealLock) return null;
-    const challenger = (challengeOutcomeNames?.challenger ?? "").trim() || DEFAULT_LOBBY_NICKNAME;
     const axisLabel =
       challengeResult.challengeType === "suit" ? t("challenge.wrongSuit") : t("challenge.wrongNumber");
     return [
       t("challenge.revealLockTitle"),
-      t("challenge.revealLockSubtitle", { player: challenger, axis: axisLabel }),
-      t("challenge.revealLockCountdownSr", { seconds: revealLockDisplaySeconds }),
+      t("challenge.revealLockSubtitle", { player: challengerDisplayName, axis: axisLabel }),
+      t("challenge.revealLockCountdownSr", { seconds: lockSecondsLeft }),
     ].join(" ");
-  }, [
-    inRevealLock,
-    challengeResult.challengeType,
-    challengeOutcomeNames?.challenger,
-    revealLockDisplaySeconds,
-    t,
-  ]);
+  }, [inRevealLock, challengeResult.challengeType, challengerDisplayName, lockSecondsLeft, t]);
 
   return (
     <div
-      className={cn(
-        "mx-auto flex w-full max-w-lg shrink-0 flex-col items-center pt-2 sm:max-w-xl sm:pt-3 lg:max-w-2xl",
-        className,
-      )}
+      className={cn(CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS, className)}
       role="region"
       aria-label={t("challenge.regionLabel")}
     >
-      <div
-        className={cn(
-          "flex w-full max-w-[min(100%,26rem)] shrink-0 flex-col justify-center sm:max-w-[min(100%,28rem)]",
-          REVEAL_ACTION_STRIP_INNER_HEIGHT_CLASS,
-        )}
-      >
-        {inRevealLock ? (
-          <div className="flex min-h-0 flex-1 flex-col justify-center">
-            <div
-              className="relative overflow-hidden rounded-xl border-2 border-primary/40 bg-gradient-to-b from-primary/[0.14] to-card px-2 py-2 shadow-kawaii ring-1 ring-primary/25 sm:px-3 sm:py-2.5"
+      <div className={CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS}>
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden sm:gap-2">
+        <AnimatePresence mode="wait" initial={false}>
+          {inRevealLock ? (
+            <motion.div
+              key="reveal-lock"
+              initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? undefined : { opacity: 0, y: -8 }}
+              transition={transition}
+              className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-1.5 overflow-hidden sm:gap-2"
+              role="status"
+              aria-live="polite"
+            >
+              <ChallengerAxisIdentityStrip
+                className="shrink-0"
+                phase="lock"
+                nickname={challengerDisplayName}
+                isLocalPlayer={isLocalChallenger}
+                hint={t("challenge.axisIdentityLockHint")}
+                challengeAxisDisplay={axisDisplay}
+                revealLockCountdown={{ seconds: lockSecondsLeft }}
+              />
+
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <RevealChallengeAxisTilesRow challengeType={challengeResult.challengeType} />
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="reveal-flip"
+              initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={transition}
+              className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center overflow-hidden py-0"
               role="status"
               aria-live="polite"
             >
               <div
-                className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full bg-primary/10 blur-xl"
-                aria-hidden
-              />
-              <div className="relative flex min-h-0 flex-col items-stretch gap-1 sm:gap-1.5">
-                <div className="flex w-full items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5 text-primary">
-                    <Icon name="lock" size={18} className="shrink-0" aria-hidden />
-                    <span className="truncate font-headline text-[10px] font-black uppercase tracking-wide sm:text-xs">
-                      {t("challenge.revealLockTitle")}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-border/60 bg-background/80 px-2 py-1 tabular-nums shadow-inner sm:px-2.5">
-                    <span className="font-headline text-lg font-black leading-none text-primary sm:text-xl">
-                      {revealLockDisplaySeconds}
-                    </span>
-                    <span className="max-w-[4.5rem] truncate text-center text-[8px] font-bold uppercase leading-tight tracking-wider text-muted-foreground sm:max-w-[6rem] sm:text-[9px]">
-                      {t("challenge.revealLockCountLabel")}
-                    </span>
-                  </div>
+                className="flex max-h-full w-full max-w-sm flex-col items-center gap-2 overflow-hidden rounded-md border border-primary/30 bg-gradient-to-b from-primary/10 to-muted/15 px-3 py-2.5 shadow-sm sm:gap-2 sm:px-4 sm:py-3"
+                aria-label={flipAriaLabel}
+              >
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/25 bg-primary/12 sm:h-10 sm:w-10"
+                  aria-hidden
+                >
+                  {axisDisplay === "wild" ? (
+                    <Icon name="style" size={32} fill={1} className="text-primary" />
+                  ) : (
+                    <Icon name="counter_1" size={32} fill={1} className="text-primary" />
+                  )}
                 </div>
-                <p className="w-full truncate text-left text-[10px] font-semibold text-muted-foreground sm:text-[11px]">
-                  {(challengeOutcomeNames?.challenger ?? "").trim() || DEFAULT_LOBBY_NICKNAME}
-                </p>
-                <RevealChallengeAxisTilesRow challengeType={challengeResult.challengeType} />
+                <div className="min-w-0 px-0.5 text-center">
+                  <p className="font-headline text-xs font-black leading-tight text-foreground sm:text-sm">
+                    {t("challenge.revealFlipChallengingLead")}
+                  </p>
+                  <p className="mt-0.5 font-headline text-sm font-black leading-tight text-primary sm:text-base">
+                    {flipAxisTitle}
+                  </p>
+                </div>
+                <span className="sr-only">{flipAriaLabel}</span>
               </div>
-            </div>
-          </div>
-        ) : (
-          <div
-            className="flex min-h-0 flex-1 flex-col items-center justify-center px-1"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="rounded-full border border-primary/35 bg-primary/[0.09] px-3 py-2 shadow-kawaii ring-1 ring-primary/20 sm:px-4">
-              <p className="text-[11px] font-bold uppercase leading-snug tracking-wide text-foreground sm:text-xs">
-                {challengeResult.challengeType === "suit"
-                  ? t("challenge.revealAxisSuit")
-                  : t("challenge.revealAxisNumber")}
-              </p>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        </div>
       </div>
-      {revealLockSrText ? (
+
+      {srText ? (
         <p className="sr-only" role="status">
-          {revealLockSrText}
+          {srText}
         </p>
       ) : null}
     </div>

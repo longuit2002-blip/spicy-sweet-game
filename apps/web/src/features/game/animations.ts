@@ -48,6 +48,24 @@ export const SNAPPY_SPRING: Transition = {
   damping: 30,
 };
 
+/**
+ * Opacity-only crossfade when the challenge step switches CLAIM_RACE → PICK_TYPE.
+ * Keeps one “decision surface” feel instead of unmounting the claim bubble and popping in the pick UI.
+ */
+export const CHALLENGE_STEP_CROSSFADE_SECONDS = 0.22;
+
+export const CHALLENGE_STEP_CROSSFADE_TRANSITION: Transition = {
+  type: "tween",
+  duration: CHALLENGE_STEP_CROSSFADE_SECONDS,
+  ease: PHASE_EASE_OUT,
+};
+
+export const CHALLENGE_STEP_CROSSFADE_TRANSITION_REDUCED: Transition = {
+  type: "tween",
+  duration: PHASE_DURATION_REDUCED_SECONDS,
+  ease: PHASE_EASE_OUT,
+};
+
 /** Delay between each penalty pile card “flight” from the draw-pile side (seconds). */
 export const PENALTY_PILE_DRAW_FLIGHT_STAGGER_SECONDS = 0.055;
 
@@ -63,6 +81,14 @@ export const PLAY_CARD_TO_TABLE_SPRING: Transition = {
   damping: 19,
   mass: 0.72,
 };
+
+/**
+ * Center claim entrance (web): run only when the claim subtree remounts on a new card id / new play —
+ * not when the contested pile count alone increases. Transform-only, perceived from hand toward table.
+ */
+export const PLAYFIELD_CLAIM_ENTRANCE_OFFSET_Y_PX = 56;
+export const PLAYFIELD_CLAIM_ENTRANCE_ROTATE_Z_DEG = 4;
+export const PLAYFIELD_CLAIM_ENTRANCE_INITIAL_SCALE = 0.92;
 
 export const PHASE_VARIANTS: Variants = {
   initial: {

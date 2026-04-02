@@ -18,10 +18,10 @@ export const CHALLENGE_PICK_TYPE_SECONDS = 20;
 export const REVEAL_LOCK_COUNTDOWN_SECONDS = 3;
 
 /**
- * After the lock window: time for the slow flip animation plus a short beat to read the face before penalty.
- * Sum of integer seconds should cover ~`PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS` on the client plus dwell.
+ * After the lock window: time for the reveal flip plus impact overlay on the client (`PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS`, `CHALLENGE_REVEAL_IMPACT_HOLD_MS`), then advance to PENALTY on the next tick.
+ * Integer seconds for the API game loop (1 Hz); keep in sync with web reveal UX so players are not stuck in REVEAL after the overlay dismisses.
  */
-export const REVEAL_POST_LOCK_HOLD_SECONDS = 8;
+export const REVEAL_POST_LOCK_HOLD_SECONDS = 3;
 
 /** Initial `challengeTimer` entering `REVEAL` — lock segment + post-lock segment (server ticks once per second). */
 export const REVEAL_PHASE_COUNTDOWN_SECONDS =

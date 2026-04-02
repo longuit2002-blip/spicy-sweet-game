@@ -86,9 +86,8 @@ export const DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS = "top-1 sm:top-2" as const;
 export const CHALLENGE_REVEAL_IMPACT_Z = 62;
 
 /**
- * After the reveal outcome mounts, auto-dismiss the overlay (ms). Ideally this lines up with the
- * server leaving `REVEAL`; until then this only controls how long the “Kết quả vòng” beat stays on screen
- * (`REVEAL_POST_LOCK_HOLD_SECONDS` still covers most of post-flip phase).
+ * After the reveal outcome mounts, auto-dismiss the overlay (ms). Server `REVEAL_POST_LOCK_HOLD_SECONDS`
+ * is tuned so PENALTY follows shortly after this beat (same phase window as the 3s flip).
  */
 export const CHALLENGE_REVEAL_IMPACT_HOLD_MS = 2800;
 
@@ -149,34 +148,8 @@ export const OPPONENT_CAROUSEL_ARC_ROTATE_DEG_PER_STEP = 8;
 /** `translateZ` (px) when seat is carousel focus — pops hero toward camera. */
 export const OPPONENT_CAROUSEL_FOCUS_TRANSLATE_Z_PX = 28;
 
-/** HTML5 drag payload — hand card id (play area drop target). */
-export const GAME_CARD_DRAG_MIME_TYPE = "application/x-sweet-spicy-card-id";
-
-/** HTML5 drag from duel draw pile → drop on local hand (draw-and-pass). */
-export const GAME_DRAW_PASS_DRAG_MIME_TYPE = "application/x-sweet-spicy-draw-pass";
-/** Payload token — must not collide with real card ids. */
-export const GAME_DRAW_PASS_DRAG_PAYLOAD = "sweet-spicy-draw-pass-v1" as const;
-
-export function dataTransferTypeSetHasDrawPassDrag(types: readonly string[]): boolean {
-  const want = GAME_DRAW_PASS_DRAG_MIME_TYPE.toLowerCase();
-  return types.some((t) => t.toLowerCase() === want);
-}
-
-export function isDrawPassDropDataTransfer(dt: DataTransfer | null): boolean {
-  if (!dt) return false;
-  if (dt.getData(GAME_DRAW_PASS_DRAG_MIME_TYPE) === GAME_DRAW_PASS_DRAG_PAYLOAD) return true;
-  return dt.getData("text/plain") === GAME_DRAW_PASS_DRAG_PAYLOAD;
-}
-
-export function getCardIdFromDragDataTransfer(dt: DataTransfer | null): string | null {
-  if (!dt) return null;
-  if (dt.getData(GAME_DRAW_PASS_DRAG_MIME_TYPE) === GAME_DRAW_PASS_DRAG_PAYLOAD) return null;
-  const id = dt.getData(GAME_CARD_DRAG_MIME_TYPE);
-  if (typeof id === "string" && id.length > 0) return id;
-  const plain = dt.getData("text/plain");
-  if (plain === GAME_DRAW_PASS_DRAG_PAYLOAD) return null;
-  return typeof plain === "string" && plain.length > 0 ? plain : null;
-}
+/** Auto-dismiss overlay hint when draw-and-pass becomes available on your turn (ms). */
+export const DRAW_PASS_COACH_HINT_DISPLAY_MS = 4800;
 
 /** Offline-only: delay before a bot plays a card. */
 export const OFFLINE_BOT_ACTION_DELAY_MS = 1500;

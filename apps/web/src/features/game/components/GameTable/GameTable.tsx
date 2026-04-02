@@ -1,4 +1,22 @@
-import { useEffect, useMemo, useState, type DragEvent, type ReactNode, type RefObject } from "react";
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useDndContext,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from "@dnd-kit/core";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { MAX_DECLARATION_RANK, TOTAL_TROPHIES } from "@sweet-spicy/game-logic";
@@ -15,26 +33,44 @@ import { CardBackSurface } from "@/features/game/components/CardBackSurface";
 import { SpiceCard } from "@/features/game/components/SpiceCard";
 import { PlayfieldDeclaredCardFlip } from "./PlayfieldDeclaredCardFlip";
 import {
+  GAME_CARD_ART_ASPECT_CLASS,
   SPICE_DECLARE_CONTEXT_RANK_CHIP_CLASS,
   SPICE_DECLARE_CONTEXT_SUIT_TEXT_CLASS,
   SPICE_DECLARE_CONTEXT_TRACK_CLASS,
   TABLEAU_TROPHY_DISPLAY_CARD,
 } from "@/lib/game-card-assets";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { PHASE_EASE_OUT, PLAY_CARD_TO_TABLE_SPRING, SNAPPY_SPRING } from "@/features/game/animations";
+import {
+  PHASE_EASE_OUT,
+  PLAY_CARD_TO_TABLE_SPRING,
+  PLAYFIELD_CLAIM_ENTRANCE_INITIAL_SCALE,
+  PLAYFIELD_CLAIM_ENTRANCE_OFFSET_Y_PX,
+  PLAYFIELD_CLAIM_ENTRANCE_ROTATE_Z_DEG,
+  SNAPPY_SPRING,
+} from "@/features/game/animations";
 import {
   DEFAULT_LOBBY_NICKNAME,
-  GAME_CARD_DRAG_MIME_TYPE,
-  GAME_DRAW_PASS_DRAG_MIME_TYPE,
-  GAME_DRAW_PASS_DRAG_PAYLOAD,
-  getCardIdFromDragDataTransfer,
+  DRAW_PASS_COACH_HINT_DISPLAY_MS,
   isRoundResolutionInterstitialPhase,
   REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
 } from "@/lib/game-room.constants";
+import {
+  GAME_DND_DRAG_DRAW_PASS_ID,
+  GAME_DND_DROP_PLAY_ZONE,
+  GAME_DND_KIND,
+  GAME_DND_POINTER_ACTIVATION_DISTANCE_PX,
+  GAME_DND_DRAW_PASS_SOURCE_DIM_OPACITY,
+  GAME_DND_TOUCH_ACTIVATION_DELAY_MS,
+  GAME_DND_TOUCH_ACTIVATION_TOLERANCE_PX,
+  isGameDndDeclareCardData,
+  isGameDndDrawPassData,
+  type GameDndDrawPassDragData,
+} from "@/features/game/dnd/game-dnd-ids";
 
-/** Drop a hand card onto the empty play slot (HTML5 DnD). */
+/** Drop a hand card onto the empty play slot (@dnd-kit). */
 export type PlayDropZoneConfig = {
   highlighted: boolean;
   onCardDrop: (cardId: string) => void;
@@ -48,8 +84,11 @@ export type DrawPassActionConfig = {
 /** Duel draw pile: drag stack toward local hand to draw-and-pass (`PLAYER_TURN` only). */
 export type DrawPassPileDraggableConfig = {
   active: boolean;
-  /** Fired when a draw-pile drag session starts / ends (highlights hand drop zone). */
-  onDragSessionChange: (active: boolean) => void;
+  /**
+   * Tap fallback — same action as dropping the pile on the hand.
+   * Optional so non-interactive tableaux stay unchanged.
+   */
+  onDrawPass?: () => void;
 };
 
 export interface GameTableProps {
@@ -95,9 +134,6 @@ export type GameTablePlayfieldProps = GameTableProps & {
   roundResolutionPanel?: ReactNode | null;
 };
 
-/** Extra lead-in on the stacked face-down card vs. the outer claim row (seconds). */
-const PLAY_CARD_STACK_LEAD_IN_SECONDS = 0.02;
-
 /** Reduced-motion duration for play / empty cross-fade (seconds). */
 const REDUCED_CARD_MOTION_DURATION_SECONDS = 0.16;
 
@@ -110,25 +146,40 @@ const DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM =
 
 /**
  * Shared shell: empty `PLAYER_TURN` drop zone and round-resolution panel (PENALTY / NEXT_TURN / TROPHY).
- * Same min-height avoids jump when swapping interstitial panel for declare UI.
+ * Vertical min matches {@link DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM} so the band does not jump when a claim
+ * appears or clears while the side rails (contested pile) stay stable in the grid.
  */
 const DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT =
-  "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(46vh,30rem)] sm:py-4 lg:max-w-4xl lg:min-h-[min(50vh,34rem)]";
+  "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(56vh,38rem)] sm:py-4 lg:max-w-4xl lg:min-h-[min(62vh,44rem)]";
+
+/**
+ * Same vertical shell as {@link DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT} but wider max-width for
+ * merged round-resolution UI (PENALTY two-column panel, NEXT_TURN, TROPHY) so the center track can
+ * use horizontal space left by side rails.
+ */
+const DECLARATION_PLAYFIELD_SHELL_ROUND_RESOLUTION_LAYOUT =
+  "relative z-10 mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 sm:min-h-[min(56vh,38rem)] sm:py-4 lg:max-w-6xl lg:min-h-[min(62vh,44rem)] xl:max-w-7xl";
 
 /**
  * Side rails (contested pile) stay **top-aligned** in the row so `items-center` does not vertically
  * recenter them when declaration `min-h` changes (declare vs REVEAL vs challenge).
  */
 /**
- * Round pile stays column 1 on all breakpoints (no separate mobile row) so the anchor does not jump.
- * Mobile: `auto | 1fr`; `sm+`: `1fr | auto | 1fr` with symmetric spacers.
+ * Round pile stays column 1; **side tracks use fixed rem widths** (not `1fr`) so the center column cannot
+ * grow with long wrapped copy and steal width — that was shifting the pile horizontally. Center is always
+ * `minmax(0,1fr)` so text wraps inside a stable flex-minimum column.
  */
 const PLAYFIELD_SIDE_RAIL_GRID_CLASS =
-  "grid w-full min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-2 sm:gap-y-0 lg:gap-x-4";
+  "grid w-full min-w-0 flex-1 grid-cols-[9.5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-2 sm:grid-cols-[10.5rem_minmax(0,1fr)_10.5rem] sm:gap-x-2 sm:gap-y-0 lg:gap-x-4";
 
-/** Shared wrapper: `roundPileAnchorRef` target for FX; always visible (not `hidden sm:flex`). */
-const PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS =
-  "col-start-1 row-start-1 flex min-w-0 shrink-0 items-start justify-end self-start pr-0.5 sm:pr-2";
+/**
+ * Shared wrapper: `roundPileAnchorRef` target for FX; always visible (not `hidden sm:flex`).
+ * Height reserved for stack + chip; width comes from the fixed grid track ({@link PLAYFIELD_SIDE_RAIL_GRID_CLASS}).
+ */
+const PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS = cn(
+  "col-start-1 row-start-1 flex w-full min-w-0 shrink-0 items-start justify-end self-start pr-0.5 sm:pr-2",
+  "min-h-[12.5rem] sm:min-h-[14rem]",
+);
 
 const PILE_STACK_VISIBLE_MAX = 6;
 const TABLEAU_STACK_DEPTH = 4;
@@ -155,11 +206,11 @@ function PlayerTurnDeclareContextPanel({
   if (lockedSuit == null) {
     return (
       <div
-        className="w-full rounded-md border border-dashed border-border/45 bg-muted/20 px-3 py-3 sm:px-4"
+        className="w-full min-w-0 max-w-full rounded-md border border-dashed border-border/45 bg-muted/20 px-3 py-3 sm:px-4"
         role="region"
         aria-label={t("table.a11y.firstRoundDeclareContext")}
       >
-        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+        <p className="break-words text-center text-xs leading-relaxed text-muted-foreground">
           {t("table.firstRoundHint")}
         </p>
       </div>
@@ -185,12 +236,11 @@ function PlayerTurnDeclareContextPanel({
 
   return (
     <motion.div
-      layout
       initial={reducedMotion ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={SNAPPY_SPRING}
       className={cn(
-        "flex w-full flex-col items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4 sm:py-3.5",
+        "flex min-w-0 max-w-full flex-col items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4 sm:py-3.5",
         trackClass,
       )}
       role="region"
@@ -254,7 +304,7 @@ function PlayerTurnDeclareContextPanel({
         ) : null}
       </div>
 
-      <p className="text-center text-[11px] leading-snug text-muted-foreground sm:text-xs">
+      <p className="max-w-full break-words text-center text-[11px] leading-snug text-muted-foreground sm:text-xs">
         {ruleLine} {t("table.drawPassOptionSuffix")}
       </p>
     </motion.div>
@@ -354,83 +404,140 @@ function TableauFaceDownStack({
   );
 }
 
+/**
+ * Single face-down duel card for draw-pass {@link DragOverlay} — one card is drawn, not the whole stack visual.
+ */
+export function DuelDrawPassDragGhost({ className }: { className?: string }) {
+  return <TableauFaceDownStack layers={1} preset="duel" className={className} />;
+}
+
 /** Max face-down layers drawn in playfield side rails (decorative, not pile logic). */
 const PLAYFIELD_RAIL_STACK_CAP = 2;
+
+/**
+ * Face-down cards in contested-pile rail — real back art via {@link CardBackSurface}, larger than the old CSS tiles.
+ * Box height follows 2:3 from width ({@link GAME_CARD_ART_ASPECT_CLASS}).
+ */
+const PLAYFIELD_ROUND_CARD_BOX_CLASS = cn(
+  GAME_CARD_ART_ASPECT_CLASS,
+  "w-[5.75rem] sm:w-[6.5rem]",
+);
+
+/**
+ * Fixed stack viewport: fits {@link PLAYFIELD_RAIL_STACK_CAP} layers + offsets + count chip overlap.
+ * Explicit w/h prevents layout jump between empty (dashed) and stacked states.
+ */
+const PLAYFIELD_ROUND_STACK_VIEWPORT_CLASS =
+  "relative h-[9.375rem] w-[6.75rem] shrink-0 overflow-visible rounded-lg bg-transparent sm:h-[10.5rem] sm:w-[7.5rem]";
+
+/** Stacked inset — match physical card step (px keeps alignment at sub-rem offsets). */
+const PLAYFIELD_ROUND_LAYER_OFFSET_X_PX = 6;
+const PLAYFIELD_ROUND_LAYER_OFFSET_Y_PX = -5;
 
 function PlayfieldRoundPileRail({ tablePileCount, className }: { tablePileCount: number; className?: string }) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
   const visualLayers =
     tablePileCount <= 0 ? 0 : Math.min(tablePileCount, PLAYFIELD_RAIL_STACK_CAP);
+  const pileAriaLabel = t("result.pileCardCount", { count: tablePileCount });
 
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-2 text-center text-muted-foreground motion-reduce:transition-none",
+        "relative flex h-full min-h-0 w-full flex-col items-center justify-start pb-4 motion-reduce:transition-none",
         className,
       )}
+      role="img"
+      aria-label={pileAriaLabel}
     >
-      <p className="max-w-[7rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-xs">
-        {t("table.contestedPile")}
-      </p>
-      <motion.div
-        className={cn(
-          "relative h-[6.25rem] w-[4.125rem] shrink-0 rounded-xl p-0.5 ring-1 ring-primary/20 ring-offset-2 ring-offset-background sm:h-[7.5rem] sm:w-[4.625rem]",
-          visualLayers > 0 && "shadow-[0_8px_28px_-4px_hsl(var(--primary)/0.18)]",
-        )}
-        animate={
-          reducedMotion || visualLayers === 0
-            ? {}
-            : {
-                boxShadow: [
-                  "0 0 0 0px hsl(var(--primary) / 0)",
-                  "0 0 22px 3px hsl(var(--primary) / 0.22)",
-                  "0 0 0 0px hsl(var(--primary) / 0)",
-                ],
-              }
-        }
-        transition={
-          reducedMotion || visualLayers === 0
-            ? { duration: 0 }
-            : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }
-        }
-      >
+      {/**
+       * Flat on the playmat — same intent as `.playmat-supply-*`: no panel wash, no pulsing outer glow.
+       * Fixed viewport + {@link PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS} min size avoid jump empty↔stacked.
+       * Face-down layers use {@link CardBackSurface} (real `/game/.../card_back.png` art).
+       */}
+      <div className={PLAYFIELD_ROUND_STACK_VIEWPORT_CLASS}>
         <motion.div
           className="relative h-full w-full"
-          animate={reducedMotion || visualLayers === 0 ? {} : { y: [0, -2, 0] }}
-          transition={
-            reducedMotion ? { duration: 0 } : { duration: 3.2, repeat: Infinity, ease: "easeInOut" }
-          }
+          aria-hidden
+          variants={{
+            idle: {},
+            float: {
+              y: [0, -2, 0],
+              transition: { duration: 5.2, repeat: Infinity, ease: "easeInOut" },
+            },
+          }}
+          initial="idle"
+          animate={reducedMotion || visualLayers === 0 ? "idle" : "float"}
         >
           {visualLayers === 0 ? (
-            <div
-              className="absolute inset-0 rounded-md border-2 border-dashed border-border/55 bg-muted/5"
-              aria-hidden
+            <motion.div
+              className="flex h-full w-full items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent"
+              initial={reducedMotion ? false : { opacity: 0.75, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={SNAPPY_SPRING}
             />
           ) : (
-            Array.from({ length: visualLayers }).map((_, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "absolute rounded-lg border-2 border-card-back/90 bg-card-back/95 shadow-md sm:rounded-md",
-                  "h-[5.125rem] w-[3.75rem] sm:h-[5.75rem] sm:w-[4.125rem]",
-                )}
-                style={{ left: i * 4, top: i * -3, zIndex: i }}
-                aria-hidden
-              />
-            ))
+            <motion.div
+              key={tablePileCount}
+              className="relative h-full w-full"
+              variants={{
+                hidden: {},
+                show: {
+                  transition: {
+                    staggerChildren: reducedMotion ? 0 : 0.07,
+                    delayChildren: 0.03,
+                  },
+                },
+              }}
+              initial="hidden"
+              animate="show"
+            >
+              {Array.from({ length: visualLayers }).map((_, i) => (
+                <motion.div
+                  key={`${tablePileCount}-${i}`}
+                  className={cn("absolute", PLAYFIELD_ROUND_CARD_BOX_CLASS)}
+                  style={{
+                    left: i * PLAYFIELD_ROUND_LAYER_OFFSET_X_PX,
+                    top: i * PLAYFIELD_ROUND_LAYER_OFFSET_Y_PX,
+                    zIndex: i,
+                  }}
+                  variants={{
+                    hidden: reducedMotion
+                      ? { opacity: 1, scale: 1 }
+                      : { opacity: 0, scale: 0.88 },
+                    show: {
+                      opacity: 1,
+                      scale: 1,
+                      transition: SNAPPY_SPRING,
+                    },
+                  }}
+                >
+                  <CardBackSurface corner="lg" className="h-full w-full" />
+                </motion.div>
+              ))}
+            </motion.div>
           )}
         </motion.div>
-      </motion.div>
-      <motion.strong
-        className="text-base font-bold tabular-nums text-foreground sm:text-lg"
-        key={tablePileCount}
-        initial={reducedMotion ? false : { scale: 1 }}
-        animate={reducedMotion ? {} : { scale: [1, 1.12, 1] }}
-        transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-      >
-        {tablePileCount}
-      </motion.strong>
+
+        <div
+          className="pointer-events-none absolute bottom-0 left-1/2 z-20 flex min-w-[2rem] -translate-x-1/2 translate-y-[38%] justify-center px-0.5 sm:translate-y-[40%]"
+          aria-hidden
+        >
+          <motion.span
+            key={tablePileCount}
+            className={cn(
+              "inline-flex min-w-[1.75rem] items-center justify-center rounded-md border border-border/60",
+              "bg-background/90 px-2 py-0.5 text-center font-headline text-xs font-black tabular-nums text-foreground",
+              "shadow-sm backdrop-blur-sm sm:text-sm",
+            )}
+            initial={reducedMotion ? false : { scale: 0.82, opacity: 0.6 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={SNAPPY_SPRING}
+          >
+            {tablePileCount}
+          </motion.span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -518,33 +625,98 @@ function GameTableDuelDrawColumn({
 }) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
-  const [pileDragActive, setPileDragActive] = useState(false);
+  const { active } = useDndContext();
   const drawStackVisualLayers =
     drawPileCount <= 0 ? 0 : Math.min(TABLEAU_STACK_DEPTH, 1 + Math.floor(drawPileCount / 9));
 
   const pileDraggable =
     drawPassPileDraggable?.active === true && drawPileCount > 0 && drawPassPileDraggable != null;
 
-  useEffect(() => {
-    if (!drawPassPileDraggable?.active) {
-      setPileDragActive(false);
+  const drawPassDragData = useMemo<GameDndDrawPassDragData>(
+    () => ({ kind: GAME_DND_KIND.DRAW_PASS }),
+    [],
+  );
+
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: GAME_DND_DRAG_DRAW_PASS_ID,
+    disabled: !pileDraggable,
+    data: drawPassDragData,
+  });
+
+  const pileDragActive = active?.id === GAME_DND_DRAG_DRAW_PASS_ID;
+
+  const mergedStackRef = (el: HTMLDivElement | null) => {
+    setNodeRef(el);
+    if (drawStackAnchorRef) {
+      drawStackAnchorRef.current = el;
     }
-  }, [drawPassPileDraggable?.active]);
-
-  const onPileDragStart = (e: DragEvent<HTMLDivElement>) => {
-    if (!pileDraggable || !drawPassPileDraggable) return;
-    e.dataTransfer.effectAllowed = "copy";
-    e.dataTransfer.setData(GAME_DRAW_PASS_DRAG_MIME_TYPE, GAME_DRAW_PASS_DRAG_PAYLOAD);
-    e.dataTransfer.setData("text/plain", GAME_DRAW_PASS_DRAG_PAYLOAD);
-    setPileDragActive(true);
-    drawPassPileDraggable.onDragSessionChange(true);
   };
 
-  const onPileDragEnd = () => {
-    if (!drawPassPileDraggable) return;
-    setPileDragActive(false);
-    drawPassPileDraggable.onDragSessionChange(false);
-  };
+  const [coachVisible, setCoachVisible] = useState(false);
+  const prevPileDraggableRef = useRef(false);
+
+  useEffect(() => {
+    if (pileDraggable && !prevPileDraggableRef.current) {
+      setCoachVisible(true);
+      const id = window.setTimeout(() => setCoachVisible(false), DRAW_PASS_COACH_HINT_DISPLAY_MS);
+      prevPileDraggableRef.current = true;
+      return () => window.clearTimeout(id);
+    }
+    if (!pileDraggable) {
+      prevPileDraggableRef.current = false;
+      setCoachVisible(false);
+    }
+    return undefined;
+  }, [pileDraggable]);
+
+  const drawStackEl = (
+    <div
+      ref={mergedStackRef}
+      className={cn(
+        "inline-flex min-h-[3rem] min-w-[2.75rem] flex-col items-center justify-end touch-manipulation",
+        pileDraggable && "cursor-grab select-none active:cursor-grabbing",
+      )}
+      style={
+        pileDragActive ? { opacity: GAME_DND_DRAW_PASS_SOURCE_DIM_OPACITY } : undefined
+      }
+      {...listeners}
+      {...attributes}
+      aria-hidden={!pileDraggable}
+      aria-label={pileDraggable ? t("table.drawPileDragAria") : undefined}
+    >
+      <motion.div
+        key={drawPileCount}
+        initial={{ scale: 0.96, opacity: 0.85 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={SNAPPY_SPRING}
+      >
+        <div
+          data-draw-stack-visual
+          className={cn(
+            "inline-flex flex-col items-center",
+            pileDraggable &&
+              !pileDragActive &&
+              !reducedMotion &&
+              "motion-safe:origin-bottom motion-safe:animate-draw-pile-stack-invite",
+          )}
+        >
+          {drawStackVisualLayers > 0 ? (
+            <TableauFaceDownStack layers={drawStackVisualLayers} preset="duel" />
+          ) : (
+            <div
+              className={cn(
+                "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
+                DUEL_TABLEAU_CARD_W,
+                DUEL_TABLEAU_CARD_H,
+              )}
+            >
+              <span className="text-xs font-semibold text-muted-foreground">—</span>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
 
   /**
    * In-flow flex column (not `h-0` + all-`absolute` children): a zero-size shrink-wrap parent
@@ -559,64 +731,57 @@ function GameTableDuelDrawColumn({
         pileDragActive && "z-30 ring-2 ring-primary/40 ring-offset-2 ring-offset-background",
       )}
     >
+      <AnimatePresence>
+        {coachVisible && pileDraggable ? (
+          <motion.div
+            key="draw-pass-coach"
+            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
+            transition={SNAPPY_SPRING}
+            className="pointer-events-none absolute -top-1 right-0 left-0 z-[35] mx-auto flex max-w-[11.5rem] -translate-y-full flex-col items-center gap-1 rounded-md border border-primary/35 bg-popover/95 px-2 py-1.5 shadow-md ring-1 ring-primary/15 backdrop-blur-sm sm:max-w-[13rem]"
+            role="status"
+            aria-live="polite"
+          >
+            <Icon name="swipe_down" size={18} className="text-primary" />
+            <p className="text-[9px] font-medium leading-snug text-popover-foreground sm:text-[10px]">
+              {t("table.drawPileDropHint")}
+            </p>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
       <p className="pointer-events-none max-w-[7.5rem] text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:max-w-none sm:text-[11px]">
         {t("table.drawPile")}
       </p>
-      {pileDraggable ? (
-        <p
-          className={cn(
-            "pointer-events-none max-w-[10.5rem] px-0.5 text-[9px] font-medium leading-snug text-muted-foreground sm:max-w-[12rem] sm:text-[10px]",
-            pileDragActive && !reducedMotion && "motion-safe:animate-pulse",
-          )}
-        >
-          {t("table.drawPileDropHint")}
-        </p>
-      ) : null}
       <div className="flex w-full flex-col items-center justify-end">
-        <div
-          ref={drawStackAnchorRef ?? undefined}
-          className={cn(
-            "inline-flex flex-col items-center",
-            pileDraggable && "cursor-grab select-none active:cursor-grabbing",
-          )}
-          draggable={pileDraggable}
-          onDragStart={onPileDragStart}
-          onDragEnd={onPileDragEnd}
-          aria-hidden={!pileDraggable}
-          aria-label={pileDraggable ? t("table.drawPileDragAria") : undefined}
-        >
-          <motion.div
-            key={drawPileCount}
-            initial={{ scale: 0.96, opacity: 0.85 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={SNAPPY_SPRING}
-          >
-            <div
-              className={cn(
-                "inline-flex flex-col items-center",
-                pileDraggable &&
-                  !pileDragActive &&
-                  !reducedMotion &&
-                  "motion-safe:origin-bottom motion-safe:animate-draw-pile-stack-invite",
-              )}
+        {pileDraggable ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{drawStackEl}</TooltipTrigger>
+            <TooltipContent
+              side="left"
+              align="center"
+              sideOffset={10}
+              className="max-w-[15rem] border-primary/30 bg-popover px-3 py-2 text-left text-xs shadow-lg"
             >
-              {drawStackVisualLayers > 0 ? (
-                <TableauFaceDownStack layers={drawStackVisualLayers} preset="duel" />
-              ) : (
-                <div
-                  className={cn(
-                    "mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/20 bg-transparent",
-                    DUEL_TABLEAU_CARD_W,
-                    DUEL_TABLEAU_CARD_H,
-                  )}
-                >
-                  <span className="text-xs font-semibold text-muted-foreground">—</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
+              <p className="font-headline font-bold text-foreground">{t("table.drawPileHintTitle")}</p>
+              <p className="mt-1 leading-snug text-muted-foreground">{t("table.drawPileDropHint")}</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          drawStackEl
+        )}
       </div>
+      {pileDraggable && drawPassPileDraggable?.onDrawPass != null ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="h-8 w-full max-w-full touch-manipulation text-[10px] font-bold sm:h-9 sm:text-xs"
+          onClick={() => drawPassPileDraggable.onDrawPass?.()}
+        >
+          {t("table.drawPassTapButton")}
+        </Button>
+      ) : null}
       <strong className="pointer-events-none tabular-nums text-sm font-bold text-foreground">
         {drawPileCount}
       </strong>
@@ -822,6 +987,7 @@ export function GameTableDeclarationSection({
 }: GameTableDeclarationSectionProps) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
+  const { active } = useDndContext();
 
   const inRevealLock =
     phase === GAME_PHASE.REVEAL &&
@@ -831,31 +997,30 @@ export function GameTableDeclarationSection({
   const isPlayDropTarget =
     playDropZone != null && phase === GAME_PHASE.PLAYER_TURN && playedCard == null;
 
-  const hasHandCardDragPayload = (e: DragEvent<HTMLDivElement>) => {
-    const types = new Set(Array.from(e.dataTransfer.types).map((ty) => ty.toLowerCase()));
-    return types.has(GAME_CARD_DRAG_MIME_TYPE.toLowerCase()) || types.has("text/plain");
-  };
+  const { setNodeRef: setPlayDropSlotRef, isOver: isPlayDropPointerOver } = useDroppable({
+    id: GAME_DND_DROP_PLAY_ZONE,
+    disabled: !isPlayDropTarget,
+  });
 
-  const onPlayZoneDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (!isPlayDropTarget || !hasHandCardDragPayload(e)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
+  const drawPassDragActive = active != null && isGameDndDrawPassData(active.data.current);
+  const playDropPointerOverForDeclare =
+    isPlayDropPointerOver && active != null && isGameDndDeclareCardData(active.data.current);
+  const playDropStrongHighlight =
+    isPlayDropTarget &&
+    !drawPassDragActive &&
+    (playDropZone?.highlighted === true || playDropPointerOverForDeclare);
 
-  const onPlayZoneDrop = (e: DragEvent<HTMLDivElement>) => {
-    if (!isPlayDropTarget || !playDropZone) return;
-    e.preventDefault();
-    const id = getCardIdFromDragDataTransfer(e.dataTransfer);
-    if (id) playDropZone.onCardDrop(id);
-  };
-
-  const playCardMotionKey = useMemo(
-    () =>
-      playedCard != null
-        ? `play-${playedCard.playerId}-${playedCard.declaration.type}-${String(playedCard.declaration.number)}-${tablePileCount}`
-        : "empty",
-    [playedCard, tablePileCount],
-  );
+  /**
+   * Stable for the **current claim** only — must not include {@link tablePileCount}. The round pile rail
+   * grows as contested cards accumulate; that stack is visually continuous with this center card. Bumping
+   * the key on pile depth forced a remount and replayed the “deal to table” entrance.
+   */
+  const playCardMotionKey = useMemo(() => {
+    if (playedCard == null) return "empty";
+    const cardId =
+      playedCard.card != null ? playedCard.card.id : `pending-${playedCard.declaration.type}-${playedCard.declaration.number}`;
+    return `play-${playedCard.playerId}-${cardId}`;
+  }, [playedCard]);
 
   const pileLayers = Math.min(tablePileCount, PILE_STACK_VISIBLE_MAX);
 
@@ -933,25 +1098,13 @@ export function GameTableDeclarationSection({
   return (
     <div className="relative min-h-0 w-full">
       {playedCard != null ? (
-        <motion.div
-          key={playCardMotionKey}
-          initial={
-            reducedMotion
-              ? { opacity: 0 }
-              : { y: 72, opacity: 0, rotateZ: -5.5, scale: 0.86 }
-          }
-          animate={{ y: 0, opacity: 1, rotateZ: 0, scale: 1 }}
-          transition={
-            reducedMotion
-              ? { duration: REDUCED_CARD_MOTION_DURATION_SECONDS, ease: PHASE_EASE_OUT }
-              : PLAY_CARD_TO_TABLE_SPRING
-          }
-            className={cn(
-              "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 [perspective:1200px] py-2 sm:py-4 lg:max-w-4xl",
-              compactPlayedClaimBand ? "justify-start" : "justify-center",
-              compactPlayedClaimBand ? "min-h-0" : DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM,
-            )}
-          >
+        <div
+          className={cn(
+            "relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 [perspective:1200px] py-2 sm:py-4 lg:max-w-4xl",
+            compactPlayedClaimBand ? "justify-start" : "justify-center",
+            compactPlayedClaimBand ? "min-h-0" : DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM,
+          )}
+        >
             {/* `1fr auto 1fr` on sm+: round pile column 1 is stable vs mobile `auto | 1fr` (no separate top row). */}
             <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
               <div
@@ -989,11 +1142,30 @@ export function GameTableDeclarationSection({
 
               <div
                 className={cn(
-                  "col-start-2 flex w-full min-w-0 flex-col items-center justify-self-center sm:col-start-2",
+                  "col-start-2 flex w-full min-w-0 flex-col items-center justify-self-stretch sm:col-start-2",
                   compactPlayedClaimBand ? "justify-start" : "justify-center",
                 )}
               >
-                <div className="flex w-full max-w-[min(100%,26rem)] flex-col items-center gap-2 px-1 text-center sm:max-w-[min(100%,28rem)] sm:gap-2.5">
+                <motion.div
+                  key={playCardMotionKey}
+                  className="flex w-full min-w-0 max-w-[min(100%,26rem)] flex-col items-center gap-2 px-1 text-center sm:max-w-[min(100%,28rem)] sm:gap-2.5"
+                  initial={
+                    reducedMotion
+                      ? { opacity: 0 }
+                      : {
+                          y: PLAYFIELD_CLAIM_ENTRANCE_OFFSET_Y_PX,
+                          opacity: 0,
+                          rotateZ: -PLAYFIELD_CLAIM_ENTRANCE_ROTATE_Z_DEG,
+                          scale: PLAYFIELD_CLAIM_ENTRANCE_INITIAL_SCALE,
+                        }
+                  }
+                  animate={{ y: 0, opacity: 1, rotateZ: 0, scale: 1 }}
+                  transition={
+                    reducedMotion
+                      ? { duration: REDUCED_CARD_MOTION_DURATION_SECONDS, ease: PHASE_EASE_OUT }
+                      : PLAY_CARD_TO_TABLE_SPRING
+                  }
+                >
                   <div className="w-full">
                     <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground">
                       {t("table.currentClaim")}
@@ -1005,15 +1177,8 @@ export function GameTableDeclarationSection({
                   </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <motion.div
+                      <div
                         className="relative z-10 cursor-default rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        initial={reducedMotion ? false : { y: 20, rotateX: 8, opacity: 0 }}
-                        animate={{ y: 0, rotateX: 0, opacity: 1 }}
-                        transition={
-                          reducedMotion
-                            ? { duration: 0 }
-                            : { ...PLAY_CARD_TO_TABLE_SPRING, delay: PLAY_CARD_STACK_LEAD_IN_SECONDS }
-                        }
                         tabIndex={0}
                         aria-label={claimFlipAriaLabel}
                       >
@@ -1047,7 +1212,7 @@ export function GameTableDeclarationSection({
                             />
                           </div>
                         </div>
-                      </motion.div>
+                      </div>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs text-left text-xs">
                       <p className="font-medium text-foreground">{t("table.claimIs")}</p>
@@ -1062,25 +1227,25 @@ export function GameTableDeclarationSection({
                       {revealOutcomeSrText}
                     </p>
                   ) : null}
-                </div>
+                </motion.div>
               </div>
 
               <div className="hidden min-w-0 sm:col-start-3 sm:block" aria-hidden />
             </div>
-          </motion.div>
+        </div>
       ) : roundInterstitialEmpty && roundResolutionPanel != null ? (
         <motion.div
           key="round-resolution-merged"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: REDUCED_CARD_MOTION_DURATION_SECONDS }}
-          className={cn(DECLARATION_PLAYFIELD_SHELL_EMPTY_LAYOUT, "w-full shrink-0")}
+          className={cn(DECLARATION_PLAYFIELD_SHELL_ROUND_RESOLUTION_LAYOUT, "w-full shrink-0")}
         >
           <div className={PLAYFIELD_SIDE_RAIL_GRID_CLASS}>
             <div ref={roundPileAnchorRef ?? undefined} className={PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS}>
               <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
             </div>
-            <div className="col-start-2 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
+            <div className="col-start-2 flex w-full min-w-0 flex-col items-stretch justify-center justify-self-stretch sm:col-start-2">
               <AnimatePresence mode="wait" initial={false}>
                 {roundResolutionPanel != null ? (
                   <motion.div
@@ -1089,7 +1254,7 @@ export function GameTableDeclarationSection({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     transition={SNAPPY_SPRING}
-                    className="flex w-full min-h-0 max-w-[min(100%,24rem)] flex-col items-center justify-center overflow-y-auto overflow-x-hidden overscroll-y-contain px-1 py-2 sm:px-2 sm:py-3"
+                    className="flex w-full min-h-0 min-w-0 max-w-full flex-col items-stretch justify-center overflow-y-auto overflow-x-hidden overscroll-y-contain px-1 py-2 sm:px-2 sm:py-3"
                   >
                     {roundResolutionPanel}
                   </motion.div>
@@ -1133,8 +1298,8 @@ export function GameTableDeclarationSection({
                     <PlayfieldRoundPileRail tablePileCount={tablePileCount} />
                   </div>
 
-                  <div className="col-start-2 flex w-full min-w-0 flex-col items-center justify-center justify-self-center sm:col-start-2">
-                    <div className="flex w-full max-w-[min(100%,32rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
+                  <div className="col-start-2 flex w-full min-w-0 flex-col items-center justify-center justify-self-stretch sm:col-start-2">
+                    <div className="flex w-full min-w-0 max-w-[min(100%,32rem)] flex-col items-center gap-3 px-1 text-center sm:gap-4">
                       {showEmptyStateTurnLine ? (
                         <p className="text-sm text-muted-foreground">
                           <span className="font-semibold text-foreground">{currentPlayerName}</span> {t("turn.isTurn")}
@@ -1147,10 +1312,9 @@ export function GameTableDeclarationSection({
                       />
 
                       <div
+                        ref={setPlayDropSlotRef}
                         role={isPlayDropTarget ? "region" : undefined}
                         aria-label={isPlayDropTarget ? t("hand.dropToPlayAria") : t("table.a11y.playSlot")}
-                        onDragOver={isPlayDropTarget ? onPlayZoneDragOver : undefined}
-                        onDrop={isPlayDropTarget ? onPlayZoneDrop : undefined}
                         className={cn(
                           "relative z-10 mt-1 aspect-[2/3] shrink-0 overflow-hidden rounded-md sm:mt-2",
                           PLAYFIELD_DROP_SLOT_CARD_BOX,
@@ -1175,11 +1339,13 @@ export function GameTableDeclarationSection({
                           className={cn(
                             "absolute left-0 top-0 z-[20] flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-md border-2 border-dashed px-2 transition-[transform,box-shadow,background-color,border-color] duration-200 motion-reduce:transition-none",
                             isPlayDropTarget
-                              ? playDropZone?.highlighted
+                              ? playDropStrongHighlight
                                 ? "scale-[1.03] border-primary bg-primary/15 shadow-[var(--shadow-glow)] ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
                                 : cn(
                                     "border-primary/40 bg-muted/15",
-                                    !reducedMotion && "motion-safe:animate-play-drop-slot-invite",
+                                    !drawPassDragActive &&
+                                      !reducedMotion &&
+                                      "motion-safe:animate-play-drop-slot-invite",
                                   )
                               : "border-border/50 bg-muted/10",
                           )}
@@ -1191,7 +1357,9 @@ export function GameTableDeclarationSection({
                                 size={44}
                                 className={cn(
                                   "text-primary/60",
-                                  !reducedMotion && "motion-safe:animate-bounce",
+                                  !drawPassDragActive &&
+                                    !reducedMotion &&
+                                    "motion-safe:animate-bounce",
                                 )}
                               />
                               <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1252,32 +1420,46 @@ export function GameTableDeclarationSection({
  * Full playfield: supply rail + declaration center (used by standalone {@link GameTable}).
  */
 export function GameTablePlayfield(props: GameTablePlayfieldProps) {
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: GAME_DND_POINTER_ACTIVATION_DISTANCE_PX },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: GAME_DND_TOUCH_ACTIVATION_DELAY_MS,
+        tolerance: GAME_DND_TOUCH_ACTIVATION_TOLERANCE_PX,
+      },
+    }),
+  );
+
   return (
-    <div className="flex w-full flex-col gap-3 sm:gap-4">
-      <GameTableTableauSection
-        drawPileCount={props.drawPileCount}
-        tablePileCount={props.tablePileCount}
-        supremeReserve={props.supremeReserve}
-        trophiesRemaining={props.trophiesRemaining}
-        lockedSuit={props.lockedSuit}
-      />
-      <GameTableDeclarationSection
-        playedCard={props.playedCard}
-        currentPlayerName={props.currentPlayerName}
-        phase={props.phase}
-        lastResolvedDeclaration={props.lastResolvedDeclaration}
-        lockedSuit={props.lockedSuit}
-        tablePileCount={props.tablePileCount}
-        showEmptyStateTurnLine={props.showEmptyStateTurnLine}
-        playDropZone={props.playDropZone}
-        challengeResult={props.challengeResult}
-        challengeOutcomeNames={props.challengeOutcomeNames}
-        challengeTimer={props.challengeTimer}
-        localPlayerId={props.localPlayerId}
-        roundPileAnchorRef={props.roundPileAnchorRef}
-        roundResolutionPanel={props.roundResolutionPanel ?? null}
-      />
-    </div>
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={() => undefined}>
+      <div className="flex w-full flex-col gap-3 sm:gap-4">
+        <GameTableTableauSection
+          drawPileCount={props.drawPileCount}
+          tablePileCount={props.tablePileCount}
+          supremeReserve={props.supremeReserve}
+          trophiesRemaining={props.trophiesRemaining}
+          lockedSuit={props.lockedSuit}
+        />
+        <GameTableDeclarationSection
+          playedCard={props.playedCard}
+          currentPlayerName={props.currentPlayerName}
+          phase={props.phase}
+          lastResolvedDeclaration={props.lastResolvedDeclaration}
+          lockedSuit={props.lockedSuit}
+          tablePileCount={props.tablePileCount}
+          showEmptyStateTurnLine={props.showEmptyStateTurnLine}
+          playDropZone={props.playDropZone}
+          challengeResult={props.challengeResult}
+          challengeOutcomeNames={props.challengeOutcomeNames}
+          challengeTimer={props.challengeTimer}
+          localPlayerId={props.localPlayerId}
+          roundPileAnchorRef={props.roundPileAnchorRef}
+          roundResolutionPanel={props.roundResolutionPanel ?? null}
+        />
+      </div>
+    </DndContext>
   );
 }
 

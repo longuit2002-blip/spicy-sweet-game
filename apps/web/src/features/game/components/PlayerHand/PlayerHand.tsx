@@ -1,23 +1,30 @@
+import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   memo,
-  useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type DragEvent,
+  type MutableRefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { GameCard } from "@/shared/types/game";
 import { SpiceCard } from "@/features/game/components/SpiceCard";
 import { staggerHandItemVariantsForIndex } from "@/features/game/animations";
+import {
+  GAME_DND_DROP_HAND_DRAW_PASS,
+  GAME_DND_KIND,
+  gameDndDeclareCardDragId,
+  isGameDndDeclareCardData,
+  isGameDndDrawPassData,
+} from "@/features/game/dnd/game-dnd-ids";
+import { useDeclareDragPreviewHand } from "@/features/game/dnd/declare-drag-preview-hand-context";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import {
-  dataTransferTypeSetHasDrawPassDrag,
-  GAME_CARD_DRAG_MIME_TYPE,
-  isDrawPassDropDataTransfer,
   PLAYER_HAND_CARD_WIDTH_NARROW_PX,
   PLAYER_HAND_CARD_WIDTH_WIDE_PX,
   PLAYER_HAND_FAN_LOOSE_OVERLAP_PX,
@@ -35,13 +42,7 @@ import {
 export type PlayerHandDrawPassDropConfig = {
   active: boolean;
   pileDragActive: boolean;
-  onDrop: () => void;
 };
-
-function handStripAcceptsDrawPassDrag(e: DragEvent, pileDragActive: boolean): boolean {
-  if (pileDragActive) return true;
-  return dataTransferTypeSetHasDrawPassDrag(e.dataTransfer.types);
-}
 
 function handCardWidthPx(isWide: boolean): number {
   return isWide ? PLAYER_HAND_CARD_WIDTH_WIDE_PX : PLAYER_HAND_CARD_WIDTH_NARROW_PX;
@@ -91,14 +92,145 @@ function fanRotationMaxDeg(cardCount: number): number {
   );
 }
 
+type PlayerHandCardStripItemProps = {
+  card: GameCard;
+  index: number;
+  overlapPx: number;
+  reduced: boolean;
+  disabled: boolean;
+  selected: boolean;
+  rotate: number;
+  onInspectCard: (card: GameCard) => void;
+  drawPassDrop: PlayerHandDrawPassDropConfig | null;
+  skipNextClickRef: MutableRefObject<boolean>;
+  registerCardEl: (cardId: string, el: HTMLDivElement | null) => void;
+};
+
+const PlayerHandCardStripItem = memo(function PlayerHandCardStripItem({
+  card,
+  index,
+  overlapPx,
+  reduced,
+  disabled,
+  selected,
+  rotate,
+  onInspectCard,
+  drawPassDrop,
+  skipNextClickRef,
+  registerCardEl,
+}: PlayerHandCardStripItemProps) {
+  const { active } = useDndContext();
+  const declarePreviewHand = useDeclareDragPreviewHand();
+  const declareDragUsesOverlay = declarePreviewHand.length > 0;
+  const allowDrag = !disabled;
+  const dragData = useMemo(
+    () => ({ kind: GAME_DND_KIND.DECLARE_CARD, cardId: card.id }) as const,
+    [card.id],
+  );
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: gameDndDeclareCardDragId(card.id),
+    disabled: !allowDrag,
+    data: dragData,
+  });
+
+  const drawPassBlocksPointer =
+    drawPassDrop?.active === true &&
+    drawPassDrop.pileDragActive &&
+    active != null &&
+    isGameDndDrawPassData(active.data.current);
+
+  const [hovered, setHovered] = useState(false);
+  const isBeingHoveredState = !disabled && !isDragging && hovered;
+
+  const zIndexResolved = isDragging
+    ? PLAYER_HAND_DRAGGING_Z_INDEX
+    : selected
+      ? PLAYER_HAND_SELECTED_Z_INDEX
+      : isBeingHoveredState
+        ? index + PLAYER_HAND_HOVER_Z_INDEX_BOOST
+        : index;
+
+  const hideSourceForDeclareOverlay = isDragging && declareDragUsesOverlay;
+  const translateStyle =
+    transform && !hideSourceForDeclareOverlay
+      ? { transform: CSS.Translate.toString(transform) }
+      : undefined;
+
+  const setCardStripRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setNodeRef(node);
+      registerCardEl(card.id, node);
+    },
+    [card.id, registerCardEl, setNodeRef],
+  );
+
+  return (
+    <div
+      ref={setCardStripRef}
+      className={cn(
+        "origin-bottom shrink-0",
+        allowDrag && "touch-none",
+        isDragging && "cursor-grabbing",
+        allowDrag && !isDragging && "cursor-grab",
+        drawPassBlocksPointer && "pointer-events-none",
+        hideSourceForDeclareOverlay && "pointer-events-none",
+      )}
+      style={{
+        marginLeft: index === 0 ? 0 : -overlapPx,
+        zIndex: zIndexResolved,
+        ...translateStyle,
+        ...(hideSourceForDeclareOverlay ? { opacity: 0 } : {}),
+      }}
+      {...listeners}
+      {...attributes}
+      role="listitem"
+    >
+      <motion.div
+        className="origin-bottom"
+        style={{ rotate }}
+        variants={staggerHandItemVariantsForIndex(index, Boolean(reduced))}
+        initial="initial"
+        animate={
+          isDragging ? "dragging" : isBeingHoveredState ? "hovered" : "animate"
+        }
+        exit={{ opacity: 0, y: 28, scale: 0.92 }}
+        whileHover={!disabled && !isDragging ? "hovered" : undefined}
+      >
+        <SpiceCard
+          card={card}
+          size="hand"
+          selected={selected}
+          isHovered={isBeingHoveredState}
+          isDragging={isDragging}
+          onMouseEnter={() => {
+            if (!disabled) setHovered(true);
+          }}
+          onMouseLeave={() => setHovered(false)}
+          onTouchStart={() => {
+            if (!disabled) setHovered(true);
+          }}
+          onTouchEnd={() => setHovered(false)}
+          onClick={
+            disabled
+              ? undefined
+              : () => {
+                  if (skipNextClickRef.current) return;
+                  onInspectCard(card);
+                }
+          }
+        />
+      </motion.div>
+    </div>
+  );
+});
+
 interface PlayerHandProps {
   cards: GameCard[];
   selectedCardId: string | null;
   /** Tap / click — inspect card (detail dialog); does not auto-open declare. */
   onInspectCard: (card: GameCard) => void;
   disabled?: boolean;
-  /** While a card is being dragged (for play-zone highlight). */
-  onDragSessionChange?: (active: boolean) => void;
   /** Drag draw pile onto the hand strip (draw + pass). */
   drawPassDrop?: PlayerHandDrawPassDropConfig | null;
 }
@@ -108,22 +240,46 @@ export const PlayerHand = memo(function PlayerHand({
   selectedCardId,
   onInspectCard,
   disabled,
-  onDragSessionChange,
   drawPassDrop = null,
 }: PlayerHandProps) {
   const { t } = useTranslation("game");
   const reduced = useReducedMotion();
   const skipNextClickRef = useRef(false);
-  const dragPreviewHostRef = useRef<HTMLDivElement | null>(null);
   const prevHandKeyRef = useRef<string | null>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const cardElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [stripWidth, setStripWidth] = useState(0);
-  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
-  const [drawPassHandHovered, setDrawPassHandHovered] = useState(false);
   const isWideHand = useMediaQuery(PLAYER_HAND_FAN_MEDIA);
   const handKey = useMemo(() => cards.map((c) => c.id).join("|"), [cards]);
+
+  useDndMonitor({
+    onDragEnd(event) {
+      if (isGameDndDeclareCardData(event.active.data.current)) {
+        skipNextClickRef.current = true;
+        window.setTimeout(() => {
+          skipNextClickRef.current = false;
+        }, 0);
+      }
+    },
+  });
+
+  const { setNodeRef: setHandDrawPassDropRef, isOver: handDrawPassDndOver } = useDroppable({
+    id: GAME_DND_DROP_HAND_DRAW_PASS,
+    disabled: drawPassDrop?.active !== true,
+  });
+
+  const mergeStripRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      stripRef.current = node;
+      setHandDrawPassDropRef(node);
+    },
+    [setHandDrawPassDropRef],
+  );
+
+  const registerCardEl = useCallback((cardId: string, el: HTMLDivElement | null) => {
+    if (el) cardElRefs.current.set(cardId, el);
+    else cardElRefs.current.delete(cardId);
+  }, []);
 
   useLayoutEffect(() => {
     const el = stripRef.current;
@@ -170,10 +326,6 @@ export const PlayerHand = memo(function PlayerHand({
     });
   }, [selectedCardId, reduced, handKey]);
 
-  useEffect(() => {
-    if (!drawPassDrop?.pileDragActive) setDrawPassHandHovered(false);
-  }, [drawPassDrop?.pileDragActive]);
-
   const rotationMax = useMemo(() => fanRotationMaxDeg(cards.length), [cards.length]);
 
   const rotations = useMemo(() => {
@@ -184,11 +336,16 @@ export const PlayerHand = memo(function PlayerHand({
     );
   }, [cards, rotationMax]);
 
+  const drawPassHighlightActive =
+    drawPassDrop?.active === true &&
+    drawPassDrop.pileDragActive &&
+    handDrawPassDndOver;
+
   return (
     <div className="relative w-full min-w-0">
       <div className="relative w-full min-w-0" style={{ perspective: "1400px" }}>
         <div
-          ref={stripRef}
+          ref={mergeStripRef}
           className={cn(
             "relative z-[1] flex w-full min-w-0 items-end justify-center overflow-x-auto overscroll-x-contain px-4 pb-4 pt-6 sm:px-8 sm:pb-5 sm:pt-7",
             PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
@@ -196,9 +353,10 @@ export const PlayerHand = memo(function PlayerHand({
             drawPassDrop?.active === true &&
               drawPassDrop.pileDragActive &&
               cn(
-                "transition-[box-shadow,background-color] duration-200",
+                "transition-[box-shadow,background-color,transform] duration-200",
                 "ring-2 ring-primary/25 ring-offset-2 ring-offset-background",
-                drawPassHandHovered && "bg-primary/[0.06] ring-primary/55",
+                drawPassHighlightActive &&
+                  "scale-[1.01] bg-primary/[0.08] ring-[3px] ring-primary/70 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]",
               ),
           )}
           role="list"
@@ -207,146 +365,28 @@ export const PlayerHand = memo(function PlayerHand({
               ? t("table.drawPileHandDropZoneAria")
               : t("hand.playerHandAria")
           }
-          onDragOverCapture={(e) => {
-            if (!drawPassDrop?.active || disabled) return;
-            if (!handStripAcceptsDrawPassDrag(e, drawPassDrop.pileDragActive)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = "copy";
-            setDrawPassHandHovered(true);
-          }}
-          onDragLeave={(e) => {
-            if (!drawPassDrop?.active) return;
-            if (
-              !drawPassDrop.pileDragActive &&
-              !dataTransferTypeSetHasDrawPassDrag(e.dataTransfer.types)
-            ) {
-              return;
-            }
-            const related = e.relatedTarget as Node | null;
-            if (related && e.currentTarget.contains(related)) return;
-            setDrawPassHandHovered(false);
-          }}
-          onDropCapture={(e) => {
-            if (!drawPassDrop?.active || disabled) return;
-            if (!isDrawPassDropDataTransfer(e.dataTransfer)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            setDrawPassHandHovered(false);
-            drawPassDrop.onDrop();
-          }}
         >
           <div className="flex w-max max-w-none items-end justify-center px-6 sm:px-10">
             <AnimatePresence mode="popLayout">
             {cards.map((card, index) => {
               const selected = selectedCardId === card.id;
               const rotate = rotations[index] ?? 0;
-              const isBeingDragged = draggedCardId === card.id;
-              const isBeingHovered = hoveredCardId === card.id;
-              const allowDrag = !disabled;
-
-              const zIndex = isBeingDragged
-                ? PLAYER_HAND_DRAGGING_Z_INDEX
-                : selected
-                  ? PLAYER_HAND_SELECTED_Z_INDEX
-                  : isBeingHovered
-                    ? index + PLAYER_HAND_HOVER_Z_INDEX_BOOST
-                    : index;
 
               return (
-                <motion.div
+                <PlayerHandCardStripItem
                   key={card.id}
-                  ref={(node) => {
-                    if (node) cardElRefs.current.set(card.id, node);
-                    else cardElRefs.current.delete(card.id);
-                  }}
-                  variants={staggerHandItemVariantsForIndex(index, Boolean(reduced))}
-                  initial="initial"
-                  animate={
-                    isBeingDragged
-                      ? "dragging"
-                      : isBeingHovered
-                        ? "hovered"
-                        : "animate"
-                  }
-                  exit={{ opacity: 0, y: 28, scale: 0.92 }}
-                  whileHover={
-                    !disabled && draggedCardId === null ? "hovered" : undefined
-                  }
-                  style={{
-                    marginLeft: index === 0 ? 0 : -overlapPx,
-                    zIndex,
-                    rotate,
-                  }}
-                  className={cn(
-                    "origin-bottom shrink-0",
-                    isBeingDragged && "cursor-grabbing",
-                    allowDrag && !isBeingDragged && "cursor-grab",
-                    drawPassDrop?.pileDragActive === true && "pointer-events-none",
-                  )}
-                  role="listitem"
-                >
-                  <SpiceCard
-                    card={card}
-                    size="hand"
-                    selected={selected}
-                    draggable={allowDrag}
-                    isHovered={isBeingHovered}
-                    isDragging={isBeingDragged}
-                    onDragStart={(e) => {
-                      const node = e.currentTarget;
-                      e.dataTransfer.effectAllowed = "copyMove";
-                      e.dataTransfer.setData(GAME_CARD_DRAG_MIME_TYPE, card.id);
-                      e.dataTransfer.setData("text/plain", card.id);
-                      setDraggedCardId(card.id);
-                      onDragSessionChange?.(true);
-
-                      const rect = node.getBoundingClientRect();
-                      const clone = node.cloneNode(true) as HTMLDivElement;
-                      clone.style.boxSizing = "border-box";
-                      clone.style.width = `${rect.width}px`;
-                      clone.style.height = `${rect.height}px`;
-                      clone.style.position = "fixed";
-                      clone.style.left = "-10000px";
-                      clone.style.top = "0";
-                      clone.style.margin = "0";
-                      clone.style.pointerEvents = "none";
-                      clone.style.zIndex = "2147483647";
-                      document.body.appendChild(clone);
-                      void clone.offsetWidth;
-                      const anchorX = Math.min(Math.max(e.clientX - rect.left, 1), Math.max(1, rect.width - 1));
-                      const anchorY = Math.min(Math.max(e.clientY - rect.top, 1), Math.max(1, rect.height - 1));
-                      dragPreviewHostRef.current = clone;
-                      e.dataTransfer.setDragImage(clone, anchorX, anchorY);
-                    }}
-                    onDragEnd={() => {
-                      dragPreviewHostRef.current?.remove();
-                      dragPreviewHostRef.current = null;
-                      setDraggedCardId(null);
-                      onDragSessionChange?.(false);
-                      skipNextClickRef.current = true;
-                      window.setTimeout(() => {
-                        skipNextClickRef.current = false;
-                      }, 0);
-                    }}
-                    onMouseEnter={() => {
-                      if (!disabled) setHoveredCardId(card.id);
-                    }}
-                    onMouseLeave={() => setHoveredCardId(null)}
-                    onTouchStart={() => {
-                      if (!disabled) setHoveredCardId(card.id);
-                    }}
-                    onTouchEnd={() => setHoveredCardId(null)}
-                    onClick={
-                      disabled
-                        ? undefined
-                        : () => {
-                            if (skipNextClickRef.current) return;
-                            onInspectCard(card);
-                          }
-                    }
-                  />
-                </motion.div>
+                  card={card}
+                  index={index}
+                  overlapPx={overlapPx}
+                  reduced={Boolean(reduced)}
+                  disabled={Boolean(disabled)}
+                  selected={selected}
+                  rotate={rotate}
+                  onInspectCard={onInspectCard}
+                  drawPassDrop={drawPassDrop}
+                  skipNextClickRef={skipNextClickRef}
+                  registerCardEl={registerCardEl}
+                />
               );
             })}
             </AnimatePresence>
