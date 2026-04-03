@@ -1,9 +1,28 @@
 # Copy to the server as /opt/sweet-spicy/docker-compose.prod.yml (see deploy/vm/README.md).
 # Images must be built and pushed to a registry (e.g. GHCR); the server only pulls — no build on VM.
+#
+# Includes Postgres on the same VM (Docker network hostname `postgres`). Do not expose Postgres
+# on a public security group; only the api service connects to it.
 
 name: sweet-spicy
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sweet_spicy}
+    volumes:
+      - sweet_spicy_pg:/var/lib/postgresql/data
+    healthcheck:
+      # $$ so Compose passes $ to the shell inside the container (uses Postgres image env).
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     image: ${WEB_IMAGE:?set WEB_IMAGE to your registry image, e.g. ghcr.io/org/sweet-spicy-web:tag}
     restart: unless-stopped
@@ -17,3 +36,9 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sweet_spicy_pg:

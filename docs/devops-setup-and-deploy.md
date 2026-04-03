@@ -239,7 +239,8 @@ Compose expects **`WEB_IMAGE`** and **`API_IMAGE`** in the **shell environment**
 | Variable | Purpose |
 |----------|---------|
 | `PORT` | API listen port inside container — use **8000** for production compose. |
-| `DATABASE_URL` | PostgreSQL connection string (managed DB recommended). |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Used by the **`postgres`** service in `docker-compose.prod.yml` (DB on the same VM). |
+| `DATABASE_URL` | API connection string. With bundled Compose Postgres, host is **`postgres`** (service name), port **5432**, password must match `POSTGRES_PASSWORD`. For RDS etc., use the cloud hostname instead. |
 | `JWT_SECRET` | Strong secret in production. |
 | `CLIENT_URL` | Browser origin allowed by CORS — e.g. `http://YOUR_IP` or `https://your.domain`. |
 | `NEXT_PUBLIC_API_URL` | Must be **`https://domain/api`** or **`http://IP/api`** — includes `/api` path; client calls `${NEXT_PUBLIC_API_URL}/auth/...`. |
@@ -255,17 +256,26 @@ The repo’s Nginx config uses `location /api/` with `proxy_pass http://127.0.0.
 
 ## 8. Part 6 — PostgreSQL and Prisma migrations
 
-- Prefer **managed Postgres** (RDS, Supabase, etc.) for anything serious.
-- Set `DATABASE_URL` in `/opt/sweet-spicy/.env`.
+Production **`docker-compose.prod.yml`** in this repo includes a **`postgres`** container on the same VM (no public DB port; only `api` talks to it). For serious production, prefer **managed Postgres** instead and remove or stop the bundled `postgres` service.
 
-**Apply schema after first deploy or before traffic** (from any host that can reach the DB, using the API image or dev tooling):
+Set `DATABASE_URL`, `POSTGRES_PASSWORD`, etc. in `/opt/sweet-spicy/.env` (see `deploy/vm/.env.example`).
+
+**Apply schema after containers are up** — on the VM from `/opt/sweet-spicy` (uses the running `api` container and the same `.env`):
 
 ```bash
-docker run --rm -e DATABASE_URL="postgresql://..." ghcr.io/YOUR_ORG/sweet-spicy-api:TAG \
+cd /opt/sweet-spicy
+docker compose -f docker-compose.prod.yml exec api \
   sh -c "cd /app/apps/api && npx prisma migrate deploy"
 ```
 
-Use **`migrate deploy` in production**, not `db push`, once you rely on migration history. Rollback of **application** images does not undo DB schema; plan migrations and backups separately.
+If you use **only** a remote DB (no `postgres` service), you can instead run a one-off container with `DATABASE_URL` set:
+
+```bash
+docker run --rm --env-file /opt/sweet-spicy/.env ghcr.io/YOUR_ORG/sweet-spicy-api:TAG \
+  sh -c "cd /app/apps/api && npx prisma migrate deploy"
+```
+
+Use **`migrate deploy`** in production, not `db push`, once you rely on migration history. Rollback of **application** images does not undo DB schema; plan migrations and backups separately.
 
 ---
 
