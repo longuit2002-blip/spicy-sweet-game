@@ -314,6 +314,7 @@ Open `http://EC2_PUBLIC_IP` in a browser.
 | HTTP works, realtime broken | Nginx missing `Upgrade` / `Connection` for `/socket.io`; wrong `NEXT_PUBLIC_SOCKET_URL`. |
 | CORS errors | `CLIENT_URL` must exactly match the site origin (scheme + host + port). |
 | Prisma errors | `DATABASE_URL` wrong; migrations not applied. |
+| Docker build **`no space left on device`** / **`ENOSPC`** on EC2 | Root volume too small (common with **8 GiB**). **Grow the EBS volume** to **≥30 GiB**, or run **`docker builder prune -af`** / **`docker system prune -af`** before rebuilding, or build images on your **laptop** and **push** to GHCR. The **API** Dockerfile uses **`turbo prune api`** to reduce install size, but multi-stage builds still need spare disk. |
 
 **Disk:** periodically `docker system prune` with care — do not delete volumes you need.
 
