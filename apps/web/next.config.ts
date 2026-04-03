@@ -6,6 +6,9 @@ const sharedTypesDist = path.join(monorepoRoot, "packages/shared-types/dist/inde
 const gameLogicDist = path.join(monorepoRoot, "packages/game-logic/dist/index.js");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  /** Trace workspace packages into the standalone server bundle (monorepo Docker / deploy). */
+  outputFileTracingRoot: monorepoRoot,
   /** Relax typecheck until generated routes and third-party types fully match React 19 / Next 16 */
   typescript: {
     ignoreBuildErrors: true,

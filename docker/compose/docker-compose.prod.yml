@@ -1,0 +1,19 @@
+# Copy to the server as /opt/sweet-spicy/docker-compose.prod.yml (see deploy/vm/README.md).
+# Images must be built and pushed to a registry (e.g. GHCR); the server only pulls — no build on VM.
+
+name: sweet-spicy
+
+services:
+  web:
+    image: ${WEB_IMAGE:?set WEB_IMAGE to your registry image, e.g. ghcr.io/org/sweet-spicy-web:tag}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  api:
+    image: ${API_IMAGE:?set API_IMAGE to your registry image, e.g. ghcr.io/org/sweet-spicy-api:tag}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"

@@ -198,6 +198,7 @@ pnpm --filter api exec prisma migrate dev
 - `apps/api` — NestJS, Prisma, Socket.IO gateway (`realtime`), JWT guest auth
 - `packages/shared-types` — shared TypeScript contracts
 - `packages/game-logic` — pure game engine (client + server)
+- **`docs/devops-setup-and-deploy.md`** — Docker, AWS EC2, Nginx, registry, and Jenkins from scratch through deploy (older DevOps/EC2 doc names redirect there)
 
 ### Notes
 
