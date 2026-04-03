@@ -24,6 +24,7 @@ interface RoomState {
   addPlayer: (player: RoomPlayer) => void;
   removePlayer: (playerId: string) => void;
   setPlayerReady: (playerId: string, isReady: boolean) => void;
+  setHost: (hostId: string) => void;
   setConnected: (connected: boolean) => void;
   reset: () => void;
 }
@@ -54,6 +55,14 @@ export const useRoomStore = create<RoomState>((set) => ({
   setPlayerReady: (playerId, isReady) =>
     set((state) => ({
       players: state.players.map((p) => (p.id === playerId ? { ...p, isReady } : p)),
+    })),
+
+  setHost: (hostId) =>
+    set((state) => ({
+      players: state.players.map((player) => ({
+        ...player,
+        isHost: player.id === hostId,
+      })),
     })),
 
   setConnected: (connected) => set({ isConnected: connected }),

@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  useLayoutEffect,
+  type ReactNode,
+} from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy } from "lucide-react";
@@ -11,12 +19,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   createInitialState,
   createLobbyPlayer,
-  createPlayer,
   startGame,
   playCardLocal,
   drawAndPassTurnLocal,
   resolveChallenge,
   claimChallenge,
+  recordChallengePass,
   tickChallengePhase,
   tickRevealPhase,
   nextTurn,
@@ -47,17 +55,21 @@ import { CardInspectDialog } from "@/features/game/components/CardInspectDialog"
 import { Scoreboard } from "@/features/game/components/Scoreboard";
 import { PlayerSeat } from "@/features/game/components/PlayerSeat/PlayerSeat";
 import { LobbyView } from "@/features/game/components/LobbyView";
+import { RoomEntryGate } from "@/features/game/components/RoomEntryGate";
 import { BoardView } from "@/features/game/components/BoardView";
 import type { PenaltyFxSnapshot } from "@/features/game/components/RoundResolutionFxOverlay";
 import { MobileChatFAB } from "@/features/game/components/RoomShell/MobileChatFAB";
 import { MobileChatSheet } from "@/features/game/components/RoomShell/MobileChatSheet";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import {
+  ROOM_ENTRY_STATUS,
+  useRoomEntryController,
+} from "@/hooks/use-room-entry-controller";
 import { SidePanelSocial } from "@/features/social";
 import { useGameSocket } from "@/hooks/useGameSocket";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_LOBBY_NICKNAME,
   DEFAULT_ROOM_MAX_PLAYERS,
   GAME_PLAYER_HAND_ANCHOR_ID,
   GAME_PLAYER_WON_PILE_ANCHOR_ID,
@@ -70,31 +82,12 @@ import {
   OFFLINE_CHALLENGE_TICK_MS,
   OFFLINE_BOT_DISPLAY_NAMES,
   OFFLINE_PHASE_AUTO_ADVANCE_MS,
+  ROOM_NICKNAME_SEARCH_PARAM,
   isTabletopLayoutPhase,
 } from "@/lib/game-room.constants";
 import { SNAPPY_SPRING } from "@/features/game/animations";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function buildOfflineHostPlayer(nickname: string) {
-  if (typeof window === "undefined") {
-    const host = createLobbyPlayer(nickname);
-    host.isReady = true;
-    host.isHost = true;
-    return host;
-  }
-  const uid = useUserStore.getState().user?.id;
-  if (uid) {
-    const host = createPlayer(uid, nickname);
-    host.isReady = true;
-    host.isHost = true;
-    return host;
-  }
-  const host = createLobbyPlayer(nickname);
-  host.isReady = true;
-  host.isHost = true;
-  return host;
-}
 
 // ── Main component ───────────────────────────────────────────────────────────
 
@@ -104,25 +97,23 @@ export function GameRoomClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = params.code ?? LOBBY_PLACEHOLDER_ROOM_CODE;
-  const nick = searchParams.get("nick") ?? DEFAULT_LOBBY_NICKNAME;
+  const isCreateRoute = code === NEW_ROOM_ROUTE_SEGMENT;
+  const prefilledNickname = searchParams.get(ROOM_NICKNAME_SEARCH_PARAM)?.trim() ?? "";
 
-  const { user } = useUserStore();
-  const { players: roomPlayers, isConnected, maxPlayers: roomMaxPlayers } = useRoomStore();
+  const user = useUserStore((state) => state.user);
+  const hasUserHydrated = useUserStore((state) => state.hasHydrated);
+  const roomPlayers = useRoomStore((state) => state.players);
+  const isConnected = useRoomStore((state) => state.isConnected);
+  const roomMaxPlayers = useRoomStore((state) => state.maxPlayers);
+  const roomCode = useRoomStore((state) => state.code);
   const { gameState } = useGameStore();
 
   const socketApi = useGameSocket();
   const createOnce = useRef(false);
-  const joinOnce = useRef(false);
-
-  const [localGameState, setLocalGameState] = useState<GameState>(() => {
-    const state = createInitialState(
-      code === NEW_ROOM_ROUTE_SEGMENT ? LOBBY_PLACEHOLDER_ROOM_CODE : code,
-    );
-    const host = buildOfflineHostPlayer(nick);
-    return { ...state, players: [host] };
-  });
-
-  const [localPlayerId, setLocalPlayerId] = useState(() => "");
+  const [localGameState, setLocalGameState] = useState<GameState>(() =>
+    createInitialState(isCreateRoute ? LOBBY_PLACEHOLDER_ROOM_CODE : code),
+  );
+  const [localPlayerId, setLocalPlayerId] = useState(() => user?.id ?? "");
   const [selectedCard, setSelectedCardLocal] = useState<string | null>(null);
   const [showDeclare, setShowDeclare] = useState(false);
   const [inspectCard, setInspectCard] = useState<GameCard | null>(null);
@@ -137,6 +128,17 @@ export function GameRoomClient() {
   const [lastActionByPlayerId, setLastActionByPlayerId] = useState<
     Readonly<Record<string, string>>
   >({});
+  const [createError, setCreateError] = useState("");
+
+  const roomEntry = useRoomEntryController({
+    enabled: !isCreateRoute,
+    roomCode: code,
+    initialNickname: prefilledNickname || user?.nickname || "",
+    user,
+    hasUserHydrated,
+    isConnected,
+    joinRoom: socketApi.joinRoom,
+  });
 
   // ── Derived state (declared before any effects that use it) ─────────────────
 
@@ -177,6 +179,7 @@ export function GameRoomClient() {
     currentGameState.phase === GAME_PHASE.PENALTY ||
     currentGameState.phase === GAME_PHASE.NEXT_TURN ||
     currentGameState.phase === GAME_PHASE.TROPHY_AWARDED;
+  const isJoinedRoomRoute = !isCreateRoute && roomEntry.isReadyToRenderShell;
 
   // ── Effects ─────────────────────────────────────────────────────────────────
 
@@ -185,36 +188,39 @@ export function GameRoomClient() {
   }, [isConnected]);
 
   useEffect(() => {
-    if (!user?.id || !isConnected) return;
-    if (code === NEW_ROOM_ROUTE_SEGMENT) {
-      if (createOnce.current) return;
-      createOnce.current = true;
-      setIsCreatingRoom(true);
-      socketApi.createRoom(DEFAULT_ROOM_MAX_PLAYERS, (result: unknown) => {
-        setIsCreatingRoom(false);
-        const r = result as { success?: boolean; room?: { roomCode?: string } };
-        if (r?.success && r?.room?.roomCode) {
-          router.replace(`/room/${r.room.roomCode}`);
-        }
+    if (!hasUserHydrated || user?.id || !isCreateRoute) return;
+    router.replace("/");
+  }, [hasUserHydrated, isCreateRoute, router, user?.id]);
+
+  useLayoutEffect(() => {
+    if (isCreateRoute || !roomCode || roomCode === code) return;
+    socketApi.resetClientState();
+  }, [code, isCreateRoute, roomCode, socketApi]);
+
+  useEffect(() => {
+    if (!user?.id || !isConnected || !isCreateRoute || createError) return;
+    if (createOnce.current) return;
+
+    createOnce.current = true;
+    setCreateError("");
+    setIsCreatingRoom(true);
+
+    socketApi.createRoom(DEFAULT_ROOM_MAX_PLAYERS, (result) => {
+      setIsCreatingRoom(false);
+      if (result.success) {
+        router.replace(`/room/${result.room.roomCode}`);
+        return;
+      }
+
+      createOnce.current = false;
+      setCreateError(result.message);
+      toast({
+        variant: "destructive",
+        title: t("room.joinFailedTitle"),
+        description: result.message,
       });
-      return;
-    }
-    if (code && code !== NEW_ROOM_ROUTE_SEGMENT) {
-      if (joinOnce.current) return;
-      joinOnce.current = true;
-      socketApi.joinRoom(code, (result: unknown) => {
-        const r = result as { success?: boolean; error?: string };
-        if (r?.success === false) {
-          joinOnce.current = false;
-          toast({
-            variant: "destructive",
-            title: t("room.joinFailedTitle"),
-            description: r.error ?? t("room.joinFailedDesc"),
-          });
-        }
-      });
-    }
-  }, [code, user?.id, isConnected, router, socketApi.createRoom, socketApi.joinRoom, t]);
+    });
+  }, [createError, isConnected, isCreateRoute, router, socketApi.createRoom, t, user?.id]);
 
   useEffect(() => {
     if (!isConnected || roomPlayers.length === 0) return;
@@ -284,7 +290,7 @@ export function GameRoomClient() {
         const typeLabel = t(`spice.${pc.declaration.type}`);
         addLog(
           t("log.declared", {
-            player: decl?.nickname ?? t("common.unknownPlayer"),
+            player: decl?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
             type: typeLabel,
             number: pc.declaration.number,
           }),
@@ -301,7 +307,7 @@ export function GameRoomClient() {
         const attrKey = r.challengeType === "suit" ? "result.suitAttr" : "result.numberAttr";
         addLog(
           t("log.challenged", {
-            player: ch?.nickname ?? t("common.unknownPlayer"),
+            player: ch?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
             attr: t(attrKey),
           }),
         );
@@ -324,16 +330,16 @@ export function GameRoomClient() {
           if (r.challengeCorrect) {
             addLog(
               t("log.penaltyBluffCaught", {
-                challenger: challenger?.nickname ?? t("common.unknownPlayer"),
-                declarer: declarer?.nickname ?? t("common.unknownPlayer"),
+                challenger: challenger?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
+                declarer: declarer?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
                 count: snap.pileCardCount,
               }),
             );
           } else {
             addLog(
               t("phase.penaltyDeclarerWins", {
-                declarer: declarer?.nickname ?? t("common.unknownPlayer"),
-                challenger: challenger?.nickname ?? t("common.unknownPlayer"),
+                declarer: declarer?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
+                challenger: challenger?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
               }),
             );
           }
@@ -546,7 +552,7 @@ export function GameRoomClient() {
           toast({
             variant: "destructive",
             title: t("room.addBotFailedTitle"),
-            description: result.error ?? t("room.addBotFailedDesc"),
+            description: result.message ?? t("room.addBotFailedDesc"),
           });
         }
       });
@@ -581,12 +587,31 @@ export function GameRoomClient() {
 
   const handleStartGame = () => {
     if (isConnected && roomPlayers.length >= MIN_PLAYERS_TO_START) {
-      socketApi.startGame();
+      socketApi.startGame((result) => {
+        if (!result.success) {
+          toast({
+            variant: "destructive",
+            title: t("lobby.startGame"),
+            description: result.message,
+          });
+        }
+      });
       return;
     }
     if (currentGameState.players.length < MIN_PLAYERS_TO_START) return;
     setLocalGameState((prev) => startGame(prev));
   };
+
+  const leaveRoomAndNavigateHome = useCallback(() => {
+    if (isConnected) {
+      socketApi.leaveRoom(() => {
+        router.push("/");
+      });
+      return;
+    }
+    socketApi.resetClientState();
+    router.push("/");
+  }, [isConnected, router, socketApi]);
 
   const handleToggleReady = () => {
     if (!localPlayer) return;
@@ -659,6 +684,14 @@ export function GameRoomClient() {
       setLocalGameState((prev) => claimChallenge(prev, localPlayerId) ?? prev);
     }
   }, [isOnlineMode, localPlayerId, socketApi.claimChallenge]);
+
+  const handleChallengePass = useCallback(() => {
+    if (isOnlineMode) {
+      socketApi.challengePass();
+    } else {
+      setLocalGameState((prev) => recordChallengePass(prev, localPlayerId) ?? prev);
+    }
+  }, [isOnlineMode, localPlayerId, socketApi.challengePass]);
 
   useEffect(() => {
     if (isOnlineMode) return;
@@ -794,7 +827,7 @@ export function GameRoomClient() {
               animate={{ scale: 1, opacity: 1 }}
               className="mb-6"
             >
-              <h2 className="text-4xl font-bold mb-2">{t("winner.endHeroTitle")}</h2>
+              <h2 className="text-4xl font-bold mb-2">{t("game.winner.endHeroTitle")}</h2>
               <p className="text-2xl">
                 {currentGameState.winners.length > 1
                   ? currentGameState.winners.map((p) => p.nickname).join(", ")
@@ -806,16 +839,16 @@ export function GameRoomClient() {
               players={currentGameState.players}
               winner={currentGameState.winner}
               winners={currentGameState.winners}
-              onPlayAgain={() => router.push("/")}
-              onLeave={() => router.push("/")}
+              onPlayAgain={leaveRoomAndNavigateHome}
+              onLeave={leaveRoomAndNavigateHome}
             />
 
             <Button
               variant="kawaii"
               className="cartoon-button-shadow mt-6 rounded-full px-10"
-              onClick={() => router.push("/")}
+              onClick={leaveRoomAndNavigateHome}
             >
-              {t("winner.playAgain")}
+              {t("game.winner.playAgain")}
             </Button>
           </div>
         );
@@ -827,30 +860,87 @@ export function GameRoomClient() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  if (!hasUserHydrated) {
+    return (
+      <TooltipProvider delayDuration={350}>
+        <div className="kawaii-room-light-scope room-shell-bg flex min-h-screen items-center justify-center text-foreground">
+          <p className="text-sm font-medium text-muted-foreground">{t("common.loading", { ns: "common" })}</p>
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  if (isCreateRoute) {
+    return (
+      <TooltipProvider delayDuration={350}>
+        <div className="kawaii-room-light-scope room-shell-bg flex min-h-screen items-center justify-center text-foreground">
+          <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-3xl border border-border/70 bg-card/95 px-6 py-8 text-center shadow-card backdrop-blur-sm">
+            <p className="text-sm font-medium text-muted-foreground">
+              {createError || t("home.creatingRoom", { ns: "common" })}
+            </p>
+            {createError ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreateError("");
+                  createOnce.current = false;
+                }}
+              >
+                {t("common.confirm", { ns: "common" })}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  if (!isJoinedRoomRoute) {
+    return (
+      <TooltipProvider delayDuration={350}>
+        <RoomEntryGate
+          roomCode={code}
+          nickname={roomEntry.nickname}
+          status={roomEntry.status}
+          error={
+            roomEntry.error ||
+            (roomEntry.status === ROOM_ENTRY_STATUS.JOIN_FAILED
+              ? t("room.joinFailedDesc")
+              : "")
+          }
+          onNicknameChange={roomEntry.setNickname}
+          onSubmit={() => {
+            void roomEntry.submitJoin();
+          }}
+        />
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={350}>
-    <div
-      className={cn(
-        "kawaii-room-light-scope room-shell-bg flex min-h-screen flex-col text-foreground",
-      )}
-    >
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <main className="flex-1 relative flex flex-col overflow-hidden">
-          {currentGameState.phase === GAME_PHASE.LOBBY ? (
-            <LobbyView
-              players={currentGameState.players}
-              localPlayer={localPlayer}
-              displayCode={displayCode}
-              isConnected={isConnected}
-              isCreatingRoom={isCreatingRoom}
-              roomMaxPlayers={roomMaxPlayers}
-              canAddBot={canAddLobbyBot}
-              onAddBot={addBot}
-              onStartGame={handleStartGame}
-              onToggleReady={handleToggleReady}
-            />
-          ) : isMainGamePhase ? (
-            <>
+      <div
+        className={cn(
+          "kawaii-room-light-scope room-shell-bg flex min-h-screen flex-col text-foreground",
+        )}
+      >
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <main className="relative flex flex-1 flex-col overflow-hidden">
+            {currentGameState.phase === GAME_PHASE.LOBBY ? (
+              <LobbyView
+                players={currentGameState.players}
+                localPlayer={localPlayer}
+                displayCode={displayCode}
+                isConnected={isConnected}
+                isCreatingRoom={isCreatingRoom}
+                roomMaxPlayers={roomMaxPlayers}
+                canAddBot={canAddLobbyBot}
+                onAddBot={addBot}
+                onStartGame={handleStartGame}
+                onToggleReady={handleToggleReady}
+              />
+            ) : isMainGamePhase ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <BoardView
                   players={currentGameState.players}
@@ -903,6 +993,7 @@ export function GameRoomClient() {
                           localPlayerId,
                           challengeStep: currentGameState.challengeStep ?? "CLAIM_RACE",
                           challengeClaimHolderId: currentGameState.challengeClaimHolderId ?? null,
+                          challengePassIds: currentGameState.challengePassIds ?? [],
                           challengeTimer: currentGameState.challengeTimer,
                           countdownTotalSeconds:
                             currentGameState.challengeStep === "PICK_TYPE"
@@ -910,6 +1001,7 @@ export function GameRoomClient() {
                               : CHALLENGE_CLAIM_RACE_SECONDS,
                           onClaimChallenge: handleClaimChallenge,
                           onChallenge: handleChallenge,
+                          onChallengePass: handleChallengePass,
                         }
                       : null
                   }
@@ -954,15 +1046,14 @@ export function GameRoomClient() {
                   }
                 />
               </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center flex-grow px-4 py-8">
-              {renderPhaseUI()}
-            </div>
-          )}
-        </main>
+            ) : (
+              <div className="flex flex-grow flex-col items-center justify-center px-4 py-8">
+                {renderPhaseUI()}
+              </div>
+            )}
+          </main>
 
-        <aside className="hidden min-h-0 w-80 shrink-0 side-panel-glass xl:flex flex-col">
+          <aside className="hidden min-h-0 w-80 shrink-0 side-panel-glass xl:flex flex-col">
           <SidePanelSocial
             roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
             onSendMessage={socketApi.sendChatMessage}
@@ -971,53 +1062,53 @@ export function GameRoomClient() {
             }
           />
         </aside>
+        </div>
+
+        <MobileChatSheet
+          open={mobileChatOpen}
+          onClose={() => setMobileChatOpen(false)}
+          roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
+          onSendMessage={socketApi.sendChatMessage}
+          actionLogEntries={
+            currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
+          }
+        />
+
+        <MobileChatFAB
+          onClick={() => setMobileChatOpen(true)}
+          label={t("game.chat.title")}
+        />
+
+        <CardInspectDialog
+          card={inspectCard}
+          open={inspectCard != null}
+          onOpenChange={(open) => {
+            if (!open) setInspectCard(null);
+          }}
+          canChooseToPlay={
+            isMyTurn && currentGameState.phase === GAME_PHASE.PLAYER_TURN
+          }
+          onChooseToPlay={() => {
+            if (inspectCard) openDeclareWithCard(inspectCard.id);
+          }}
+        />
+
+        <DeclareDialog
+          open={showDeclare}
+          onOpenChange={setShowDeclare}
+          card={localPlayer?.hand.find((c) => c.id === selectedCard) ?? null}
+          onDeclare={handleDeclare}
+          lockedSuit={currentGameState.lockedSuit}
+          minDeclarationNumber={minDeclarationRankForState({
+            lockedSuit: currentGameState.lockedSuit,
+            lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+          })}
+          maxDeclarationNumber={maxDeclarationRankForState({
+            lockedSuit: currentGameState.lockedSuit,
+            lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+          })}
+        />
       </div>
-
-      <MobileChatSheet
-        open={mobileChatOpen}
-        onClose={() => setMobileChatOpen(false)}
-        roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
-        onSendMessage={socketApi.sendChatMessage}
-        actionLogEntries={
-          currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
-        }
-      />
-
-      <MobileChatFAB
-        onClick={() => setMobileChatOpen(true)}
-        label={t("game.chat.title")}
-      />
-
-      <CardInspectDialog
-        card={inspectCard}
-        open={inspectCard != null}
-        onOpenChange={(open) => {
-          if (!open) setInspectCard(null);
-        }}
-        canChooseToPlay={
-          isMyTurn && currentGameState.phase === GAME_PHASE.PLAYER_TURN
-        }
-        onChooseToPlay={() => {
-          if (inspectCard) openDeclareWithCard(inspectCard.id);
-        }}
-      />
-
-      <DeclareDialog
-        open={showDeclare}
-        onOpenChange={setShowDeclare}
-        card={localPlayer?.hand.find((c) => c.id === selectedCard) ?? null}
-        onDeclare={handleDeclare}
-        lockedSuit={currentGameState.lockedSuit}
-        minDeclarationNumber={minDeclarationRankForState({
-          lockedSuit: currentGameState.lockedSuit,
-          lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-        })}
-        maxDeclarationNumber={maxDeclarationRankForState({
-          lockedSuit: currentGameState.lockedSuit,
-          lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-        })}
-      />
-    </div>
     </TooltipProvider>
   );
 }

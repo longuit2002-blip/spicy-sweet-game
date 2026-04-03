@@ -31,7 +31,8 @@
     },
     "turn": {
       "yourTurn": "Your turn!",
-      "waitingTurn": "{{player}}'s turn"
+      "waitingTurn": "{{player}}'s turn",
+      "isTurn": "'s turn"
     },
     "challenge": {
       "title": "Challenge or Accept?",

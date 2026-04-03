@@ -6,10 +6,12 @@
   "home": {
     "createRoom": "Create Room",
     "joinRoom": "Join Room",
-    "nickname": "Your nickname",
-    "enterNickname": "Enter your nickname...",
+    "nickname": "Player name",
+    "enterNickname": "Enter the name shown in the room...",
+    "nicknameHint": "This becomes your player name in the room.",
     "roomCode": "Room code",
     "enterRoomCode": "Enter room code",
+    "roomCode": "Room code",
     "join": "Join",
     "footer": "2–6 players · ~10 min · No account needed"
   },

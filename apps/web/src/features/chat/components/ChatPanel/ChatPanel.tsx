@@ -9,6 +9,8 @@ import type { ChatMessage } from '@/shared/types/socket';
 import { useChatStore } from '@/stores/chatStore';
 import { useUserStore } from '@/stores/userStore';
 
+const SYSTEM_MESSAGE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+
 interface ChatPanelProps {
   messages?: ChatMessage[];
   onSendMessage?: (content: string) => void;
@@ -17,12 +19,13 @@ interface ChatPanelProps {
 export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelProps) {
   const { t } = useTranslation(['game', 'common']);
   const { messages: storeMessages } = useChatStore();
-  const { user } = useUserStore();
+  const user = useUserStore((state) => state.user);
+  const hasUserHydrated = useUserStore((state) => state.hasHydrated);
   const messages = messagesProp ?? storeMessages;
   const [input, setInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const currentUserId = user?.id ?? 'local';
+  const currentUserId = hasUserHydrated ? user?.id ?? null : null;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,7 +52,7 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
       nickname: 'System',
       content: t('game.chat.welcome'),
       type: 'system',
-      timestamp: new Date().toISOString(),
+      timestamp: SYSTEM_MESSAGE_TIMESTAMP,
     },
   ];
 
@@ -130,4 +133,3 @@ export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelPr
     </div>
   );
 }
-

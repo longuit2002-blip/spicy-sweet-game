@@ -11,10 +11,12 @@ interface UserStore {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  hasHydrated: boolean;
 
   setUser: (user: AuthUser | null) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setAccessToken: (accessToken: string) => void;
+  setHasHydrated: (hasHydrated: boolean) => void;
   logout: () => void;
   initialize: () => void;
 }
@@ -26,6 +28,7 @@ export const useUserStore = create<UserStore>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      hasHydrated: false,
 
       setUser: (user) => set({ user, isAuthenticated: !!user }),
 
@@ -37,6 +40,8 @@ export const useUserStore = create<UserStore>()(
         }),
 
       setAccessToken: (accessToken) => set({ accessToken }),
+
+      setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
       logout: () =>
         set({
@@ -58,6 +63,10 @@ export const useUserStore = create<UserStore>()(
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.initialize();
+        state?.setHasHydrated(true);
+      },
     },
   ),
 );

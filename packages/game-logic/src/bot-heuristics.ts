@@ -1,5 +1,13 @@
 import type { ChallengeType, Declaration, GameState, SpiceType } from "@sweet-spicy/shared-types";
-import { claimChallenge, drawAndPassTurn, maxDeclarationRankForState, minDeclarationRankForState, playCard, resolveChallenge } from "./engine.js";
+import {
+  claimChallenge,
+  drawAndPassTurn,
+  maxDeclarationRankForState,
+  minDeclarationRankForState,
+  playCard,
+  recordChallengePass,
+  resolveChallenge,
+} from "./engine.js";
 
 /** Display names for server / offline AI seats. */
 export const LOBBY_BOT_DISPLAY_NAMES = ["Blaze", "Pepper", "Zesty", "Saffron", "Cinnamon"] as const;
@@ -110,13 +118,23 @@ export function applyBotChallengePhaseStep(state: GameState): GameState | null {
     const declarerId = state.playedCard.playerId;
     const candidates = state.players.filter((p) => p.id !== declarerId && p.isBot);
     shuffleInPlace(candidates);
+    let s = state;
     for (const p of candidates) {
+      if (s.challengeClaimHolderId != null) break;
+      if (s.challengePassIds.includes(p.id)) continue;
       if (Math.random() < BOT_CLAIM_CHALLENGE_CHANCE) {
-        const next = claimChallenge(state, p.id);
+        const next = claimChallenge(s, p.id);
         if (next) return next;
+      } else {
+        const next = recordChallengePass(s, p.id);
+        if (next == null) continue;
+        if (next !== s) {
+          s = next;
+          if (s.phase !== "CHALLENGE_PHASE") return s;
+        }
       }
     }
-    return null;
+    return s !== state ? s : null;
   }
 
   if (state.challengeStep === "PICK_TYPE" && state.challengeClaimHolderId != null) {

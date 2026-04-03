@@ -1,3 +1,5 @@
+import type { SocketErrorCode } from "./socket-error-codes.js";
+
 export interface AuthUser {
   id: string;
   nickname: string;
@@ -11,7 +13,7 @@ export interface AuthResponse {
 }
 
 export interface SocketError {
-  code: string;
+  code: SocketErrorCode;
   message: string;
   details?: Record<string, unknown>;
 }

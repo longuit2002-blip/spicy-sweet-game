@@ -1,4 +1,5 @@
 import type { GameCard } from "./game.js";
+import type { SocketErrorCode } from "./socket-error-codes.js";
 
 export type RoomStatus = "WAITING" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
 
@@ -27,29 +28,26 @@ export interface RoomState {
   createdAt: string;
 }
 
-export interface JoinResult {
-  success: boolean;
-  room?: RoomState;
-  error?: string;
-}
+export type SocketActionResult =
+  | { success: true }
+  | { success: false; code: SocketErrorCode; message: string };
+
+export type JoinResult =
+  | { success: true; room: RoomState; resumed?: boolean }
+  | { success: false; code: SocketErrorCode; message: string };
 
 export interface CreateRoomData {
   maxPlayers?: number;
   isPrivate?: boolean;
 }
 
-export interface CreateRoomResult {
-  success: boolean;
-  room?: RoomState;
-  error?: string;
-}
+export type CreateRoomResult =
+  | { success: true; room: RoomState }
+  | { success: false; code: SocketErrorCode; message: string };
 
-export interface AddLobbyBotResult {
-  success: boolean;
-  room?: RoomState;
-  player?: RoomPlayer;
-  error?: string;
-}
+export type AddLobbyBotResult =
+  | { success: true; room: RoomState; player: RoomPlayer }
+  | { success: false; code: SocketErrorCode; message: string };
 
 export interface Score {
   playerId: string;

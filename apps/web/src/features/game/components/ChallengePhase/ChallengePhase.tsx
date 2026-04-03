@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Check, SkipForward } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChallengeType, ClientPlayedCard, PlayedCard, Player } from "@/shared/types/game";
 import type { ChallengeStep } from "@/shared/types/game";
@@ -11,6 +12,7 @@ import {
   CHALLENGE_STEP_CROSSFADE_TRANSITION_REDUCED,
   SNAPPY_SPRING,
 } from "@/features/game/animations";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
 import { useSmoothCountdownRemainder } from "@/features/game/hooks/use-smooth-countdown-remainder";
@@ -148,13 +150,15 @@ export interface ChallengePhaseProps {
   localPlayerId: string;
   challengeStep: ChallengeStep | null;
   challengeClaimHolderId: string | null;
+  /** Players who tapped skip during CLAIM_RACE (non-declarers only). */
+  challengePassIds: string[];
   challengeTimer: number;
   /** Denominator for the countdown (matches server initial seconds for current step). */
   countdownTotalSeconds: number;
   onClaimChallenge: () => void;
   onChallenge: (challengerId: string, challengeType: ChallengeType) => void;
-  /** Optional — accept control removed from UI for now; parent may still wire server accept later. */
-  onAccept?: () => void;
+  /** During CLAIM_RACE: register pass / skip (unanimous passes accept the declaration early). */
+  onChallengePass: () => void;
   /**
    * `default` — glass card (e.g. standalone strip).
    * `embedded` — sits on the board glass panel (flat separator, no nested card chrome).
@@ -168,10 +172,12 @@ export function ChallengePhase({
   localPlayerId,
   challengeStep,
   challengeClaimHolderId,
+  challengePassIds,
   challengeTimer,
   countdownTotalSeconds,
   onClaimChallenge,
   onChallenge,
+  onChallengePass,
   variant = "default",
 }: ChallengePhaseProps) {
   const { t } = useTranslation("game");
@@ -190,6 +196,12 @@ export function ChallengePhase({
   const holder = challengeClaimHolderId ? players.find((p) => p.id === challengeClaimHolderId) : null;
   const isHolder = challengeClaimHolderId === localPlayerId;
   const urgent = smoothRemain <= 3;
+  const challengePassEligibleCount = Math.max(0, players.length - 1);
+  const localPassedClaimRace = challengePassIds.includes(localPlayerId);
+  const passProgressFraction =
+    challengePassEligibleCount > 0
+      ? Math.min(1, challengePassIds.length / challengePassEligibleCount)
+      : 0;
 
   const isEmbedded = variant === "embedded";
   /** 0–1: remaining time — pink fill height (anchored to bottom, recedes downward from the top). */
@@ -260,6 +272,17 @@ export function ChallengePhase({
               exit={{ opacity: 0 }}
               transition={challengeStepCrossFade}
             >
+              {canAct ? (
+                <p
+                  id="challenge-race-skip-hint"
+                  className={cn(
+                    "max-w-[15rem] px-1 text-center text-[11px] leading-snug text-muted-foreground sm:max-w-[17rem] sm:text-xs",
+                    isEmbedded && "max-w-[14rem] text-[10px] sm:text-[11px]",
+                  )}
+                >
+                  {t("challenge.raceSkipMicroHint")}
+                </p>
+              ) : null}
               <motion.button
                 type="button"
                 disabled={!canAct}
@@ -271,6 +294,7 @@ export function ChallengePhase({
                   !canAct && "pointer-events-none opacity-50",
                 )}
                 aria-label={`${t("challenge.claimChallenge")} — ${t("challenge.timeLeft", { seconds: displaySeconds })}`}
+                aria-describedby={canAct ? "challenge-race-skip-hint" : undefined}
               >
                 {/* Depleted body — stays visible as the pink “juice” drains toward the bottom. */}
                 <div
@@ -294,6 +318,86 @@ export function ChallengePhase({
                   </span>
                 </span>
               </motion.button>
+
+              <div
+                className={cn(
+                  "mt-0.5 w-full max-w-[15rem] space-y-2 rounded-2xl border border-border/70 bg-muted/30 px-3 py-2.5 shadow-inner ring-1 ring-background/40 backdrop-blur-sm sm:max-w-[17rem]",
+                  isEmbedded && "max-w-[14rem] space-y-1.5 px-2.5 py-2",
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    {t("challenge.passConsensusLabel")}
+                  </span>
+                  <span
+                    className="font-headline text-xs font-semibold tabular-nums text-foreground sm:text-sm"
+                    aria-hidden
+                  >
+                    {challengePassIds.length}/{challengePassEligibleCount}
+                  </span>
+                </div>
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-background/90 ring-1 ring-border/50"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={challengePassEligibleCount}
+                  aria-valuenow={challengePassIds.length}
+                  aria-label={t("challenge.passProgress", {
+                    current: challengePassIds.length,
+                    total: challengePassEligibleCount,
+                  })}
+                >
+                  <motion.div
+                    className={cn(
+                      "h-full rounded-full bg-gradient-to-r from-primary/75 to-primary",
+                      urgent && "from-destructive/85 to-destructive",
+                    )}
+                    initial={false}
+                    animate={{
+                      width: `${Math.round(passProgressFraction * 100)}%`,
+                    }}
+                    transition={{
+                      type: reducedMotion ? "tween" : "spring",
+                      stiffness: 420,
+                      damping: 34,
+                      duration: reducedMotion ? 0.15 : undefined,
+                    }}
+                  />
+                </div>
+
+                {canAct ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-9 w-full gap-2 border-dashed text-xs font-medium shadow-sm transition-colors sm:h-10 sm:text-sm",
+                      "border-border/90 hover:border-primary/45 hover:bg-primary/5",
+                      localPassedClaimRace &&
+                        "pointer-events-none border-primary/35 bg-primary/10 text-primary hover:bg-primary/10",
+                    )}
+                    disabled={localPassedClaimRace}
+                    onClick={onChallengePass}
+                    aria-label={t("challenge.skipClaimRaceAria")}
+                  >
+                    {localPassedClaimRace ? (
+                      <Check className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+                    ) : (
+                      <SkipForward className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                    )}
+                    {localPassedClaimRace ? t("challenge.skipClaimRaceDone") : t("challenge.skipClaimRace")}
+                  </Button>
+                ) : isDeclarer ? (
+                  <p
+                    className={cn(
+                      "text-center text-[11px] leading-snug text-muted-foreground",
+                      isEmbedded && "text-[10px]",
+                    )}
+                  >
+                    {t("challenge.declarerPassWatchHint")}
+                  </p>
+                ) : null}
+              </div>
             </motion.div>
           ) : null}
 

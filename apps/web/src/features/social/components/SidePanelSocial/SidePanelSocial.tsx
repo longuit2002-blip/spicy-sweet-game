@@ -14,6 +14,8 @@ import { useChatStore } from "@/stores/chatStore";
 import { useUserStore } from "@/stores/userStore";
 import { cn } from "@/lib/utils";
 
+const SYSTEM_MESSAGE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+
 interface SidePanelSocialProps {
   roomCode?: string;
   messages?: ChatMessage[];
@@ -32,12 +34,13 @@ export function SidePanelSocial({
 }: SidePanelSocialProps) {
   const { t } = useTranslation(["game", "common"]);
   const { messages: storeMessages } = useChatStore();
-  const { user } = useUserStore();
+  const user = useUserStore((state) => state.user);
+  const hasUserHydrated = useUserStore((state) => state.hasHydrated);
   const messages = messagesProp ?? storeMessages;
   const [chatInput, setChatInput] = useState("");
   const [socialTab, setSocialTab] = useState<"chat" | "log">("chat");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const currentUserId = user?.id ?? "local";
+  const currentUserId = hasUserHydrated ? user?.id ?? null : null;
 
   const {
     localStream,
@@ -84,7 +87,7 @@ export function SidePanelSocial({
       nickname: "System",
       content: t("game.chat.welcome"),
       type: "system",
-      timestamp: new Date().toISOString(),
+      timestamp: SYSTEM_MESSAGE_TIMESTAMP,
     },
   ];
 

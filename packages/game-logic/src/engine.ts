@@ -311,6 +311,7 @@ export function createInitialState(roomCode: string): GameState {
     challengeTimer: IDLE_CHALLENGE_TIMER_SECONDS,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
     lastResolvedDeclaration: null,
     winner: null,
     winners: [],
@@ -385,6 +386,7 @@ export function startGame(state: GameState): GameState {
     challengeTimer: 0,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -428,6 +430,7 @@ export function playCard(
     challengeTimer: CHALLENGE_CLAIM_RACE_SECONDS,
     challengeStep: "CLAIM_RACE",
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -501,6 +504,7 @@ export function playCardLocal(
     challengeTimer: CHALLENGE_CLAIM_RACE_SECONDS,
     challengeStep: "CLAIM_RACE",
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -522,7 +526,39 @@ export function claimChallenge(state: GameState, playerId: string): GameState | 
     challengeClaimHolderId: playerId,
     challengeStep: "PICK_TYPE",
     challengeTimer: CHALLENGE_PICK_TYPE_SECONDS,
+    challengePassIds: [],
   };
+}
+
+/**
+ * During CLAIM_RACE, register that this player skips contesting the challenge.
+ * When every non-declarer has passed, applies {@link acceptDeclaration}.
+ * Idempotent: duplicate pass for the same player returns `state` unchanged.
+ */
+export function recordChallengePass(state: GameState, playerId: string): GameState | null {
+  if (state.phase !== "CHALLENGE_PHASE") return null;
+  if (state.challengeStep !== "CLAIM_RACE") return null;
+  if (state.challengeClaimHolderId != null) return null;
+  const played = state.playedCard;
+  if (!played) return null;
+  if (played.playerId === playerId) return null;
+  if (!state.players.some((p) => p.id === playerId)) return null;
+
+  const existing = state.challengePassIds;
+  if (existing.includes(playerId)) {
+    return state;
+  }
+  const nextPasses = [...existing, playerId];
+  const eligibleIds = state.players.filter((p) => p.id !== played.playerId).map((p) => p.id);
+  if (eligibleIds.length === 0) {
+    return null;
+  }
+  const passSet = new Set(nextPasses);
+  const allPassed = eligibleIds.every((id) => passSet.has(id));
+  if (allPassed) {
+    return acceptDeclaration({ ...state, challengePassIds: nextPasses });
+  }
+  return { ...state, challengePassIds: nextPasses };
 }
 
 export function resolveChallenge(
@@ -555,6 +591,7 @@ export function resolveChallenge(
     challengeTimer: REVEAL_PHASE_COUNTDOWN_SECONDS,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -583,6 +620,7 @@ export function resolveChallengeTimeout(state: GameState): GameState {
     challengeTimer: REVEAL_PHASE_COUNTDOWN_SECONDS,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -672,6 +710,7 @@ export function applyPenalty(state: GameState): GameState {
     currentPlayerIndex: loserIdx >= 0 ? loserIdx : state.currentPlayerIndex,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -696,6 +735,7 @@ function endGame(state: GameState): GameState {
     challengeTimer: 0,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 }
 
@@ -758,6 +798,7 @@ export function acceptDeclaration(state: GameState): GameState {
     currentPlayerIndex: nextIndex,
     challengeStep: null,
     challengeClaimHolderId: null,
+    challengePassIds: [],
   };
 
   if (shouldEndGame(nextState)) {

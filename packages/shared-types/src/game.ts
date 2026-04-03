@@ -94,6 +94,11 @@ export interface GameState {
   challengeStep: ChallengeStep | null;
   /** Player id holding challenge rights after winning the claim race; `null` during race or when not in challenge. */
   challengeClaimHolderId: string | null;
+  /**
+   * During `CHALLENGE_PHASE` + `CLAIM_RACE`, players (except the declarer) who tapped skip / pass.
+   * When all eligible players are in this list, the declaration is accepted early.
+   */
+  challengePassIds: string[];
   /** Last declaration used for rank escalation within the locked suit. */
   lastResolvedDeclaration: Declaration | null;
   winner: GamePlayer | null;
@@ -141,6 +146,8 @@ export interface ClientGameState {
   challengeTimer: number;
   challengeStep: ChallengeStep | null;
   challengeClaimHolderId: string | null;
+  /** Same as server `GameState.challengePassIds` during claim race. */
+  challengePassIds: string[];
   lastResolvedDeclaration: Declaration | null;
   winner: GamePlayer | null;
   winners: GamePlayer[];

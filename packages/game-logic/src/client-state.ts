@@ -59,6 +59,7 @@ export function toClientGameState(gs: GameState, viewerPlayerId: string): Client
     challengeTimer: gs.challengeTimer,
     challengeStep: gs.challengeStep,
     challengeClaimHolderId: gs.challengeClaimHolderId,
+    challengePassIds: gs.challengePassIds,
     lastResolvedDeclaration: gs.lastResolvedDeclaration,
     winner: gs.winner ? maskWinnerPlayer(gs.winner, viewerPlayerId) : null,
     winners: gs.winners.map((w) => maskWinnerPlayer(w, viewerPlayerId)),

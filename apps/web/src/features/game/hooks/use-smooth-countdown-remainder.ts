@@ -6,19 +6,30 @@ import { useEffect, useRef, useState } from "react";
  * Between server integer ticks, linearly decreases remaining time so progress bars move smoothly.
  */
 export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMotion: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  const tickStartRef = useRef(Date.now());
+  const [now, setNow] = useState(0);
+  const tickStartRef = useRef(0);
   const prevTimeRef = useRef(timeLeftSeconds);
 
   useEffect(() => {
     if (prevTimeRef.current !== timeLeftSeconds) {
-      tickStartRef.current = Date.now();
+      const nextTickStart = reducedMotion ? 0 : Date.now();
+      tickStartRef.current = nextTickStart;
+      setNow(nextTickStart);
       prevTimeRef.current = timeLeftSeconds;
     }
-  }, [timeLeftSeconds]);
+  }, [reducedMotion, timeLeftSeconds]);
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion) {
+      tickStartRef.current = 0;
+      setNow(0);
+      return;
+    }
+
+    const initialNow = Date.now();
+    tickStartRef.current = initialNow;
+    setNow(initialNow);
+
     let raf = 0;
     const tick = () => {
       setNow(Date.now());
@@ -28,7 +39,8 @@ export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMoti
     return () => cancelAnimationFrame(raf);
   }, [reducedMotion]);
 
-  const elapsed = reducedMotion ? 0 : (now - tickStartRef.current) / 1000;
+  const elapsed =
+    reducedMotion || tickStartRef.current === 0 ? 0 : (now - tickStartRef.current) / 1000;
   if (timeLeftSeconds <= 0) return 0;
   const raw = timeLeftSeconds - elapsed;
   /** Do not drift below server second until the next tick (handles delayed socket updates). */

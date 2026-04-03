@@ -45,8 +45,17 @@ export const NEW_ROOM_ROUTE_SEGMENT = "new";
 /** Placeholder room code in UI before a real code exists. */
 export const LOBBY_PLACEHOLDER_ROOM_CODE = "XXXX";
 
+/** Home launcher query param for prefilled room codes. */
+export const ROOM_CODE_SEARCH_PARAM = "roomCode";
+
+/** Optional room-entry query param for prefilled player names on direct links. */
+export const ROOM_NICKNAME_SEARCH_PARAM = "nick";
+
 /** Default nickname query param fallback (i18n still labels the field). */
 export const DEFAULT_LOBBY_NICKNAME = "Player";
+
+/** Web form cap for player-visible nickname entry. */
+export const PLAYER_NICKNAME_MAX_LENGTH = 16;
 
 /** Scroll target for “BLUFF!” / “My cards” on the unified play board. */
 export const GAME_PLAYER_HAND_ANCHOR_ID = "game-player-hand-anchor";

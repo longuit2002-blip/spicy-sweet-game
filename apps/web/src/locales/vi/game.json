@@ -31,7 +31,8 @@
     },
     "turn": {
       "yourTurn": "Lượt của bạn!",
-      "waitingTurn": "Đang chờ {{player}}"
+      "waitingTurn": "Đang chờ {{player}}",
+      "isTurn": "đang đến lượt"
     },
     "challenge": {
       "title": "Thách hay Chấp nhận?",

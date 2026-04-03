@@ -7,6 +7,7 @@ import type {
   CreateRoomResult,
   AddLobbyBotResult,
   Score,
+  SocketActionResult,
 } from "./room.js";
 
 export type {
@@ -16,6 +17,7 @@ export type {
   AddLobbyBotResult,
   RoomState,
   RoomPlayer,
+  SocketActionResult,
 };
 import type { ChatMessage } from "./chat.js";
 import type { SocketError } from "./auth.js";
@@ -53,17 +55,25 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   "room:join": (roomCode: string, callback?: (result: JoinResult) => void) => void;
   "room:create": (data: CreateRoomData, callback?: (result: CreateRoomResult) => void) => void;
-  "room:leave": () => void;
-  "room:ready": (ready: boolean) => void;
-  "room:start": () => void;
+  "room:leave": (callback?: (result: SocketActionResult) => void) => void;
+  "room:ready": (ready: boolean, callback?: (result: SocketActionResult) => void) => void;
+  "room:start": (callback?: (result: SocketActionResult) => void) => void;
   "room:add-bot": (callback?: (result: AddLobbyBotResult) => void) => void;
 
-  "game:play-card": (data: { cardId: string; declaration: Declaration }) => void;
+  "game:play-card": (
+    data: { cardId: string; declaration: Declaration },
+    callback?: (result: SocketActionResult) => void,
+  ) => void;
   /** Draw one from the main pile and skip declaration (authoritative server). */
-  "game:draw-pass": () => void;
-  "game:claim-challenge": () => void;
-  "game:challenge": (data: { challengeType: ChallengeType }) => void;
-  "game:accept": () => void;
+  "game:draw-pass": (callback?: (result: SocketActionResult) => void) => void;
+  "game:claim-challenge": (callback?: (result: SocketActionResult) => void) => void;
+  "game:challenge": (
+    data: { challengeType: ChallengeType },
+    callback?: (result: SocketActionResult) => void,
+  ) => void;
+  "game:accept": (callback?: (result: SocketActionResult) => void) => void;
+  /** Skip contesting the challenge during CLAIM_RACE; advances turn when all eligible players pass. */
+  "game:challenge-pass": (callback?: (result: SocketActionResult) => void) => void;
 
   "chat:send": (data: { content: string }) => void;
 

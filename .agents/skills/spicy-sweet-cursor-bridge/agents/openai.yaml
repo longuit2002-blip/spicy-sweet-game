@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spicy Sweet Cursor Bridge"
+  short_description: "Bridge Codex work to repo-local Cursor skills"
+  default_prompt: "Use $spicy-sweet-cursor-bridge to choose and apply the right repo-local Cursor skill before editing this codebase."

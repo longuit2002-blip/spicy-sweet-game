@@ -3,6 +3,10 @@ import { Injectable } from "@nestjs/common";
 import {
   DEFAULT_ROOM_MAX_PLAYERS,
   MIN_PLAYERS_TO_START,
+  SOCKET_ERROR_CODE,
+  SOCKET_ERROR_DETAIL_MESSAGE,
+  SOCKET_ERROR_MESSAGE,
+  type SocketErrorCode,
   type GameState,
   type RoomPlayer,
   type RoomState,
@@ -25,6 +29,23 @@ export interface ServerRoom {
   createdAt: Date;
 }
 
+interface RoomFailure {
+  ok: false;
+  code: SocketErrorCode;
+  message: string;
+}
+
+interface RoomSuccess {
+  ok: true;
+  room: ServerRoom;
+}
+
+export interface LeaveRoomResult {
+  roomCode: string | null;
+  room: ServerRoom | null;
+  newHostId?: string;
+}
+
 @Injectable()
 export class RoomService {
   readonly rooms = new Map<string, ServerRoom>();
@@ -36,15 +57,17 @@ export class RoomService {
       hostId: room.hostId,
       status: room.status,
       maxPlayers: room.maxPlayers,
-      players: room.players,
+      players: room.players.map(({ hand: _hand, ...player }) => player),
       createdAt: room.createdAt.toISOString(),
     };
   }
 
-  createRoom(userId: string, nickname: string, maxPlayers = DEFAULT_ROOM_MAX_PLAYERS): ServerRoom {
-    if (this.userToRoom.has(userId)) {
-      this.leaveRoom(userId);
-    }
+  createRoom(
+    userId: string,
+    nickname: string,
+    maxPlayers = DEFAULT_ROOM_MAX_PLAYERS,
+  ): { room: ServerRoom; previousLeave?: LeaveRoomResult } {
+    const previousLeave = this.userToRoom.has(userId) ? this.leaveRoom(userId) : undefined;
     const roomCode = generateRoomCode();
     const player: RoomPlayer = {
       id: userId,
@@ -67,20 +90,51 @@ export class RoomService {
     };
     this.rooms.set(roomCode, room);
     this.userToRoom.set(userId, roomCode);
-    return room;
+    return { room, previousLeave };
   }
 
-  joinRoom(roomCode: string, userId: string, nickname: string): { ok: true; room: ServerRoom } | { ok: false; error: string } {
+  joinRoom(
+    roomCode: string,
+    userId: string,
+    nickname: string,
+  ): (RoomSuccess & { resumed?: boolean; previousLeave?: LeaveRoomResult }) | RoomFailure {
     const code = roomCode.toUpperCase();
     const previousCode = this.userToRoom.get(userId);
-    if (previousCode && previousCode !== code) {
-      this.leaveRoom(userId);
-    }
     const room = this.rooms.get(code);
-    if (!room) return { ok: false, error: "Room not found" };
-    if (room.status !== "WAITING") return { ok: false, error: "Game already in progress" };
-    if (room.players.length >= room.maxPlayers) return { ok: false, error: "Room is full" };
-    if (room.players.some((p) => p.id === userId)) return { ok: false, error: "Already in this room" };
+    if (!room) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ROOM_NOT_FOUND,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_NOT_FOUND],
+      };
+    }
+    const hasExistingPlayer = room.players.some((p) => p.id === userId);
+    if (previousCode === code && hasExistingPlayer) {
+      return { ok: true, room, resumed: true };
+    }
+    if (room.status !== "WAITING") {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ROOM_IN_PROGRESS,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_IN_PROGRESS],
+      };
+    }
+    if (room.players.length >= room.maxPlayers) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ROOM_FULL,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_FULL],
+      };
+    }
+    if (hasExistingPlayer) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ALREADY_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ALREADY_IN_ROOM],
+      };
+    }
+
+    const previousLeave = previousCode && previousCode !== code ? this.leaveRoom(userId) : undefined;
 
     const player: RoomPlayer = {
       id: userId,
@@ -94,10 +148,10 @@ export class RoomService {
     };
     room.players.push(player);
     this.userToRoom.set(userId, code);
-    return { ok: true, room };
+    return { ok: true, room, previousLeave };
   }
 
-  leaveRoom(userId: string): { roomCode: string | null; room: ServerRoom | null; newHostId?: string } {
+  leaveRoom(userId: string): LeaveRoomResult {
     const roomCode = this.userToRoom.get(userId) ?? null;
     if (!roomCode) return { roomCode: null, room: null };
     const room = this.rooms.get(roomCode);
@@ -127,20 +181,47 @@ export class RoomService {
     return { roomCode, room, newHostId };
   }
 
-  setReady(userId: string, ready: boolean): ServerRoom | null {
+  setReady(userId: string, ready: boolean): RoomSuccess | RoomFailure {
     const roomCode = this.userToRoom.get(userId);
-    if (!roomCode) return null;
+    if (!roomCode) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
+    }
     const room = this.rooms.get(roomCode);
-    if (!room) return null;
+    if (!room) {
+      this.userToRoom.delete(userId);
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
+    }
+    if (room.status !== "WAITING") {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.INVALID_PHASE,
+        message: SOCKET_ERROR_DETAIL_MESSAGE.READY_WRONG_PHASE,
+      };
+    }
     const player = room.players.find((p) => p.id === userId);
-    if (player) player.isReady = ready;
-    return room;
+    if (!player) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
+    }
+    player.isReady = ready;
+    return { ok: true, room };
   }
 
   addLobbyBot(
     hostUserId: string,
     socketRoomCode?: string | null,
-  ): { ok: true; room: ServerRoom; player: RoomPlayer } | { ok: false; error: string } {
+  ): ({ ok: true; room: ServerRoom; player: RoomPlayer } & RoomSuccess) | RoomFailure {
     const normalizedSocketCode = socketRoomCode ? socketRoomCode.toUpperCase() : undefined;
     let room: ServerRoom | undefined = normalizedSocketCode ? this.rooms.get(normalizedSocketCode) : undefined;
     if (room && !room.players.some((p) => p.id === hostUserId)) {
@@ -150,17 +231,45 @@ export class RoomService {
       const mappedCode = this.userToRoom.get(hostUserId);
       room = mappedCode ? this.rooms.get(mappedCode) : undefined;
     }
-    if (!room) return { ok: false, error: "Not in a room" };
+    if (!room) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
+    }
     if (!room.players.some((p) => p.id === hostUserId)) {
-      return { ok: false, error: "Not in this room" };
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
     }
     const mapCode = this.userToRoom.get(hostUserId);
     if (mapCode !== room.roomCode) {
       this.userToRoom.set(hostUserId, room.roomCode);
     }
-    if (room.hostId !== hostUserId) return { ok: false, error: "Only the host can add bots" };
-    if (room.status !== "WAITING") return { ok: false, error: "Bots can only be added in the lobby" };
-    if (room.players.length >= room.maxPlayers) return { ok: false, error: "Room is full" };
+    if (room.hostId !== hostUserId) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.HOST_ONLY,
+        message: SOCKET_ERROR_DETAIL_MESSAGE.ADD_BOT_NOT_HOST,
+      };
+    }
+    if (room.status !== "WAITING") {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ADD_BOT_NOT_ALLOWED,
+        message: SOCKET_ERROR_DETAIL_MESSAGE.ADD_BOT_WRONG_PHASE,
+      };
+    }
+    if (room.players.length >= room.maxPlayers) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ROOM_FULL,
+        message: SOCKET_ERROR_DETAIL_MESSAGE.ADD_BOT_ROOM_FULL,
+      };
+    }
 
     const nickname = pickNextLobbyBotNickname(room.players.map((p) => p.nickname));
     const player: RoomPlayer = {
@@ -178,16 +287,44 @@ export class RoomService {
     return { ok: true, room, player };
   }
 
-  startGame(hostId: string): { ok: true; room: ServerRoom } | { ok: false; error: string } {
+  startGame(hostId: string): RoomSuccess | RoomFailure {
     const roomCode = this.userToRoom.get(hostId);
-    if (!roomCode) return { ok: false, error: "Not in a room" };
-    const room = this.rooms.get(roomCode);
-    if (!room) return { ok: false, error: "Room not found" };
-    if (room.hostId !== hostId) return { ok: false, error: "Only the host can start the game" };
-    if (room.players.length < MIN_PLAYERS_TO_START) {
-      return { ok: false, error: "Need at least 2 players" };
+    if (!roomCode) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
+      };
     }
-    if (!room.players.every((p) => p.isReady)) return { ok: false, error: "All players must be ready" };
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ROOM_NOT_FOUND,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_NOT_FOUND],
+      };
+    }
+    if (room.hostId !== hostId) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.HOST_ONLY,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.HOST_ONLY],
+      };
+    }
+    if (room.players.length < MIN_PLAYERS_TO_START) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.MIN_PLAYERS_NOT_MET,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MIN_PLAYERS_NOT_MET],
+      };
+    }
+    if (!room.players.every((p) => p.isReady)) {
+      return {
+        ok: false,
+        code: SOCKET_ERROR_CODE.ALL_PLAYERS_NOT_READY,
+        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ALL_PLAYERS_NOT_READY],
+      };
+    }
 
     room.status = "IN_PROGRESS";
     let gs = createInitialState(room.roomCode);
