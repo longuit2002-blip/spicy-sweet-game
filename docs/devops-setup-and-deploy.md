@@ -238,7 +238,7 @@ Compose expects **`WEB_IMAGE`** and **`API_IMAGE`** in the **shell environment**
 
 | Variable | Purpose |
 |----------|---------|
-| `PORT` | API listen port inside container — use **8000** for production compose. |
+| `PORT` | **Do not set in `.env`** when using `docker-compose.prod.yml`: Compose sets **`web` → 3000** and **`api` → 8000**. A single `PORT=8000` in `.env` was applied to **both** containers and broke Next (502 / connection reset). |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Used by the **`postgres`** service in `docker-compose.prod.yml` (DB on the same VM). |
 | `DATABASE_URL` | API connection string. With bundled Compose Postgres, host is **`postgres`** (service name), port **5432**, password must match `POSTGRES_PASSWORD`. For RDS etc., use the cloud hostname instead. |
 | `JWT_SECRET` | Strong secret in production. |

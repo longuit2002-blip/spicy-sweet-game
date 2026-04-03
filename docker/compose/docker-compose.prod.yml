@@ -27,6 +27,9 @@ services:
     image: ${WEB_IMAGE:?set WEB_IMAGE to your registry image, e.g. ghcr.io/org/sweet-spicy-web:tag}
     restart: unless-stopped
     env_file: .env
+    # Next.js must listen on 3000: do not let shared .env PORT=8000 (meant for API) override this.
+    environment:
+      PORT: "3000"
     ports:
       - "127.0.0.1:3000:3000"
 
@@ -34,6 +37,9 @@ services:
     image: ${API_IMAGE:?set API_IMAGE to your registry image, e.g. ghcr.io/org/sweet-spicy-api:tag}
     restart: unless-stopped
     env_file: .env
+    # Belt-and-suspenders with apps/api/Dockerfile ENV PORT=8000 (Nest defaults to 3001 if PORT unset).
+    environment:
+      PORT: "8000"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

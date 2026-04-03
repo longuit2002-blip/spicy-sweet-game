@@ -18,6 +18,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
+# Match EXPOSE and production compose mapping; avoids relying only on Compose env (code default is 3001).
+ENV PORT=8000
 COPY --from=builder /app /app
 WORKDIR /app/apps/api
 EXPOSE 8000
