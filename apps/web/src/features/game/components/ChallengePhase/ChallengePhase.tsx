@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import {
   CHALLENGE_STEP_CROSSFADE_TRANSITION,
   CHALLENGE_STEP_CROSSFADE_TRANSITION_REDUCED,
-  SNAPPY_SPRING,
 } from "@/features/game/animations";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";

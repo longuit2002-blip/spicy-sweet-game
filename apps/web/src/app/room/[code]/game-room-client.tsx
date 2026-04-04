@@ -220,7 +220,7 @@ export function GameRoomClient() {
         description: result.message,
       });
     });
-  }, [createError, isConnected, isCreateRoute, router, socketApi.createRoom, t, user?.id]);
+  }, [createError, isConnected, isCreateRoute, router, socketApi, t, user?.id]);
 
   useEffect(() => {
     if (!isConnected || roomPlayers.length === 0) return;
@@ -278,6 +278,12 @@ export function GameRoomClient() {
     setGameLog((prev) => [...prev.slice(-49), { id, text, at: Date.now() }]);
   }, []);
 
+  const [penaltySnapshot, setPenaltySnapshot] = useState<{
+    result: ChallengeResult;
+    pileCardCount: number;
+  } | null>(null);
+  const [challengerHandBeforePenalty, setChallengerHandBeforePenalty] = useState<readonly string[] | null>(null);
+  const [declarerHandBeforePenalty, setDeclarerHandBeforePenalty] = useState<readonly string[] | null>(null);
   const prevPhaseRef = useRef(currentGameState.phase);
 
   useEffect(() => {
@@ -322,7 +328,7 @@ export function GameRoomClient() {
       }
 
       if (cur === GAME_PHASE.PENALTY) {
-        const snap = penaltySnapshotRef.current;
+        const snap = penaltySnapshot;
         if (snap) {
           const r = snap.result;
           const challenger = currentGameState.players.find((p) => p.id === r.challengerId);
@@ -366,33 +372,29 @@ export function GameRoomClient() {
 
   // ── Penalty snapshot ──────────────────────────────────────────────────────
 
-  const [penaltySnapshot, setPenaltySnapshot] = useState<{
-    result: ChallengeResult;
-    pileCardCount: number;
-  } | null>(null);
-
-  /** Challenger hand card ids at end of REVEAL — diff penalty draws when challenger pays. */
-  const challengerHandBeforePenaltyRef = useRef<readonly string[] | null>(null);
-  /** Declarer hand ids at end of REVEAL — diff penalty draws when declarer is caught bluffing. */
-  const declarerHandBeforePenaltyRef = useRef<readonly string[] | null>(null);
-
   useEffect(() => {
     if (currentGameState.phase === GAME_PHASE.REVEAL && currentGameState.challengeResult) {
-      penaltySnapshotRef.current = {
+      setPenaltySnapshot({
         result: currentGameState.challengeResult,
         pileCardCount: revealPileCardCount,
-      };
+      });
       const cr = currentGameState.challengeResult;
       const challenger = currentGameState.players.find((p) => p.id === cr.challengerId);
-      challengerHandBeforePenaltyRef.current = challenger ? challenger.hand.map((c) => c.id) : null;
+      setChallengerHandBeforePenalty(challenger ? challenger.hand.map((c) => c.id) : null);
       const declarer = currentGameState.players.find((p) => p.id === cr.playerId);
-      declarerHandBeforePenaltyRef.current = declarer ? declarer.hand.map((c) => c.id) : null;
+      setDeclarerHandBeforePenalty(declarer ? declarer.hand.map((c) => c.id) : null);
+      return;
+    }
+    if (currentGameState.phase !== GAME_PHASE.PENALTY) {
+      setPenaltySnapshot(null);
+      setChallengerHandBeforePenalty(null);
+      setDeclarerHandBeforePenalty(null);
     }
   }, [currentGameState.phase, currentGameState.challengeResult, revealPileCardCount, currentGameState.players]);
 
   const penaltyFxSnapshot = useMemo((): PenaltyFxSnapshot | null => {
     if (currentGameState.phase !== GAME_PHASE.PENALTY) return null;
-    const snap = penaltySnapshotRef.current;
+    const snap = penaltySnapshot;
     if (!snap) return null;
     let penaltyDrawnCards: readonly GameCard[] | undefined;
     const r = snap.result;
@@ -406,17 +408,17 @@ export function GameRoomClient() {
     };
     if (r.challengeCorrect && r.playerId === localPlayerId) {
       penaltyDrawnCards = diffPenaltyDraw(
-        declarerHandBeforePenaltyRef.current,
+        declarerHandBeforePenalty,
         currentGameState.players.find((p) => p.id === localPlayerId),
       );
     } else if (!r.challengeCorrect && r.challengerId === localPlayerId) {
       penaltyDrawnCards = diffPenaltyDraw(
-        challengerHandBeforePenaltyRef.current,
+        challengerHandBeforePenalty,
         currentGameState.players.find((p) => p.id === localPlayerId),
       );
     }
     return { result: snap.result, pileCardCount: snap.pileCardCount, penaltyDrawnCards };
-  }, [currentGameState.phase, currentGameState.players, localPlayerId]);
+  }, [challengerHandBeforePenalty, currentGameState, declarerHandBeforePenalty, localPlayerId, penaltySnapshot]);
 
   const trophyDeclarerPlayer = useMemo(() => {
     if (currentGameState.phase !== GAME_PHASE.TROPHY_AWARDED) return null;
@@ -536,8 +538,8 @@ export function GameRoomClient() {
     }
   }, [
     currentGameState.phase,
-    currentPlayer?.id,
     currentGameState.currentPlayerIndex,
+    currentPlayer,
     isOnlineMode,
   ]);
 
@@ -585,7 +587,7 @@ export function GameRoomClient() {
     localPlayer?.isHost,
     roomMaxPlayers,
     serverLobbySynced,
-    socketApi.addLobbyBot,
+    socketApi,
     t,
   ]);
 
@@ -602,7 +604,7 @@ export function GameRoomClient() {
       });
       return false;
     },
-    [t, toast],
+    [t],
   );
 
   const handleStartGame = () => {
@@ -720,7 +722,7 @@ export function GameRoomClient() {
         setLocalGameState((prev) => resolveChallenge(prev, challengerId, challengeType));
       }
     },
-    [handleSocketActionResult, isOnlineMode, socketApi.challenge, t],
+    [handleSocketActionResult, isOnlineMode, socketApi, t],
   );
 
   const handleClaimChallenge = useCallback(() => {
@@ -734,7 +736,7 @@ export function GameRoomClient() {
     } else {
       setLocalGameState((prev) => claimChallenge(prev, localPlayerId) ?? prev);
     }
-  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi.claimChallenge, t]);
+  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi, t]);
 
   const handleChallengePass = useCallback(() => {
     if (isOnlineMode) {
@@ -747,7 +749,7 @@ export function GameRoomClient() {
     } else {
       setLocalGameState((prev) => recordChallengePass(prev, localPlayerId) ?? prev);
     }
-  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi.challengePass, t]);
+  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi, t]);
 
   useEffect(() => {
     if (isOnlineMode) return;
@@ -990,7 +992,6 @@ export function GameRoomClient() {
                         ? { onDrawPass: handleDrawPass }
                         : null
                     }
-                    handDragActive={handDragActive}
                     handDragActiveRef={handDragActiveRef}
                     onDrawPassPileDragSession={setDrawPileDragActive}
                     onHandCardDragSessionChange={(active) => {
@@ -1080,7 +1081,6 @@ export function GameRoomClient() {
 
             <aside className="hidden min-h-0 w-80 shrink-0 side-panel-glass xl:flex flex-col">
               <SidePanelSocial
-                roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
                 onSendMessage={socketApi.sendChatMessage}
                 actionLogEntries={
                   currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
@@ -1092,7 +1092,6 @@ export function GameRoomClient() {
           <MobileChatSheet
             open={mobileChatOpen}
             onClose={() => setMobileChatOpen(false)}
-            roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
             onSendMessage={socketApi.sendChatMessage}
             actionLogEntries={
               currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
@@ -1138,3 +1137,4 @@ export function GameRoomClient() {
     </TooltipProvider>
   );
 }
+

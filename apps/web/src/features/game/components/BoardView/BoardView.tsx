@@ -14,7 +14,6 @@ import {
 } from "@dnd-kit/core";
 import { useCallback, useMemo, useState, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useTranslation } from "react-i18next";
 import {
   DuelDrawPassDragGhost,
   GameTableDeclarationSection,
@@ -113,10 +112,8 @@ export interface BoardViewProps extends Omit<GameTablePlayfieldProps, "roundReso
   tableFooter?: ReactNode | null;
   /** Set during `PENALTY` for flight VFX (challenge cleared from state; use snapshot from room client). */
   penaltyFxSnapshot?: PenaltyFxSnapshot | null;
-  /** While dragging a card from the local hand — highlights the center play slot. */
-  handDragActive?: boolean;
   /**
-   * Same session as {@link handDragActive}, set synchronously at dnd-kit drag start/end (before React state).
+   * Same drag session as the local hand, set synchronously at dnd-kit drag start/end (before React state).
    */
   handDragActiveRef: RefObject<boolean>;
   /** Draw-and-pass: drag the duel draw pile onto the local hand (`PLAYER_TURN` only). */
@@ -160,7 +157,6 @@ function BoardViewImpl({
   tableFooter = null,
   playDropZone = null,
   drawPassAction = null,
-  handDragActive = false,
   handDragActiveRef,
   onDrawPassPileDragSession,
   onHandCardDragSessionChange,
@@ -172,7 +168,6 @@ function BoardViewImpl({
   const [drawPassOverlayVisible, setDrawPassOverlayVisible] = useState(false);
   const [declareOverlayCardId, setDeclareOverlayCardId] = useState<string | null>(null);
   const { drawStackRef, roundPileRailRef } = usePlaymatAnchors();
-  const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
   useChallengeRevealSfx(phase, challengeResult, localPlayerId, reducedMotion);
   usePenaltyResultSfx(phase, penaltyFxSnapshot, localPlayerId, reducedMotion);
@@ -270,7 +265,6 @@ function BoardViewImpl({
 
   /** Interstitial round UI is rendered inside {@link GameTableDeclarationSection}, not the strip below. */
   const mergeRoundResolutionInTable = playfieldInterstitial && phaseContent != null;
-  const portalOnlyRoundInterstitial = playfieldInterstitial && !mergeRoundResolutionInTable;
   const phaseContentInStrip = phaseContent != null && !mergeRoundResolutionInTable;
 
   /** REVEAL + claim on table: flex chain must use `flex-1 min-h-0` (not `min-h-full`) so the scroll column passes height to the below-duel block on all breakpoints; otherwise `justify-center` is a no-op below `lg`. */
@@ -376,11 +370,18 @@ function BoardViewImpl({
     [handDragActiveRef, onDrawPassPileDragSession, onHandCardDragSessionChange],
   );
 
-  const declareDragPreviewHand = declareDragPreviewCards ?? [];
+  const declareDragPreviewHand = useMemo(
+    () => declareDragPreviewCards ?? [],
+    [declareDragPreviewCards],
+  );
   const declareOverlayCard = useMemo((): GameCard | null => {
     if (declareOverlayCardId == null) return null;
     return declareDragPreviewHand.find((c) => c.id === declareOverlayCardId) ?? null;
   }, [declareOverlayCardId, declareDragPreviewHand]);
+
+  const handleDrawStackAnchorChange = useCallback((element: HTMLDivElement | null) => {
+    drawStackRef.current = element;
+  }, [drawStackRef]);
 
   /**
    * Center column only — trophy/draw rails mount on the taller `relative flex-1` playfield wrapper so
@@ -411,7 +412,6 @@ function BoardViewImpl({
         challengeResult={challengeResult}
         challengeOutcomeNames={challengeOutcomeNames}
         challengeTimer={challengeTimer}
-        localPlayerId={localPlayerId}
         roundPileAnchorRef={roundPileRailRef}
         roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
         showLocalTurnHints={isMyTurn}
@@ -549,7 +549,7 @@ function BoardViewImpl({
             {...tableauDuelProps}
             variant="duel"
             duelSlot="draw"
-            drawStackAnchorRef={drawStackRef}
+            onDrawStackAnchorChange={handleDrawStackAnchorChange}
             drawPassPileDraggable={drawPassPileDraggable}
             drawPassCoachRevealDelayMs={drawPassCoachRevealDelayMs}
           />

@@ -10,7 +10,7 @@ export interface RealtimeSocketData {
   roomId?: string;
 }
 
-interface RealtimeInterServerEvents {}
+type RealtimeInterServerEvents = Record<never, never>;
 
 export type RealtimeSocket = Socket<
   ClientToServerEvents,

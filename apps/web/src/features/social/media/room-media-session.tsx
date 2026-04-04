@@ -1135,6 +1135,7 @@ export function RoomMediaSessionProvider({
     joinMedia,
     removeRemoteParticipant,
     runMediaOperation,
+    setViewState,
     translate,
     upsertRemoteParticipant,
   ]);

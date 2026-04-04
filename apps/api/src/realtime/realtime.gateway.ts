@@ -150,7 +150,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return;
     }
     if (this.disconnectTimersByUser.has(userId)) {
-      clearTimeout(this.disconnectTimersByUser.get(userId)!);
+      clearTimeout(this.disconnectTimersByUser.get(userId));
     }
     const timer = setTimeout(() => {
       this.disconnectTimersByUser.delete(userId);
@@ -270,7 +270,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     roomCode: string,
     peerId: string,
     event: K,
-    payload: Parameters<import("@sweet-spicy/shared-types").ServerToClientEvents[K]>[0],
+    ...payload: Parameters<import("@sweet-spicy/shared-types").ServerToClientEvents[K]>
   ): boolean {
     const targetSocketId = this.mediaPresence.getParticipantSocketId(roomCode, peerId);
     if (!targetSocketId) {
@@ -282,7 +282,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return false;
     }
 
-    targetSocket.emit(event, payload);
+    targetSocket.emit(event, ...payload);
     return true;
   }
 

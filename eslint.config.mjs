@@ -28,6 +28,7 @@ export default [
       "**/.turbo/**",
       "**/coverage/**",
       "apps/web/next-env.d.ts",
+      "apps/web/postcss.config.mjs",
       "apps/web/.next/types/**/*.ts",
       "apps/web/.next/dev/types/**/*.ts",
     ],
@@ -62,7 +63,7 @@ export default [
     files: WEB_FILES,
     settings: {
       next: {
-        rootDir: "apps/web/",
+        rootDir: [".", "apps/web/"],
       },
     },
   },
@@ -70,6 +71,19 @@ export default [
   ...scopeWebConfigs(nextCoreWebVitals),
   {
     files: WEB_FILES,
+    settings: {
+      react: {
+        // eslint-plugin-react 7.37.x + ESLint 10: `version: "detect"` calls removed RuleContext APIs.
+        // Pin to apps/web `react` — override `eslint-config-next` default once upstream supports ESLint 10.
+        version: "19.2.0",
+      },
+    },
+  },
+  {
+    files: WEB_FILES,
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
     languageOptions: {
       globals: {
         ...globals.browser,

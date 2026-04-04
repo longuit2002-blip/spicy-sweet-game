@@ -12,12 +12,7 @@ import {
   useRoomMediaSessionStatusState,
 } from "@/features/social/media/room-media-session";
 
-interface VideoPanelProps {
-  roomCode?: string;
-  userId?: string;
-}
-
-export function VideoPanel({ roomCode = "", userId = "" }: VideoPanelProps) {
+export function VideoPanel() {
   const { t } = useTranslation("game");
   const { status, isJoined } = useRoomMediaSessionStatusState();
   const { localStream, localAudioEnabled, localVideoEnabled } = useRoomMediaSessionLocalState();

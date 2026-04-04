@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
-import { applyPenalty, nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
+import { nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
 import { RoomService } from "../room/room.service";
 import { GameBroadcastService } from "./game-broadcast.service";

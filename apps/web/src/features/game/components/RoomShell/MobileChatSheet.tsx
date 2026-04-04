@@ -9,7 +9,6 @@ import { SidePanelSocial } from "@/features/social";
 interface MobileChatSheetProps {
   open: boolean;
   onClose: () => void;
-  roomCode: string;
   onSendMessage: (message: string) => void;
   actionLogEntries?: readonly { id: string; text: string; at: number }[];
 }
@@ -17,7 +16,6 @@ interface MobileChatSheetProps {
 export function MobileChatSheet({
   open,
   onClose,
-  roomCode,
   onSendMessage,
   actionLogEntries = [],
 }: MobileChatSheetProps) {
@@ -57,7 +55,6 @@ export function MobileChatSheet({
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               <SidePanelSocial
-                roomCode={roomCode}
                 onSendMessage={onSendMessage}
                 actionLogEntries={actionLogEntries}
               />

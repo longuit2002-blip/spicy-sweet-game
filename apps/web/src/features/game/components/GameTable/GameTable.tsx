@@ -10,6 +10,7 @@ import {
   pointerWithin,
 } from "@dnd-kit/core";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -143,7 +144,7 @@ export interface GameTableProps {
   localPlayerId?: string;
   /** Optional: duel board — round pile rail center for flight FX (BoardView playmat anchors). */
   roundPileAnchorRef?: RefObject<HTMLDivElement | null> | null;
-  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  onDrawStackAnchorChange?: (element: HTMLDivElement | null) => void;
 }
 
 /** Props for the inner playfield (metadata + claim / empty state). Used inside {@link GameTable} and embedded in {@link BoardView}. */
@@ -548,13 +549,13 @@ function PlayfieldRoundPileRail({ tablePileCount, className }: { tablePileCount:
 
 export type GameTableTableauSectionProps = Pick<
   GameTableProps,
-  "drawPileCount" | "tablePileCount" | "supremeReserve" | "trophiesRemaining" | "lockedSuit"
+  "drawPileCount" | "tablePileCount" | "supremeReserve" | "trophiesRemaining"
 > & {
   /** `full` = four supply zones (standalone table). `duel` = single column when `duelSlot` is set. */
   variant?: "full" | "duel";
   /** Which duel playmat column to render; required for `variant="duel"` in BoardView grid. */
   duelSlot?: "trophy" | "draw";
-  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  onDrawStackAnchorChange?: (element: HTMLDivElement | null) => void;
   /** When set on the draw column, the face-down stack is draggable to the local hand (draw-and-pass). */
   drawPassPileDraggable?: DrawPassPileDraggableConfig | null;
   /**
@@ -621,12 +622,12 @@ function GameTableDuelTrophyColumn({ trophiesRemaining }: { trophiesRemaining: n
 
 function GameTableDuelDrawColumn({
   drawPileCount,
-  drawStackAnchorRef = null,
+  onDrawStackAnchorChange,
   drawPassPileDraggable = null,
   drawPassCoachRevealDelayMs = 0,
 }: {
   drawPileCount: number;
-  drawStackAnchorRef?: RefObject<HTMLDivElement | null> | null;
+  onDrawStackAnchorChange?: (element: HTMLDivElement | null) => void;
   drawPassPileDraggable?: DrawPassPileDraggableConfig | null;
   drawPassCoachRevealDelayMs?: number;
 }) {
@@ -652,12 +653,10 @@ function GameTableDuelDrawColumn({
 
   const pileDragActive = active?.id === GAME_DND_DRAG_DRAW_PASS_ID;
 
-  const mergedStackRef = (el: HTMLDivElement | null) => {
-    setNodeRef(el);
-    if (drawStackAnchorRef) {
-      drawStackAnchorRef.current = el;
-    }
-  };
+  const mergedStackRef = useCallback((element: HTMLDivElement | null) => {
+    setNodeRef(element);
+    onDrawStackAnchorChange?.(element);
+  }, [onDrawStackAnchorChange, setNodeRef]);
 
   const [coachVisible, setCoachVisible] = useState(false);
   const prevPileDraggableRef = useRef(false);
@@ -840,10 +839,9 @@ export function GameTableTableauSection({
   tablePileCount,
   supremeReserve,
   trophiesRemaining,
-  lockedSuit,
   variant = "full",
   duelSlot,
-  drawStackAnchorRef = null,
+  onDrawStackAnchorChange,
   drawPassPileDraggable = null,
   drawPassCoachRevealDelayMs = 0,
 }: GameTableTableauSectionProps) {
@@ -854,13 +852,13 @@ export function GameTableTableauSection({
       return <GameTableDuelTrophyColumn trophiesRemaining={trophiesRemaining} />;
     }
     if (duelSlot === "draw") {
-      return (
-        <GameTableDuelDrawColumn
-          drawPileCount={drawPileCount}
-          drawStackAnchorRef={drawStackAnchorRef}
-          drawPassPileDraggable={drawPassPileDraggable}
-          drawPassCoachRevealDelayMs={drawPassCoachRevealDelayMs}
-        />
+        return (
+          <GameTableDuelDrawColumn
+            drawPileCount={drawPileCount}
+            onDrawStackAnchorChange={onDrawStackAnchorChange}
+            drawPassPileDraggable={drawPassPileDraggable}
+            drawPassCoachRevealDelayMs={drawPassCoachRevealDelayMs}
+          />
       );
     }
     return (
@@ -868,7 +866,7 @@ export function GameTableTableauSection({
         <GameTableDuelTrophyColumn trophiesRemaining={trophiesRemaining} />
         <GameTableDuelDrawColumn
           drawPileCount={drawPileCount}
-          drawStackAnchorRef={drawStackAnchorRef}
+          onDrawStackAnchorChange={onDrawStackAnchorChange}
           drawPassCoachRevealDelayMs={drawPassCoachRevealDelayMs}
         />
       </div>
@@ -1014,7 +1012,6 @@ export type GameTableDeclarationSectionProps = Pick<
   | "challengeResult"
   | "challengeOutcomeNames"
   | "challengeTimer"
-  | "localPlayerId"
   | "roundPileAnchorRef"
   | "roundResolutionPanel"
   | "showLocalTurnHints"
@@ -1033,7 +1030,6 @@ export function GameTableDeclarationSection({
   challengeResult = null,
   challengeOutcomeNames = null,
   challengeTimer = 0,
-  localPlayerId = "",
   roundPileAnchorRef = null,
   roundResolutionPanel = null,
   showLocalTurnHints = true,
@@ -1532,7 +1528,6 @@ export function GameTablePlayfield(props: GameTablePlayfieldProps) {
           tablePileCount={props.tablePileCount}
           supremeReserve={props.supremeReserve}
           trophiesRemaining={props.trophiesRemaining}
-          lockedSuit={props.lockedSuit}
         />
         <GameTableDeclarationSection
           playedCard={props.playedCard}
@@ -1546,7 +1541,6 @@ export function GameTablePlayfield(props: GameTablePlayfieldProps) {
           challengeResult={props.challengeResult}
           challengeOutcomeNames={props.challengeOutcomeNames}
           challengeTimer={props.challengeTimer}
-          localPlayerId={props.localPlayerId}
           roundPileAnchorRef={props.roundPileAnchorRef}
           roundResolutionPanel={props.roundResolutionPanel ?? null}
           showLocalTurnHints={props.showLocalTurnHints ?? true}

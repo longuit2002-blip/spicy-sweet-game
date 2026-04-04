@@ -17,7 +17,6 @@ import { cn } from "@/lib/utils";
 const SYSTEM_MESSAGE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 interface SidePanelSocialProps {
-  roomCode?: string;
   messages?: ChatMessage[];
   onSendMessage?: (content: string) => void;
   /** Game action log entries (tab “Nhật ký”). */
@@ -26,7 +25,6 @@ interface SidePanelSocialProps {
 }
 
 export function SidePanelSocial({
-  roomCode = "",
   messages: messagesProp,
   onSendMessage,
   actionLogEntries = [],

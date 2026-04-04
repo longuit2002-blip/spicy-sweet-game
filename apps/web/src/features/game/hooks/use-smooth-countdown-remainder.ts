@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
  */
 export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMotion: boolean): number {
   const [now, setNow] = useState(0);
+  const [tickStartAt, setTickStartAt] = useState(0);
   const tickStartRef = useRef(0);
   const prevTimeRef = useRef(timeLeftSeconds);
 
@@ -14,6 +15,7 @@ export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMoti
     if (prevTimeRef.current !== timeLeftSeconds) {
       const nextTickStart = reducedMotion ? 0 : Date.now();
       tickStartRef.current = nextTickStart;
+      setTickStartAt(nextTickStart);
       setNow(nextTickStart);
       prevTimeRef.current = timeLeftSeconds;
     }
@@ -22,12 +24,14 @@ export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMoti
   useEffect(() => {
     if (reducedMotion) {
       tickStartRef.current = 0;
+      setTickStartAt(0);
       setNow(0);
       return;
     }
 
     const initialNow = Date.now();
     tickStartRef.current = initialNow;
+    setTickStartAt(initialNow);
     setNow(initialNow);
 
     let raf = 0;
@@ -39,8 +43,7 @@ export function useSmoothCountdownRemainder(timeLeftSeconds: number, reducedMoti
     return () => cancelAnimationFrame(raf);
   }, [reducedMotion]);
 
-  const elapsed =
-    reducedMotion || tickStartRef.current === 0 ? 0 : (now - tickStartRef.current) / 1000;
+  const elapsed = reducedMotion || tickStartAt === 0 ? 0 : (now - tickStartAt) / 1000;
   if (timeLeftSeconds <= 0) return 0;
   const raw = timeLeftSeconds - elapsed;
   /** Do not drift below server second until the next tick (handles delayed socket updates). */
