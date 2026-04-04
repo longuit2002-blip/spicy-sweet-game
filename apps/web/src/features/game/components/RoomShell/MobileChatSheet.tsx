@@ -39,7 +39,7 @@ export function MobileChatSheet({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 32 }}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[min(52vh,380px)] flex-col overflow-hidden rounded-t-[1.5rem] border border-border/25 bg-card/95 shadow-kawaii backdrop-blur-xl sm:max-h-[min(56vh,420px)] sm:rounded-t-[1.75rem] xl:hidden"
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[min(70vh,520px)] flex-col overflow-hidden rounded-t-[1.5rem] border border-border/25 bg-card/95 shadow-kawaii backdrop-blur-xl sm:max-h-[min(75vh,600px)] sm:rounded-t-[1.75rem] xl:hidden"
           >
             <div className="flex items-center justify-between px-3 py-3 sm:px-4">
               <span className="text-sm font-semibold">{t("chat.title")}</span>
@@ -55,6 +55,7 @@ export function MobileChatSheet({
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
               <SidePanelSocial
+                className="min-h-0"
                 onSendMessage={onSendMessage}
                 actionLogEntries={actionLogEntries}
               />

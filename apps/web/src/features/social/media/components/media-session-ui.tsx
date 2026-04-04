@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,8 +45,13 @@ interface MediaTileProps {
 }
 
 const CONTROL_SIZE_STYLES: Record<MediaControlsSize, string> = {
-  sm: "h-9 w-9 rounded-full",
-  md: "h-11 w-11 rounded-full",
+  sm: "h-8 w-8 rounded-full sm:h-9 sm:w-9",
+  md: "h-10 w-10 rounded-full sm:h-11 sm:w-11",
+};
+
+const CONTROL_ICON_STYLES: Record<MediaControlsSize, string> = {
+  sm: "h-3.5 w-3.5 sm:h-4 sm:w-4",
+  md: "h-4 w-4 sm:h-[18px] sm:w-[18px]",
 };
 
 export function getMediaSessionStatusPresentation(
@@ -96,9 +101,10 @@ export const MediaSessionControls = memo(function MediaSessionControls({
     CONTROL_SIZE_STYLES[size],
     "cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-auto",
   );
+  const iconClassName = CONTROL_ICON_STYLES[size];
 
   return (
-    <div className="flex justify-center gap-2 pt-1">
+    <div className="flex justify-center gap-1.5 pt-1 sm:gap-2">
       <Button
         variant={isJoined && localAudioEnabled ? "secondary" : "outline"}
         size="icon"
@@ -113,7 +119,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
             : t("game.video.enableAudio", { defaultValue: "Enable microphone" })
         }
       >
-        {localAudioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+        {localAudioEnabled ? <Mic className={iconClassName} /> : <MicOff className={iconClassName} />}
       </Button>
 
       <Button
@@ -130,7 +136,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
             : t("game.video.enableVideo", { defaultValue: "Enable camera" })
         }
       >
-        {localVideoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+        {localVideoEnabled ? <Video className={iconClassName} /> : <VideoOff className={iconClassName} />}
       </Button>
 
       <Button
@@ -143,7 +149,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
         disabled={!isJoined || isUpdatingSession}
         aria-label={t("game.video.leave", { defaultValue: "Leave call" })}
       >
-        <PhoneOff className="h-4 w-4" />
+        <PhoneOff className={iconClassName} />
       </Button>
     </div>
   );
@@ -164,31 +170,74 @@ export const MediaTile = memo(function MediaTile({
 }: MediaTileProps) {
   const { t } = useTranslation("game");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [remoteSoundUnlocked, setRemoteSoundUnlocked] = useState(false);
 
   useEffect(() => {
-    if (!videoRef.current) {
+    if (!isLocal) {
+      setRemoteSoundUnlocked(false);
+    }
+  }, [isLocal, stream]);
+
+  const tryPlayVideo = useCallback((element: HTMLVideoElement | null) => {
+    if (!element) {
+      return;
+    }
+    void element.play().catch(() => {
+      /* Autoplay policy may block; user can tap “sound” for remote tiles. */
+    });
+  }, []);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element) {
       return;
     }
 
-    videoRef.current.srcObject = stream;
-  }, [stream]);
+    element.srcObject = stream;
+
+    const refreshPlayback = () => {
+      tryPlayVideo(element);
+    };
+
+    if (stream) {
+      stream.addEventListener("addtrack", refreshPlayback);
+      stream.addEventListener("removetrack", refreshPlayback);
+    }
+
+    tryPlayVideo(element);
+
+    return () => {
+      if (stream) {
+        stream.removeEventListener("addtrack", refreshPlayback);
+        stream.removeEventListener("removetrack", refreshPlayback);
+      }
+    };
+  }, [stream, tryPlayVideo]);
+
+  useEffect(() => {
+    if (!isLocal && remoteSoundUnlocked) {
+      tryPlayVideo(videoRef.current);
+    }
+  }, [remoteSoundUnlocked, isLocal, tryPlayVideo]);
 
   const isSquare = aspect === "square";
   const showActiveVideo = Boolean(stream && showVideo);
+  const remoteMutedForAutoplay = !isLocal && !remoteSoundUnlocked;
+  const showRemoteSoundHint = !isLocal && Boolean(stream) && remoteMutedForAutoplay;
 
   return (
     <div
       className={cn(
         "relative overflow-hidden",
         isSquare
-          ? "aspect-square rounded-2xl border-2 border-white/70 bg-surface-container-high shadow-sm"
-          : "aspect-video rounded-2xl border border-border/30 bg-black shadow-inner",
+          ? "aspect-square rounded-xl border-2 border-white/70 bg-surface-container-high shadow-sm sm:rounded-2xl"
+          : "aspect-video rounded-xl border border-border/30 bg-black shadow-inner sm:rounded-2xl",
       )}
     >
       <video
         ref={videoRef}
         autoPlay
-        muted={isLocal}
+        muted={isLocal ? true : remoteMutedForAutoplay}
         playsInline
         className={cn(
           "h-full w-full object-cover transition-opacity duration-150",
@@ -207,28 +256,44 @@ export const MediaTile = memo(function MediaTile({
         aria-hidden={showActiveVideo}
       >
         {placeholderMode === "presence" ? (
-          <Icon name={videoEnabled ? "person" : "videocam_off"} size={28} className="text-muted-foreground" />
+          <Icon name={videoEnabled ? "person" : "videocam_off"} size={22} className="text-muted-foreground" />
         ) : (
-          <VideoOff className="h-6 w-6" />
+          <VideoOff className="h-5 w-5 sm:h-6 sm:w-6" />
         )}
       </div>
 
       {showMediaIndicators ? (
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-black/45 px-2 py-1 text-ui-micro text-white">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1.5 bg-black/45 px-1.5 py-0.5 text-[0.65rem] text-white sm:gap-2 sm:px-2 sm:py-1 sm:text-ui-micro">
           <span className="truncate font-semibold">{label}</span>
-          <div className="flex items-center gap-1">
-            {audioEnabled ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
-            {videoEnabled ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            {audioEnabled ? <Mic className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> : <MicOff className="h-2.5 w-2.5 sm:h-3 sm:w-3" />}
+            {videoEnabled ? <Video className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> : <VideoOff className="h-2.5 w-2.5 sm:h-3 sm:w-3" />}
           </div>
         </div>
       ) : (
-        <div className="absolute bottom-1 left-1 rounded bg-black/50 px-1 text-ui-micro text-white">
+        <div className="absolute bottom-1 left-1 rounded bg-black/50 px-1 text-[0.65rem] text-white sm:text-ui-micro">
           {label}
         </div>
       )}
 
+      {showRemoteSoundHint ? (
+        <button
+          type="button"
+          className="absolute inset-x-2 bottom-10 z-10 rounded-lg bg-primary/90 px-2 py-1.5 text-center text-[0.65rem] font-semibold text-primary-foreground shadow-sm sm:bottom-12 sm:inset-x-3 sm:text-xs"
+          aria-label={t("game.video.tapForSoundAria", {
+            defaultValue: "Enable sound for this participant (required on some mobile browsers)",
+          })}
+          onClick={() => {
+            setRemoteSoundUnlocked(true);
+            tryPlayVideo(videoRef.current);
+          }}
+        >
+          {t("game.video.tapForSound", { defaultValue: "Tap for sound" })}
+        </button>
+      ) : null}
+
       {showConnectingBadge && !isLocal && connectionState === "new" ? (
-        <div className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-1 text-ui-tiny font-semibold uppercase tracking-wide text-white">
+        <div className="absolute left-1.5 top-1.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-white sm:left-2 sm:top-2 sm:px-2 sm:py-1 sm:text-ui-tiny">
           {t("game.video.connecting", { defaultValue: "Connecting" })}
         </div>
       ) : null}

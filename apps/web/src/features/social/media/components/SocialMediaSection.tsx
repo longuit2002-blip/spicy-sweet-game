@@ -27,21 +27,21 @@ const SocialMediaHeader = memo(function SocialMediaHeader() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Icon name="videocam" size={24} className="text-primary" />
-          <h3 className="font-headline text-sm font-bold uppercase tracking-wider text-primary">
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          <Icon name="videocam" size={22} className="shrink-0 text-primary" />
+          <h3 className="font-headline truncate text-xs font-bold uppercase tracking-wider text-primary sm:text-sm">
             {t("game.video.title")}
           </h3>
         </div>
         <span
-          className={`rounded-full px-2.5 py-1 text-ui-micro font-semibold uppercase tracking-wide ${statusPresentation.toneClassName}`}
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide sm:px-2.5 sm:py-1 sm:text-ui-micro ${statusPresentation.toneClassName}`}
         >
           {statusPresentation.label}
         </span>
       </div>
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <p className="text-[0.7rem] leading-relaxed text-muted-foreground sm:text-xs">
         {isJoined
           ? t("game.video.liveHint", {
               defaultValue: "Mic and camera are opt-in. You can stay to watch even if both are off.",
@@ -62,7 +62,7 @@ const SocialMediaParticipantGrid = memo(function SocialMediaParticipantGrid() {
   const remoteEmptySlotCount = Math.max(0, maxPlayers - 1 - remoteParticipants.length);
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:gap-3">
       <MediaTile
         label={t("game.video.you")}
         stream={localStream}
@@ -94,10 +94,10 @@ const SocialMediaParticipantGrid = memo(function SocialMediaParticipantGrid() {
       {Array.from({ length: remoteEmptySlotCount }).map((_, index) => (
         <div
           key={`empty-${index}`}
-          className="flex aspect-square items-center justify-center rounded-2xl border-2 border-dashed border-outline/30 bg-surface-container-high"
+          className="flex aspect-square items-center justify-center rounded-xl border-2 border-dashed border-outline/30 bg-surface-container-high sm:rounded-2xl"
         >
-          <div className="flex flex-col items-center gap-1 text-center text-ui-micro font-semibold uppercase tracking-wide text-outline/60">
-            <Icon name="person_add" size={18} className="text-outline/50" />
+          <div className="flex flex-col items-center gap-0.5 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-outline/60 sm:gap-1 sm:text-ui-micro">
+            <Icon name="person_add" size={16} className="text-outline/50" />
             <span>{t("game.video.waiting")}</span>
           </div>
         </div>
@@ -130,7 +130,7 @@ const SocialMediaControlsSection = memo(function SocialMediaControlsSection() {
 
 export const SocialMediaSection = memo(function SocialMediaSection() {
   return (
-    <div className="space-y-3 p-4">
+    <div className="max-xl:max-h-[min(42vh,260px)] max-xl:shrink-0 max-xl:overflow-y-auto max-xl:kawaii-scrollbar space-y-2 p-3 sm:space-y-3 sm:p-4 xl:max-h-none xl:overflow-visible">
       <SocialMediaHeader />
       <SocialMediaParticipantGrid />
       <SocialMediaControlsSection />

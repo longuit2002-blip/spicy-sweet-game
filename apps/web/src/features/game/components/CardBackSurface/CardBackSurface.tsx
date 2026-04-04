@@ -7,6 +7,7 @@ import {
   GAME_CARD_CORNER_CLASS,
   GAME_CARD_CORNER_LG_CLASS,
   GAME_CARD_CORNER_SQUARE_CLASS,
+  GAME_CARD_NEXT_IMAGE_QUALITY,
 } from "@/lib/game-card-assets";
 
 type CardBackSurfaceProps = {
@@ -45,6 +46,7 @@ export function CardBackSurface({ className, corner = "default", framed = true }
         src={GAME_CARD_BACK_SRC}
         alt=""
         fill
+        quality={GAME_CARD_NEXT_IMAGE_QUALITY}
         className="object-cover"
         sizes="(max-width: 640px) 96px, 128px"
       />

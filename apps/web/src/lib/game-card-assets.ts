@@ -82,6 +82,11 @@ export const GAME_CARD_CORNER_SQUARE_CLASS = "rounded-none";
  */
 export const GAME_CARD_ART_ASPECT_CLASS = "aspect-[2/3]" as const;
 
+/**
+ * `next/image` quality for card faces and backs (1–100). Next 16 optimizer default is 75; illustrated art benefits from ~88 to reduce WebP/AVIF banding. Must match an entry in `images.qualities` in `next.config.ts`.
+ */
+export const GAME_CARD_NEXT_IMAGE_QUALITY = 88 as const;
+
 export function getGameCardFrontSrc(card: GameCard): string {
   if (card.kind === "trophy") return TROPHY_FRONT_SRC;
   if (card.kind === "total-wild") return TOTAL_WILD_FRONT_SRC;

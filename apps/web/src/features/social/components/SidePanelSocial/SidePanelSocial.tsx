@@ -70,7 +70,7 @@ export function SidePanelSocial({
   ];
 
   return (
-    <div className={cn("flex h-full flex-col", className)}>
+    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
       <SocialMediaSection />
 
       {/* Chat + action log: one card, controlled tabs, body fills remaining height (no dead grey gap). */}

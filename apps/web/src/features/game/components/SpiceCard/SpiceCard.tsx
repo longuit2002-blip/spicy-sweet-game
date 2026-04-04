@@ -16,6 +16,7 @@ import {
 } from "@/features/game/animations";
 import {
   GAME_CARD_ART_ASPECT_CLASS,
+  GAME_CARD_NEXT_IMAGE_QUALITY,
   getGameCardFrontSrc,
   SPICE_CARD_BORDER_CLASS,
 } from "@/lib/game-card-assets";
@@ -256,6 +257,7 @@ export const SpiceCard = memo(function SpiceCard({
           src={frontSrc}
           alt=""
           fill
+          quality={GAME_CARD_NEXT_IMAGE_QUALITY}
           className="pointer-events-none object-cover"
           sizes={imageSizes}
         />

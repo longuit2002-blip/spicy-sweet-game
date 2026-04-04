@@ -56,7 +56,7 @@ import { LobbyView } from "@/features/game/components/LobbyView";
 import { RoomEntryGate } from "@/features/game/components/RoomEntryGate";
 import { BoardView } from "@/features/game/components/BoardView";
 import type { PenaltyFxSnapshot } from "@/features/game/components/RoundResolutionFxOverlay";
-import { MobileChatFAB } from "@/features/game/components/RoomShell/MobileChatFAB";
+import { MobileChatFABWithMediaSession } from "@/features/game/components/RoomShell/MobileChatFAB";
 import { MobileChatSheet } from "@/features/game/components/RoomShell/MobileChatSheet";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
@@ -1098,7 +1098,7 @@ export function GameRoomClient() {
             }
           />
 
-          <MobileChatFAB
+          <MobileChatFABWithMediaSession
             onClick={() => setMobileChatOpen(true)}
             label={t("game.chat.title")}
           />

@@ -59,6 +59,8 @@ interface PeerRuntime {
   ignoreOffer: boolean;
   isSettingRemoteAnswerPending: boolean;
   pendingIceCandidates: RTCIceCandidateInit[];
+  /** Present when this peer was created with recvonly audio+video placeholders (no local tracks yet). */
+  recvOnlyTransceivers?: Partial<Record<"audio" | "video", RTCRtpTransceiver>>;
 }
 
 type LocalMediaKind = "audio" | "video";
@@ -481,10 +483,27 @@ export function RoomMediaSessionProvider({
 
   const addTrackToPeers = useCallback((track: MediaStreamTrack) => {
     const stream = ensureLocalStreamContainer();
+    const kind = track.kind === "audio" || track.kind === "video" ? track.kind : null;
+    if (!kind) {
+      return;
+    }
+
     for (const runtime of peerConnectionsRef.current.values()) {
       const existingSender = runtime.connection.getSenders().find((sender) => sender.track?.kind === track.kind);
       if (existingSender) {
         void existingSender.replaceTrack(track);
+        continue;
+      }
+
+      const recvSlot = runtime.recvOnlyTransceivers?.[kind];
+      if (recvSlot?.sender && !recvSlot.sender.track) {
+        void recvSlot.sender.replaceTrack(track);
+        const current = runtime.recvOnlyTransceivers;
+        if (current) {
+          const next = { ...current };
+          delete next[kind];
+          runtime.recvOnlyTransceivers = Object.keys(next).length > 0 ? next : undefined;
+        }
         continue;
       }
 
@@ -621,6 +640,19 @@ export function RoomMediaSessionProvider({
       }
 
       const connection = new RTCPeerConnection({ iceServers: iceServersRef.current });
+
+      const localAudioTrack = getLiveTrack("audio");
+      const localVideoTrack = getLiveTrack("video");
+      const localStream = localStreamRef.current;
+
+      let recvOnlyTransceivers: PeerRuntime["recvOnlyTransceivers"];
+      if (!localAudioTrack && !localVideoTrack) {
+        recvOnlyTransceivers = {
+          audio: connection.addTransceiver("audio", { direction: "recvonly" }),
+          video: connection.addTransceiver("video", { direction: "recvonly" }),
+        };
+      }
+
       const runtime: PeerRuntime = {
         peerId: participant.peerId,
         connection,
@@ -630,12 +662,9 @@ export function RoomMediaSessionProvider({
         isSettingRemoteAnswerPending: false,
         pendingIceCandidates:
           pendingIceCandidatesByPeerRef.current.get(participant.peerId)?.slice() ?? [],
+        recvOnlyTransceivers,
       };
       pendingIceCandidatesByPeerRef.current.delete(participant.peerId);
-
-      const localAudioTrack = getLiveTrack("audio");
-      const localVideoTrack = getLiveTrack("video");
-      const localStream = localStreamRef.current;
 
       if (localAudioTrack && localStream) {
         connection.addTrack(localAudioTrack, localStream);
@@ -643,11 +672,6 @@ export function RoomMediaSessionProvider({
 
       if (localVideoTrack && localStream) {
         connection.addTrack(localVideoTrack, localStream);
-      }
-
-      if (!localAudioTrack && !localVideoTrack) {
-        connection.addTransceiver("audio", { direction: "recvonly" });
-        connection.addTransceiver("video", { direction: "recvonly" });
       }
 
       connection.onicecandidate = (event) => {
@@ -694,8 +718,10 @@ export function RoomMediaSessionProvider({
             targetPeerId: participant.peerId,
             offer: connection.localDescription.toJSON(),
           });
-        } catch {
-          // Ignore ephemeral renegotiation failures; reconnect flow rebuilds the graph if needed.
+        } catch (error) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[room-media-session] WebRTC negotiation failed", error);
+          }
         } finally {
           runtime.makingOffer = false;
         }

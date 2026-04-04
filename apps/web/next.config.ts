@@ -6,6 +6,10 @@ const sharedTypesDist = path.join(monorepoRoot, "packages/shared-types/dist/inde
 const gameLogicDist = path.join(monorepoRoot, "packages/game-logic/dist/index.js");
 
 const nextConfig: NextConfig = {
+  /** Allow card-art `quality` values on `next/image` (see `GAME_CARD_NEXT_IMAGE_QUALITY` in `game-card-assets.ts`). */
+  images: {
+    qualities: [75, 85, 88, 92],
+  },
   output: "standalone",
   /** Trace workspace packages into the standalone server bundle (monorepo Docker / deploy). */
   outputFileTracingRoot: monorepoRoot,
