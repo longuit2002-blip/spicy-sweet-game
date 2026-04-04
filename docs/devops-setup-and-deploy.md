@@ -37,6 +37,7 @@ This is the **single source of truth** for taking the `spicy-sweet-game` monorep
 14. [Appendix A — Repo files reference](#appendix-a--repo-files-reference)
 15. [Appendix B — GCP Compute Engine (same model)](#appendix-b--gcp-compute-engine-same-model)
 16. [Appendix C — Later: Kubernetes (learning only)](#appendix-c--later-kubernetes-learning-only)
+17. [Appendix D — Redeploy when code changes (Vietnamese)](#appendix-d--redeploy-when-code-changes-vietnamese)
 
 ---
 
@@ -115,11 +116,63 @@ docker build -f apps/api/Dockerfile -t ghcr.io/YOUR_ORG/sweet-spicy-api:TAG .
 
 ## 4. Part 2 — Build, tag, and push images (GHCR)
 
-1. Create a GitHub personal access token (PAT) with `write:packages` (and `read:packages` if needed).
-2. On the machine that builds (laptop or Jenkins agent):
+### 4.1 Where to build (important)
+
+| Where | When to use |
+|-------|----------------|
+| **Your laptop / desktop** | **Recommended.** Plenty of disk; avoids `ERR_PNPM_ENOSPC` / `no space left on device` on small EC2 roots. |
+| **EC2 same as production** | Only if the root volume has **≥30 GiB free** for *both* images (Next.js + full `pnpm install` is large). **8 GiB / 12 GiB roots usually cannot build both.** |
+| **CI (Jenkins, GitHub Actions)** | Best long-term: build there, push to GHCR, server only pulls. |
+
+Always build from the **repository root** (directory that contains `apps/`, `pnpm-lock.yaml`, `package.json`).
+
+### 4.2 Build commands (same on laptop or server)
+
+Replace `YOUR_ORG`, `TAG`, and public URLs (example IP: `http://100.48.53.117`).
 
 ```bash
-echo YOUR_GH_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+cd /path/to/spicy-sweet-game
+git pull
+
+docker build --no-cache -f apps/api/Dockerfile \
+  -t ghcr.io/YOUR_ORG/sweet-spicy-api:TAG .
+
+docker build --no-cache -f apps/web/Dockerfile \
+  -t ghcr.io/YOUR_ORG/sweet-spicy-web:TAG . \
+  --build-arg NEXT_PUBLIC_API_URL=http://YOUR_PUBLIC_IP/api \
+  --build-arg NEXT_PUBLIC_SOCKET_URL=http://YOUR_PUBLIC_IP
+```
+
+Example for public IP `100.48.53.117`:
+
+```bash
+  --build-arg NEXT_PUBLIC_API_URL=http://100.48.53.117/api \
+  --build-arg NEXT_PUBLIC_SOCKET_URL=http://100.48.53.117
+```
+
+### 4.3 If you already built **api** on EC2 and **web** fails with `ENOSPC`
+
+1. **Push api** so you do not lose it, then free cache (keeps tagged images; removes build cache):
+
+   ```bash
+   docker login ghcr.io -u YOUR_GITHUB_USERNAME
+   docker push ghcr.io/YOUR_ORG/sweet-spicy-api:TAG
+   docker builder prune -af
+   sudo apt-get clean
+   df -h /
+   ```
+
+2. Remove **old** tags you no longer need (example): `docker rmi ghcr.io/YOUR_ORG/sweet-spicy-api:v1` only if `v2` exists locally or is already pushed.
+
+3. **Build web again.** If `df` still shows **under ~5 GiB free**, do **not** keep fighting on that VM — **grow the EBS volume** (see troubleshooting table in §10) or run the **web** `docker build` on your **PC**, then `docker push` both images.
+
+### 4.4 Log in and push
+
+1. Create a GitHub PAT with `write:packages` (see [GitHub docs](https://docs.github.com/en/packages/learn-github-packages/introduction-to-github-packages)). Do **not** commit the token.
+2. On the machine that built the images:
+
+```bash
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
 docker push ghcr.io/YOUR_ORG/sweet-spicy-web:TAG
 docker push ghcr.io/YOUR_ORG/sweet-spicy-api:TAG
 ```
@@ -136,7 +189,7 @@ docker push ghcr.io/YOUR_ORG/sweet-spicy-api:TAG
 2. **Launch instance**
    - AMI: **Ubuntu Server 24.04 LTS**.
    - Instance type: **t3.small** (or **t3.micro** / free tier if you accept lighter headroom).
-   - Storage: at least **20 GiB** gp3 recommended.
+   - Storage: at least **30 GiB** gp3 if you plan to **build Docker images on the instance**; **20 GiB** can be enough for **pull-only** deploys.
    - Security group **inbound**: TCP **22** (your IP preferred), **80**, **443** from `0.0.0.0/0`.
 3. **Elastic IP** (optional): allocate and associate so DNS and SSH targets stay stable.
 4. **DNS** (optional): `A` record pointing to the public IP for real TLS later.
@@ -435,6 +488,12 @@ export API_IMAGE=ghcr.io/ORG/sweet-spicy-api:OLD_TAG
 ## Appendix C — Later: Kubernetes (learning only)
 
 After VM-based deploy is boring and reliable, you can practice **k3d**, **minikube**, or a small cloud cluster: Deployments, Services, Ingress, probes, ConfigMaps/Secrets. That path is **optional** and **not** required to ship this repo on EC2.
+
+---
+
+## Appendix D — Redeploy when code changes (Vietnamese)
+
+For a Vietnamese guide on **which changes require rebuilding `web` vs `api`**, updating `.env`, and running **`deploy-vm.sh`** again, see **[huong-dan-deploy-lai-khi-doi-code.md](./huong-dan-deploy-lai-khi-doi-code.md)**.
 
 ---
 

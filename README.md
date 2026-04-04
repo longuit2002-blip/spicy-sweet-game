@@ -199,6 +199,7 @@ pnpm --filter api exec prisma migrate dev
 - `packages/shared-types` — shared TypeScript contracts
 - `packages/game-logic` — pure game engine (client + server)
 - **`docs/devops-setup-and-deploy.md`** — Docker, AWS EC2, Nginx, registry, and Jenkins from scratch through deploy (older DevOps/EC2 doc names redirect there)
+- **`docs/huong-dan-deploy-lai-khi-doi-code.md`** (tiếng Việt) — khi đổi code cần build/push image nào và chạy lại `deploy-vm.sh`
 
 ### Notes
 
