@@ -17,6 +17,10 @@ import { Icon } from "@/components/ui/icon";
 import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
 import { useSmoothCountdownRemainder } from "@/features/game/hooks/use-smooth-countdown-remainder";
 import {
+  CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS,
+  CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS,
+} from "@/lib/game-room.constants";
+import {
   CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS,
   CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS,
   CHALLENGE_AXIS_TILE_COL_CLASS,
@@ -57,7 +61,7 @@ function ChallengePickContextChip({
       <span
         className={cn(
           "font-semibold uppercase tracking-wide text-muted-foreground",
-          focal ? "text-[11px]" : "text-[10px]",
+          focal ? "text-ui-caption" : "text-ui-micro",
         )}
       >
         {roleLabel}
@@ -84,7 +88,7 @@ function ChallengePickContextChip({
       <div
         className={cn(
           "flex flex-wrap items-center gap-x-2.5 gap-y-1 text-muted-foreground",
-          focal ? "text-[11px] sm:text-xs" : "text-[10px]",
+          focal ? "text-ui-caption sm:text-xs" : "text-ui-micro",
         )}
         aria-label={t("challenge.contextChipStats", { hand, score, trophies })}
       >
@@ -93,7 +97,7 @@ function ChallengePickContextChip({
             <span key={i} className="inline-block h-2.5 w-1.5 rounded-sm border border-border bg-card-back" />
           ))}
           {hand > CONTEXT_STRIP_MAX_PIPS ? (
-            <span className="text-[9px]">+{hand - CONTEXT_STRIP_MAX_PIPS}</span>
+            <span className="text-ui-tiny">+{hand - CONTEXT_STRIP_MAX_PIPS}</span>
           ) : null}
         </span>
         <span className="tabular-nums">
@@ -276,8 +280,8 @@ export function ChallengePhase({
                 <p
                   id="challenge-race-skip-hint"
                   className={cn(
-                    "max-w-[15rem] px-1 text-center text-[11px] leading-snug text-muted-foreground sm:max-w-[17rem] sm:text-xs",
-                    isEmbedded && "max-w-[14rem] text-[10px] sm:text-[11px]",
+                    "max-w-[15rem] px-1 text-center text-ui-caption text-muted-foreground sm:max-w-[17rem] sm:text-xs",
+                    isEmbedded && "max-w-[14rem] text-ui-micro sm:text-ui-caption",
                   )}
                 >
                   {t("challenge.raceSkipMicroHint")}
@@ -326,7 +330,7 @@ export function ChallengePhase({
                 )}
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <span className="text-ui-micro font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {t("challenge.passConsensusLabel")}
                   </span>
                   <span
@@ -390,8 +394,8 @@ export function ChallengePhase({
                 ) : isDeclarer ? (
                   <p
                     className={cn(
-                      "text-center text-[11px] leading-snug text-muted-foreground",
-                      isEmbedded && "text-[10px]",
+                      "text-center text-ui-caption text-muted-foreground",
+                      isEmbedded && "text-ui-micro",
                     )}
                   >
                     {t("challenge.declarerPassWatchHint")}
@@ -487,14 +491,34 @@ export function ChallengePhase({
                       aria-label={t("challenge.pickWaitShort", { player: holder.nickname })}
                     >
                       <p className="sr-only">{t("challenge.spectatorPickGhostCaption")}</p>
-                      <div className="pointer-events-none w-full max-w-[13rem] flex-1 opacity-50 saturate-50 sm:flex-none">
-                        <div className="flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-muted-foreground/50 bg-muted/30 p-4 text-center shadow-inner">
+                      <div
+                        className={cn(
+                          "pointer-events-none w-full flex-1 opacity-50 saturate-50 sm:flex-none",
+                          CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS,
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS,
+                            "border border-dashed border-muted-foreground/50 bg-muted/30 shadow-inner",
+                          )}
+                        >
                           <Icon name="style" size={DEFAULT_PICK_ICON_SIZE} className="text-muted-foreground" fill={1} />
                           <span className="font-headline text-base font-bold leading-tight text-muted-foreground sm:text-lg">{t("challenge.wrongSuit")}</span>
                         </div>
                       </div>
-                      <div className="pointer-events-none w-full max-w-[13rem] flex-1 opacity-50 saturate-50 sm:flex-none">
-                        <div className="flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-muted-foreground/50 bg-muted/30 p-4 text-center shadow-inner">
+                      <div
+                        className={cn(
+                          "pointer-events-none w-full flex-1 opacity-50 saturate-50 sm:flex-none",
+                          CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS,
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS,
+                            "border border-dashed border-muted-foreground/50 bg-muted/30 shadow-inner",
+                          )}
+                        >
                           <Icon name="counter_1" size={DEFAULT_PICK_ICON_SIZE} className="text-muted-foreground" fill={1} />
                           <span className="font-headline text-base font-bold leading-tight text-muted-foreground sm:text-lg">{t("challenge.wrongNumber")}</span>
                         </div>
@@ -504,12 +528,15 @@ export function ChallengePhase({
 
                   {canAct && isHolder ? (
                     <div className="flex w-full justify-center gap-3 sm:gap-4">
-                      <div className="w-full max-w-[13rem] flex-1 sm:flex-none">
+                      <div
+                        className={cn("w-full flex-1 sm:flex-none", CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS)}
+                      >
                         <button
                           type="button"
                           onClick={() => onChallenge(localPlayerId, "suit")}
                           className={cn(
-                            "flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-primary/40 bg-primary/10 p-4 text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
+                            CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS,
+                            "border border-primary/40 bg-primary/10 shadow-sm transition-[box-shadow,transform,background-color,border-color]",
                             "hover:border-primary/55 hover:bg-primary/16 hover:shadow-md",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
                             "motion-safe:active:scale-[0.98]",
@@ -520,12 +547,15 @@ export function ChallengePhase({
                           <span className="font-headline text-base font-bold leading-tight text-foreground sm:text-lg">{t("challenge.wrongSuit")}</span>
                         </button>
                       </div>
-                      <div className="w-full max-w-[13rem] flex-1 sm:flex-none">
+                      <div
+                        className={cn("w-full flex-1 sm:flex-none", CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS)}
+                      >
                         <button
                           type="button"
                           onClick={() => onChallenge(localPlayerId, "number")}
                           className={cn(
-                            "flex aspect-[4/5] min-h-[8.25rem] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-primary/40 bg-primary/10 p-4 text-center shadow-sm transition-[box-shadow,transform,background-color,border-color]",
+                            CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS,
+                            "border border-primary/40 bg-primary/10 shadow-sm transition-[box-shadow,transform,background-color,border-color]",
                             "hover:border-primary/55 hover:bg-primary/16 hover:shadow-md",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background",
                             "motion-safe:active:scale-[0.98]",

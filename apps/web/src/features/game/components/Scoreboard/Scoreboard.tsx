@@ -47,7 +47,7 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
     >
       <motion.div
         transition={{ type: "spring", stiffness: 300, damping: 24 }}
-        className="game-glass-panel w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border-border/30 p-6 shadow-kawaii"
+        className="game-glass-panel w-full max-w-md max-h-[min(88dvh,34rem)] overflow-y-auto rounded-3xl border-border/30 p-4 shadow-kawaii sm:max-h-[90vh] sm:p-6"
       >
         <h2 className="mb-1 bg-gradient-to-r from-primary to-[hsl(var(--primary-container))] bg-clip-text text-center text-2xl font-bold text-transparent">
           {t("game.winner.title")}
@@ -99,7 +99,7 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
               {isFullGamePlayer(player) ? (
                 <ScoreBreakdownDetail breakdown={getPlayerScoreBreakdown(player)} t={t} />
               ) : (
-                <p className="border-l-2 border-border/35 pl-2 text-[11px] text-muted-foreground">
+                <p className="border-l-2 border-border/35 pl-2 text-ui-caption text-muted-foreground">
                   {t("scoreboard.summaryClient", {
                     trophies: "trophyCount" in player ? player.trophyCount : 0,
                     pile: "wonPileCount" in player ? player.wonPileCount : 0,
@@ -131,7 +131,7 @@ function ScoreBreakdownDetail({
   t: (key: string, opts?: Record<string, string | number>) => string;
 }) {
   return (
-    <ul className="space-y-0.5 pl-2 text-[11px] text-muted-foreground border-l-2 border-border/60">
+    <ul className="space-y-0.5 pl-2 text-ui-caption text-muted-foreground border-l-2 border-border/60">
       <li>
         {t("scoreboard.normalCards", { count: breakdown.normalCardsInPile, points: NORMAL_CARD_POINTS })}
       </li>

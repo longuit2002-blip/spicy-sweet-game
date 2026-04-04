@@ -27,7 +27,10 @@ import {
   type PenaltyFxSnapshot,
 } from "@/features/game/components/RoundResolutionFxOverlay";
 import { ChallengeRevealImpactOverlay } from "@/features/game/components/ChallengeRevealImpactOverlay";
+import { NextTurnImpactOverlay } from "@/features/game/components/NextTurnImpactOverlay";
+import { PenaltyResultImpactOverlay } from "@/features/game/components/PenaltyResultImpactOverlay";
 import { useChallengeRevealSfx } from "@/features/game/hooks/use-challenge-reveal-sfx";
+import { usePenaltyResultSfx } from "@/features/game/hooks/use-penalty-result-sfx";
 import { useOpponentTurnSfx } from "@/features/game/hooks/use-opponent-turn-sfx";
 import { OpponentsTurnCarousel } from "@/features/game/components/BoardView/OpponentsTurnCarousel";
 import { ChallengePhase } from "@/features/game/components/ChallengePhase/ChallengePhase";
@@ -39,7 +42,8 @@ import { GAME_PHASE } from "@/shared/types/game";
 import { cn } from "@/lib/utils";
 import { SNAPPY_SPRING } from "@/features/game/animations";
 import {
-  DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
+  DRAW_PASS_COACH_HINT_REVEAL_DELAY_MS,
+  DUEL_SUPPLY_RAIL_ANCHOR_VERTICAL_CENTER_CLASS,
   isRoundResolutionInterstitialPhase,
   REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
@@ -171,6 +175,7 @@ function BoardViewImpl({
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
   useChallengeRevealSfx(phase, challengeResult, localPlayerId, reducedMotion);
+  usePenaltyResultSfx(phase, penaltyFxSnapshot, localPlayerId, reducedMotion);
   useOpponentTurnSfx(phase, currentPlayerIndex, reducedMotion);
   const localIdx = useMemo(() => players.findIndex((p) => p.id === localPlayerId), [players, localPlayerId]);
   const totalPlayers = players.length;
@@ -251,11 +256,9 @@ function BoardViewImpl({
    * Reserve min-height for the strip below the playfield when interstitial copy can mount here.
    * `REVEAL` is intentionally omitted: room client renders no `phaseContent` there, so reserving
    * {@link ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H} (~24dvh) only added empty space below the hero card and caused scroll.
+   * `NEXT_TURN` uses {@link NextTurnImpactOverlay} only; `PENALTY` uses {@link PenaltyResultImpactOverlay} — no strip.
    */
-  const reserveRoundResolutionStrip =
-    phase === GAME_PHASE.PENALTY ||
-    phase === GAME_PHASE.NEXT_TURN ||
-    phase === GAME_PHASE.TROPHY_AWARDED;
+  const reserveRoundResolutionStrip = phase === GAME_PHASE.TROPHY_AWARDED;
 
   const challengeOutcomeNames = useMemo((): { challenger: string; declarer: string } | null => {
     if (!challengeResult) return null;
@@ -267,11 +270,23 @@ function BoardViewImpl({
 
   /** Interstitial round UI is rendered inside {@link GameTableDeclarationSection}, not the strip below. */
   const mergeRoundResolutionInTable = playfieldInterstitial && phaseContent != null;
+  const portalOnlyRoundInterstitial = playfieldInterstitial && !mergeRoundResolutionInTable;
   const phaseContentInStrip = phaseContent != null && !mergeRoundResolutionInTable;
 
   /** REVEAL + claim on table: flex chain must use `flex-1 min-h-0` (not `min-h-full`) so the scroll column passes height to the below-duel block on all breakpoints; otherwise `justify-center` is a no-op below `lg`. */
   const revealPlayedInScroll =
     phase === GAME_PHASE.REVEAL && playedCard != null && !showChallengeInline;
+
+  /**
+   * Drives scroll-port sizing (`lg:flex-none` vs `flex-1`) and inner `min-h` — keep derived as before.
+   * Do **not** use this for `lg:justify-center` on the column that wraps the duel band: that used to run only on
+   * `PLAYER_TURN`, shifting the whole duel row vs on-table claim phases.
+   */
+  const centerDuelClusterOnLg =
+    verticallyCenterPlayfieldInScroll && !revealPlayedInScroll;
+
+  const innerScrollJustifyCenterLg =
+    verticallyCenterPlayfieldInScroll && !centerDuelClusterOnLg;
 
   const drawPassPileDraggable =
     drawPassAction != null
@@ -280,6 +295,14 @@ function BoardViewImpl({
           onDrawPass: drawPassAction.onDrawPass,
         }
       : null;
+
+  const drawPassCoachRevealDelayMs = useMemo(
+    () =>
+      isMyTurn && phase === GAME_PHASE.PLAYER_TURN && playedCard == null
+        ? DRAW_PASS_COACH_HINT_REVEAL_DELAY_MS
+        : 0,
+    [isMyTurn, phase, playedCard],
+  );
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -360,69 +383,39 @@ function BoardViewImpl({
   }, [declareOverlayCardId, declareDragPreviewHand]);
 
   /**
-   * Duel band: center column sets in-flow height; trophy + draw use `absolute` anchored from the
-   * **band top** ({@link DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS}) so REVEAL vs declare `min-h` changes
-   * do not move side piles (anchoring `bottom` to a growing box was shifting them).
+   * Center column only — trophy/draw rails mount on the taller `relative flex-1` playfield wrapper so
+   * `top-1/2` centers them in the full playfield body (declaration + scroll), not only the declaration band height.
    */
-  const duelSuppliesRow = (
-    <div className="relative w-full min-w-0 overflow-visible">
-      <div
-        className={cn(
-          mergeRoundResolutionInTable
-            ? "relative z-10 mx-auto w-full min-w-0 max-w-6xl px-3 pb-1 pt-1 sm:px-4 xl:max-w-7xl"
-            : [
-                "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 pb-1 pt-1 sm:px-4",
-                "md:w-[min(100%,max(18rem,calc(100%-21rem)))]",
-                "lg:w-[min(100%,max(20rem,calc(100%-25rem)))]",
-                "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(22rem,calc(100%-28rem)))]",
-              ],
-        )}
-      >
-        <GameTableDeclarationSection
-          playedCard={playedCard}
-          currentPlayerName={currentPlayerName}
-          phase={phase}
-          lastResolvedDeclaration={lastResolvedDeclaration}
-          lockedSuit={lockedSuit}
-          tablePileCount={tablePileCount}
-          showEmptyStateTurnLine={false}
-          playDropZone={playDropZone}
-          challengeResult={challengeResult}
-          challengeOutcomeNames={challengeOutcomeNames}
-          challengeTimer={challengeTimer}
-          localPlayerId={localPlayerId}
-          roundPileAnchorRef={roundPileRailRef}
-          roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
-        />
-      </div>
-      <div
-        className={cn(
-          "pointer-events-auto absolute left-2 z-20 sm:left-4 lg:left-5 xl:left-6",
-          DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
-        )}
-      >
-        <GameTableTableauSection
-          {...tableauDuelProps}
-          variant="duel"
-          duelSlot="trophy"
-        />
-      </div>
-      <div
-        className={cn(
-          "pointer-events-auto absolute right-2 z-20 sm:right-4 lg:right-5 xl:right-6",
-          DUEL_SUPPLY_RAIL_ANCHOR_TOP_CLASS,
-          // Above center playfield (z-10); do not gate z-30 on handDragActive (React state lags the hand-drag ref).
-          drawPassAction != null && "z-30",
-        )}
-      >
-        <GameTableTableauSection
-          {...tableauDuelProps}
-          variant="duel"
-          duelSlot="draw"
-          drawStackAnchorRef={drawStackRef}
-          drawPassPileDraggable={drawPassPileDraggable}
-        />
-      </div>
+  const duelCenterColumn = (
+    <div
+      className={cn(
+        mergeRoundResolutionInTable
+          ? "relative z-10 mx-auto w-full min-w-0 max-w-6xl px-3 sm:px-4 xl:max-w-7xl"
+          : [
+              "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 sm:px-4",
+              "md:w-[min(100%,max(17rem,calc(100%-19rem)))]",
+              "lg:w-[min(100%,max(19rem,calc(100%-23rem)))]",
+              "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(21rem,calc(100%-26rem)))]",
+            ],
+      )}
+    >
+      <GameTableDeclarationSection
+        playedCard={playedCard}
+        currentPlayerName={currentPlayerName}
+        phase={phase}
+        lastResolvedDeclaration={lastResolvedDeclaration}
+        lockedSuit={lockedSuit}
+        tablePileCount={tablePileCount}
+        showEmptyStateTurnLine={false}
+        playDropZone={playDropZone}
+        challengeResult={challengeResult}
+        challengeOutcomeNames={challengeOutcomeNames}
+        challengeTimer={challengeTimer}
+        localPlayerId={localPlayerId}
+        roundPileAnchorRef={roundPileRailRef}
+        roundResolutionPanel={mergeRoundResolutionInTable ? phaseContent : null}
+        showLocalTurnHints={isMyTurn}
+      />
     </div>
   );
 
@@ -522,32 +515,73 @@ function BoardViewImpl({
   const playfieldStageColumn = (
     <div
       className={cn(
-        "flex w-full min-h-0 flex-1 flex-col",
-        playfieldInterstitial ? "gap-2 sm:gap-3" : "gap-3 sm:gap-4",
+        "board-playfield-cq flex w-full min-h-0 flex-1 flex-col",
         (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
         "items-stretch overflow-visible",
       )}
     >
-      <div className="w-full shrink-0 overflow-visible px-2 pt-1 sm:px-4 sm:pt-2">
-        {duelSuppliesRow}
-      </div>
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain",
-          revealPlayedInScroll && "flex min-h-0 flex-col",
+          "relative flex min-h-0 w-full flex-1 flex-col overflow-visible",
+          playfieldInterstitial ? "@min-[28rem]:gap-3 gap-2" : "@min-[28rem]:gap-4 gap-3",
         )}
       >
         <div
           className={cn(
-            "flex w-full min-w-0 flex-col gap-3 sm:gap-4",
-            "px-2 pb-3 sm:px-4",
-            revealPlayedInScroll
-              ? "min-h-0 flex-1"
-              : cn("min-h-full", stretchPlayfieldBlock && "lg:flex-1 lg:min-h-0"),
-            verticallyCenterPlayfieldInScroll && "lg:justify-center",
+            "pointer-events-auto absolute left-2 z-20 sm:left-4 lg:left-5 xl:left-6",
+            DUEL_SUPPLY_RAIL_ANCHOR_VERTICAL_CENTER_CLASS,
           )}
         >
-          {playfieldBelowDuel}
+          <GameTableTableauSection
+            {...tableauDuelProps}
+            variant="duel"
+            duelSlot="trophy"
+          />
+        </div>
+        <div
+          className={cn(
+            "pointer-events-auto absolute right-2 z-20 sm:right-4 lg:right-5 xl:right-6",
+            DUEL_SUPPLY_RAIL_ANCHOR_VERTICAL_CENTER_CLASS,
+            drawPassAction != null && "z-30",
+          )}
+        >
+          <GameTableTableauSection
+            {...tableauDuelProps}
+            variant="duel"
+            duelSlot="draw"
+            drawStackAnchorRef={drawStackRef}
+            drawPassPileDraggable={drawPassPileDraggable}
+            drawPassCoachRevealDelayMs={drawPassCoachRevealDelayMs}
+          />
+        </div>
+        <div className="w-full shrink-0 overflow-visible pt-4">{duelCenterColumn}</div>
+        <div
+          className={cn(
+            "min-h-0 overflow-x-hidden overscroll-y-contain",
+            centerDuelClusterOnLg
+              ? "lg:flex-none lg:overflow-y-visible"
+              : "flex-1 overflow-y-auto",
+            revealPlayedInScroll && "flex min-h-0 flex-col",
+          )}
+        >
+          <div
+            className={cn(
+              "flex w-full min-w-0 flex-col gap-3 @min-[28rem]:gap-4",
+              "px-[clamp(0.375rem,2.5cqi,1rem)] pb-3 @min-[28rem]:px-[clamp(0.5rem,3cqi,1.25rem)]",
+              revealPlayedInScroll
+                ? "min-h-0 flex-1"
+                : cn(
+                    "min-h-full",
+                    centerDuelClusterOnLg && "lg:min-h-0",
+                    stretchPlayfieldBlock &&
+                      !centerDuelClusterOnLg &&
+                      "lg:flex-1 lg:min-h-0",
+                  ),
+              innerScrollJustifyCenterLg && "lg:justify-center",
+            )}
+          >
+            {playfieldBelowDuel}
+          </div>
         </div>
       </div>
     </div>
@@ -560,6 +594,18 @@ function BoardViewImpl({
         challengeResult={challengeResult}
         localPlayerId={localPlayerId}
         challengeTimer={challengeTimer}
+      />
+      <NextTurnImpactOverlay
+        phase={phase}
+        nextActorNickname={currentPlayerName}
+        nextActorId={currentPlayer?.id ?? null}
+        localPlayerId={localPlayerId}
+      />
+      <PenaltyResultImpactOverlay
+        phase={phase}
+        penaltyFxSnapshot={penaltyFxSnapshot}
+        localPlayerId={localPlayerId}
+        players={players}
       />
       <RoundResolutionFxOverlay
         phase={phase}

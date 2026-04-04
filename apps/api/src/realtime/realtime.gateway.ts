@@ -10,7 +10,6 @@ import {
   WebSocketServer,
 } from "@nestjs/websockets";
 import { JwtService } from "@nestjs/jwt";
-import type { Server, Socket } from "socket.io";
 import {
   claimChallenge,
   drawAndPassTurn,
@@ -49,6 +48,7 @@ import { WebrtcMediaStateDto } from "./dto/webrtc-media-state.dto";
 import { MediaConfigService } from "./media-config.service";
 import { MediaPresenceService } from "./media-presence.service";
 import { parseRoomJoinCode } from "./parse-room-join";
+import type { RealtimeServer, RealtimeSocket } from "./realtime-socket.types";
 
 const SOCKET_VALIDATION_PIPE = new ValidationPipe({
   transform: true,
@@ -56,14 +56,14 @@ const SOCKET_VALIDATION_PIPE = new ValidationPipe({
   forbidNonWhitelisted: false,
 });
 
-const DISCONNECT_GRACE_PERIOD_MS = 30_000;
+const DISCONNECT_GRACE_PERIOD_MS = 5_000;
 
 @WebSocketGateway({
   cors: { origin: process.env.CLIENT_URL ?? "*", credentials: true },
   transports: ["websocket", "polling"],
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() server!: Server;
+  @WebSocketServer() server!: RealtimeServer;
   private readonly activeSocketIdsByUser = new Map<string, Set<string>>();
   private readonly disconnectTimersByUser = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly mediaDisconnectTimersBySocket = new Map<string, ReturnType<typeof setTimeout>>();
@@ -79,7 +79,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly mediaPresence: MediaPresenceService,
   ) {}
 
-  private emitSocketError(client: Socket, code: SocketErrorCode, message: string): void {
+  private emitSocketError(client: RealtimeSocket, code: SocketErrorCode, message: string): void {
     client.emit("error", { code, message });
   }
 
@@ -91,7 +91,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     return { success: false, code, message };
   }
 
-  private emitRateLimit(client: Socket): void {
+  private emitRateLimit(client: RealtimeSocket): void {
     this.emitSocketError(
       client,
       SOCKET_ERROR_CODE.RATE_LIMIT,
@@ -99,7 +99,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     );
   }
 
-  afterInit(server: Server) {
+  afterInit(server: RealtimeServer) {
     this.gameLoop.attachServer(server);
     this.gameBotDriver.attachServer(server);
     server.use((socket, next) => {
@@ -118,8 +118,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     });
   }
 
-  handleConnection(client: Socket): void {
-    const userId = client.data.userId as string | undefined;
+  handleConnection(client: RealtimeSocket): void {
+    const userId = client.data.userId;
     if (!userId) {
       return;
     }
@@ -133,8 +133,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
   }
 
-  handleDisconnect(client: Socket): void {
-    const userId = client.data.userId as string | undefined;
+  handleDisconnect(client: RealtimeSocket): void {
+    const userId = client.data.userId;
     if (!userId) {
       return;
     }
@@ -159,14 +159,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.disconnectTimersByUser.set(userId, timer);
   }
 
-  private getActiveSocketsForUser(userId: string): Socket[] {
+  private getActiveSocketsForUser(userId: string): RealtimeSocket[] {
     const activeSocketIds = this.activeSocketIdsByUser.get(userId);
     if (!activeSocketIds) {
       return [];
     }
     return Array.from(activeSocketIds)
       .map((socketId) => this.server.sockets.sockets.get(socketId))
-      .filter((socket): socket is Socket => socket !== undefined);
+      .filter((socket): socket is RealtimeSocket => socket !== undefined);
   }
 
   private getActiveSocketIdsForUser(userId: string): ReadonlySet<string> {
@@ -192,25 +192,40 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
   }
 
-  private leaveUserFromCurrentRoom(userId: string): void {
-    const leaveResult = this.roomService.leaveRoom(userId);
+  private finalizeRoomExit(userId: string, leaveResult: import("../room/room.service").LeaveRoomResult): void {
     if (!leaveResult.roomCode) {
       return;
     }
+
     const mediaParticipant = this.mediaPresence.leaveRoom(leaveResult.roomCode, userId);
     if (mediaParticipant) {
       this.server.to(leaveResult.roomCode).emit("webrtc:peer-left", { peerId: mediaParticipant.peerId });
     }
     this.clearRoomMembershipFromActiveSockets(userId, leaveResult.roomCode);
+
+    if (leaveResult.handedOffToBot && leaveResult.room?.gameState) {
+      this.broadcast.emitStateUpdate(this.server, leaveResult.roomCode, leaveResult.room.gameState);
+      return;
+    }
+
     this.broadcastLeaveResult(userId, leaveResult);
   }
 
-  private getResolvedRoomCode(client: Socket, requestedRoomCode?: string): string | null {
+  private leaveUserFromCurrentRoom(userId: string): void {
+    const room = this.roomService.getRoomForUser(userId);
+    const leaveResult = room?.gameState
+      ? this.roomService.handoffUserToBot(userId)
+      : this.roomService.leaveRoom(userId);
+
+    this.finalizeRoomExit(userId, leaveResult);
+  }
+
+  private getResolvedRoomCode(client: RealtimeSocket, requestedRoomCode?: string): string | null {
     if (requestedRoomCode && requestedRoomCode.trim().length > 0) {
       return requestedRoomCode.trim().toUpperCase();
     }
 
-    const userId = client.data.userId as string | undefined;
+    const userId = client.data.userId;
     if (!userId) {
       return null;
     }
@@ -220,17 +235,35 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return roomForUser.roomCode;
     }
 
-    const socketRoomCode = client.data.roomId as string | undefined;
+    const socketRoomCode = client.data.roomId;
     return socketRoomCode?.toUpperCase() ?? null;
   }
 
-  private getRoomForMediaAction(client: Socket, requestedRoomCode?: string) {
+  private getRoomForMediaAction(client: RealtimeSocket, requestedRoomCode?: string) {
     const roomCode = this.getResolvedRoomCode(client, requestedRoomCode);
     if (!roomCode) {
       return null;
     }
 
     return this.roomService.getRoomByCode(roomCode) ?? null;
+  }
+
+  private requireUserId(client: RealtimeSocket): string {
+    const userId = client.data.userId;
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    return userId;
+  }
+
+  private requireNickname(client: RealtimeSocket): string {
+    const nickname = client.data.nickname;
+    if (!nickname) {
+      throw new Error("Unauthorized");
+    }
+
+    return nickname;
   }
 
   private emitToMediaPeer<K extends "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate">(
@@ -297,7 +330,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("room:create")
   @UsePipes(SOCKET_VALIDATION_PIPE)
-  handleCreate(@ConnectedSocket() client: Socket, @MessageBody() data: RoomCreateDto) {
+  handleCreate(@ConnectedSocket() client: RealtimeSocket, @MessageBody() data: RoomCreateDto) {
     if (!this.rateLimiter.consume(client.id, "room:create")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -305,16 +338,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const userId = client.data.userId as string;
-    const nickname = client.data.nickname as string;
-    const { room, previousLeave } = this.roomService.createRoom(
+    const userId = this.requireUserId(client);
+    const nickname = this.requireNickname(client);
+    const { room, previousExit } = this.roomService.createRoom(
       userId,
       nickname,
       data.maxPlayers ?? DEFAULT_ROOM_MAX_PLAYERS,
     );
-    if (previousLeave?.roomCode) {
-      this.clearRoomMembershipFromActiveSockets(userId, previousLeave.roomCode);
-      this.broadcastLeaveResult(userId, previousLeave);
+    if (previousExit?.roomCode) {
+      this.finalizeRoomExit(userId, previousExit);
     }
     void client.join(room.roomCode);
     client.data.roomId = room.roomCode;
@@ -326,7 +358,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("room:join")
-  handleJoin(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  handleJoin(@ConnectedSocket() client: RealtimeSocket, @MessageBody() payload: unknown) {
     if (!this.rateLimiter.consume(client.id, "room:join")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -339,15 +371,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.INVALID_ROOM_CODE);
       return this.failureResult(SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.INVALID_ROOM_CODE);
     }
-    const userId = client.data.userId as string;
-    const nickname = client.data.nickname as string;
+    const userId = this.requireUserId(client);
+    const nickname = this.requireNickname(client);
     const result = this.roomService.joinRoom(code, userId, nickname);
     if (!result.ok) {
       return this.failureResult(result.code, result.message);
     }
-    if (result.previousLeave?.roomCode) {
-      this.clearRoomMembershipFromActiveSockets(userId, result.previousLeave.roomCode);
-      this.broadcastLeaveResult(userId, result.previousLeave);
+    if (result.previousExit?.roomCode) {
+      this.finalizeRoomExit(userId, result.previousExit);
     }
     void client.join(result.room.roomCode);
     client.data.roomId = result.room.roomCode;
@@ -367,7 +398,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("room:leave")
-  handleLeave(@ConnectedSocket() client: Socket) {
+  handleLeave(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "room:leave")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -375,7 +406,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     const room = this.roomService.getRoomForUser(userId);
     if (!room) {
       return this.failureResult(
@@ -383,12 +414,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
       );
     }
-    this.leaveUserFromCurrentRoom(userId);
+    const leaveResult = room.gameState
+      ? this.roomService.handoffUserToBot(userId)
+      : this.roomService.leaveRoom(userId);
+    this.finalizeRoomExit(userId, leaveResult);
     return this.successResult();
   }
 
   @SubscribeMessage("room:ready")
-  handleReady(@ConnectedSocket() client: Socket, @MessageBody() ready: unknown) {
+  handleReady(@ConnectedSocket() client: RealtimeSocket, @MessageBody() ready: unknown) {
     if (!this.rateLimiter.consume(client.id, "room:ready")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -400,7 +434,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.emitSocketError(client, SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.READY_NOT_BOOLEAN);
       return this.failureResult(SOCKET_ERROR_CODE.INVALID_PAYLOAD, SOCKET_ERROR_DETAIL_MESSAGE.READY_NOT_BOOLEAN);
     }
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     const room = this.roomService.setReady(userId, ready);
     if (!room.ok) {
       this.emitSocketError(client, room.code, room.message);
@@ -412,7 +446,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("room:add-bot")
-  handleAddBot(@ConnectedSocket() client: Socket) {
+  handleAddBot(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "room:add-bot")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -420,8 +454,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const userId = client.data.userId as string;
-    const socketRoomCode = client.data.roomId as string | undefined;
+    const userId = this.requireUserId(client);
+    const socketRoomCode = client.data.roomId;
     const result = this.roomService.addLobbyBot(userId, socketRoomCode);
     if (!result.ok) {
       return this.failureResult(result.code, result.message);
@@ -434,7 +468,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("room:start")
-  handleStart(@ConnectedSocket() client: Socket) {
+  handleStart(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "room:start")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -442,7 +476,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     const result = this.roomService.startGame(userId);
     if (!result.ok) {
       this.emitSocketError(client, result.code, result.message);
@@ -457,7 +491,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("game:play-card")
   @UsePipes(SOCKET_VALIDATION_PIPE)
-  handlePlayCard(@ConnectedSocket() client: Socket, @MessageBody() data: PlayCardDto) {
+  handlePlayCard(@ConnectedSocket() client: RealtimeSocket, @MessageBody() data: PlayCardDto) {
     if (!this.rateLimiter.consume(client.id, "game:play-card")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -465,8 +499,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
     if (!roomCode) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -497,7 +531,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("game:draw-pass")
-  handleDrawPass(@ConnectedSocket() client: Socket) {
+  handleDrawPass(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "game:draw-pass")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -505,8 +539,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
     if (!roomCode) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -536,7 +570,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("game:claim-challenge")
-  handleClaimChallenge(@ConnectedSocket() client: Socket) {
+  handleClaimChallenge(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "game:claim-challenge")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -544,8 +578,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
     if (!roomCode) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -584,7 +618,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("game:challenge")
   @UsePipes(SOCKET_VALIDATION_PIPE)
-  handleChallenge(@ConnectedSocket() client: Socket, @MessageBody() data: ChallengeDto) {
+  handleChallenge(@ConnectedSocket() client: RealtimeSocket, @MessageBody() data: ChallengeDto) {
     if (!this.rateLimiter.consume(client.id, "game:challenge")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -592,8 +626,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.RATE_LIMIT] as string,
       );
     }
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
     if (!roomCode) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -637,7 +671,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("game:challenge-pass")
-  handleChallengePass(@ConnectedSocket() client: Socket) {
+  handleChallengePass(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "game:challenge-pass")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -649,7 +683,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("game:accept")
-  handleAccept(@ConnectedSocket() client: Socket) {
+  handleAccept(@ConnectedSocket() client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "game:accept")) {
       this.emitRateLimit(client);
       return this.failureResult(
@@ -664,9 +698,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
    * During CLAIM_RACE, registers a pass (same as legacy `game:accept` during this sub-step).
    * Rejects during PICK_TYPE so observers cannot cancel the holder's pick.
    */
-  private tryRecordChallengePass(client: Socket): SocketActionResult {
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
+  private tryRecordChallengePass(client: RealtimeSocket): SocketActionResult {
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
     if (!roomCode) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -715,14 +749,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("chat:send")
   @UsePipes(SOCKET_VALIDATION_PIPE)
-  handleChat(@ConnectedSocket() client: Socket, @MessageBody() body: ChatSendDto) {
+  handleChat(@ConnectedSocket() client: RealtimeSocket, @MessageBody() body: ChatSendDto) {
     if (!this.rateLimiter.consume(client.id, "chat:send")) {
       this.emitSocketError(client, SOCKET_ERROR_CODE.RATE_LIMIT, SOCKET_ERROR_DETAIL_MESSAGE.TOO_MANY_MESSAGES);
       return { success: false };
     }
-    const roomCode = client.data.roomId as string | undefined;
-    const userId = client.data.userId as string;
-    const nickname = client.data.nickname as string;
+    const roomCode = client.data.roomId;
+    const userId = this.requireUserId(client);
+    const nickname = this.requireNickname(client);
     if (!roomCode) return { success: false };
     const content = body.content.trim();
     if (!content) return { success: false };
@@ -740,8 +774,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("webrtc:join-room")
   @UsePipes(SOCKET_VALIDATION_PIPE)
-  handleWebrtcJoin(@ConnectedSocket() client: Socket, @MessageBody() data: WebrtcJoinRoomDto) {
-    const userId = client.data.userId as string;
+  handleWebrtcJoin(@ConnectedSocket() client: RealtimeSocket, @MessageBody() data: WebrtcJoinRoomDto) {
+    const userId = this.requireUserId(client);
     this.clearMediaDisconnectTimer(client.id);
     const room = this.getRoomForMediaAction(client, data.roomCode);
     if (!room) {
@@ -779,7 +813,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("webrtc:leave-room")
-  handleWebrtcLeave(@ConnectedSocket() client: Socket) {
+  handleWebrtcLeave(@ConnectedSocket() client: RealtimeSocket) {
     this.clearMediaDisconnectTimer(client.id);
     const roomCode = this.mediaPresence.getRoomCodeForSocket(client.id) ?? this.getResolvedRoomCode(client) ?? null;
     const participant = this.mediaPresence.leaveBySocket(client.id);
@@ -796,11 +830,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage("webrtc:update-media-state")
   @UsePipes(SOCKET_VALIDATION_PIPE)
   handleWebrtcUpdateMediaState(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() data: WebrtcMediaStateDto,
   ) {
     const room = this.getRoomForMediaAction(client);
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     if (!room) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -822,11 +856,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("webrtc:offer")
   handleOffer(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() data: MediaSignalOffer,
   ) {
     const room = this.getRoomForMediaAction(client);
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     if (!room) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -858,11 +892,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("webrtc:answer")
   handleAnswer(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() data: MediaSignalAnswer,
   ) {
     const room = this.getRoomForMediaAction(client);
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     if (!room) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -894,11 +928,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("webrtc:ice-candidate")
   handleIce(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() data: MediaSignalIceCandidate,
   ) {
     const room = this.getRoomForMediaAction(client);
-    const userId = client.data.userId as string;
+    const userId = this.requireUserId(client);
     if (!room) {
       return this.failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,

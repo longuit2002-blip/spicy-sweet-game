@@ -45,7 +45,6 @@ export function CardBackSurface({ className, corner = "default", framed = true }
         src={GAME_CARD_BACK_SRC}
         alt=""
         fill
-        unoptimized
         className="object-cover"
         sizes="(max-width: 640px) 96px, 128px"
       />

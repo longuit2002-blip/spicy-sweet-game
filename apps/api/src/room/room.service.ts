@@ -44,6 +44,7 @@ export interface LeaveRoomResult {
   roomCode: string | null;
   room: ServerRoom | null;
   newHostId?: string;
+  handedOffToBot?: boolean;
 }
 
 @Injectable()
@@ -51,13 +52,75 @@ export class RoomService {
   readonly rooms = new Map<string, ServerRoom>();
   readonly userToRoom = new Map<string, string>();
 
+  private findRoomCodeByGamePlayer(userId: string): string | null {
+    for (const [roomCode, room] of this.rooms) {
+      if (room.gameState?.players.some((player) => player.id === userId)) {
+        return roomCode;
+      }
+    }
+
+    return null;
+  }
+
+  private reclaimLobbySeat(room: ServerRoom, userId: string, nickname: string): boolean {
+    const player = room.players.find((roomPlayer) => roomPlayer.id === userId);
+    if (!player) {
+      return false;
+    }
+
+    player.nickname = nickname;
+    if (player.isBot) {
+      delete player.isBot;
+    }
+
+    return true;
+  }
+
+  private reclaimGameSeat(room: ServerRoom, userId: string, nickname: string): boolean {
+    const player = room.gameState?.players.find((gamePlayer) => gamePlayer.id === userId);
+    if (!player) {
+      return false;
+    }
+
+    player.nickname = nickname;
+    if (player.isBot) {
+      delete player.isBot;
+    }
+
+    this.syncRoomPlayersFromGame(room);
+    return true;
+  }
+
+  private exitPreviousRoomForSwitch(userId: string): LeaveRoomResult | undefined {
+    const roomCode = this.userToRoom.get(userId);
+    if (!roomCode) {
+      return undefined;
+    }
+
+    const room = this.rooms.get(roomCode);
+    if (room?.gameState) {
+      return this.handoffUserToBot(userId);
+    }
+
+    return this.leaveRoom(userId);
+  }
+
   toRoomState(room: ServerRoom): RoomState {
     return {
       roomCode: room.roomCode,
       hostId: room.hostId,
       status: room.status,
       maxPlayers: room.maxPlayers,
-      players: room.players.map(({ hand: _hand, ...player }) => player),
+      players: room.players.map((player) => ({
+        id: player.id,
+        nickname: player.nickname,
+        isHost: player.isHost,
+        isReady: player.isReady,
+        score: player.score,
+        wonPileCount: player.wonPileCount,
+        trophyCount: player.trophyCount,
+        ...(player.isBot ? { isBot: true as const } : {}),
+      })),
       createdAt: room.createdAt.toISOString(),
     };
   }
@@ -66,8 +129,8 @@ export class RoomService {
     userId: string,
     nickname: string,
     maxPlayers = DEFAULT_ROOM_MAX_PLAYERS,
-  ): { room: ServerRoom; previousLeave?: LeaveRoomResult } {
-    const previousLeave = this.userToRoom.has(userId) ? this.leaveRoom(userId) : undefined;
+  ): { room: ServerRoom; previousExit?: LeaveRoomResult } {
+    const previousExit = this.exitPreviousRoomForSwitch(userId);
     const roomCode = generateRoomCode();
     const player: RoomPlayer = {
       id: userId,
@@ -90,14 +153,14 @@ export class RoomService {
     };
     this.rooms.set(roomCode, room);
     this.userToRoom.set(userId, roomCode);
-    return { room, previousLeave };
+    return { room, previousExit };
   }
 
   joinRoom(
     roomCode: string,
     userId: string,
     nickname: string,
-  ): (RoomSuccess & { resumed?: boolean; previousLeave?: LeaveRoomResult }) | RoomFailure {
+  ): (RoomSuccess & { resumed?: boolean; previousExit?: LeaveRoomResult }) | RoomFailure {
     const code = roomCode.toUpperCase();
     const previousCode = this.userToRoom.get(userId);
     const room = this.rooms.get(code);
@@ -108,10 +171,18 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_NOT_FOUND],
       };
     }
-    const hasExistingPlayer = room.players.some((p) => p.id === userId);
-    if (previousCode === code && hasExistingPlayer) {
+
+    if (this.reclaimGameSeat(room, userId, nickname)) {
+      this.userToRoom.set(userId, code);
       return { ok: true, room, resumed: true };
     }
+
+    const hasExistingPlayer = this.reclaimLobbySeat(room, userId, nickname);
+    if (hasExistingPlayer) {
+      this.userToRoom.set(userId, code);
+      return { ok: true, room, resumed: true };
+    }
+
     if (room.status !== "WAITING") {
       return {
         ok: false,
@@ -134,7 +205,9 @@ export class RoomService {
       };
     }
 
-    const previousLeave = previousCode && previousCode !== code ? this.leaveRoom(userId) : undefined;
+    const previousExit = previousCode && previousCode !== code
+      ? this.exitPreviousRoomForSwitch(userId)
+      : undefined;
 
     const player: RoomPlayer = {
       id: userId,
@@ -148,7 +221,7 @@ export class RoomService {
     };
     room.players.push(player);
     this.userToRoom.set(userId, code);
-    return { ok: true, room, previousLeave };
+    return { ok: true, room, previousExit };
   }
 
   leaveRoom(userId: string): LeaveRoomResult {
@@ -170,7 +243,7 @@ export class RoomService {
 
     let newHostId: string | undefined;
     if (room.hostId === userId) {
-      const nextHost = room.players.find((p) => !p.isBot) ?? room.players[0]!;
+      const nextHost = room.players.find((p) => !p.isBot) ?? room.players[0];
       room.hostId = nextHost.id;
       for (const p of room.players) {
         p.isHost = p.id === room.hostId;
@@ -178,7 +251,32 @@ export class RoomService {
       newHostId = room.hostId;
     }
 
-    return { roomCode, room, newHostId };
+    return { roomCode, room, newHostId, handedOffToBot: false };
+  }
+
+  handoffUserToBot(userId: string): LeaveRoomResult {
+    const roomCode = this.userToRoom.get(userId) ?? this.findRoomCodeByGamePlayer(userId);
+    if (!roomCode) {
+      return { roomCode: null, room: null, handedOffToBot: false };
+    }
+
+    const room = this.rooms.get(roomCode);
+    if (!room?.gameState) {
+      this.userToRoom.delete(userId);
+      return { roomCode, room: room ?? null, handedOffToBot: false };
+    }
+
+    const player = room.gameState.players.find((gamePlayer) => gamePlayer.id === userId);
+    if (!player) {
+      this.userToRoom.delete(userId);
+      return { roomCode, room, handedOffToBot: false };
+    }
+
+    player.isBot = true;
+    this.userToRoom.delete(userId);
+    this.syncRoomPlayersFromGame(room);
+
+    return { roomCode, room, handedOffToBot: true };
   }
 
   setReady(userId: string, ready: boolean): RoomSuccess | RoomFailure {
@@ -366,6 +464,7 @@ export class RoomService {
   /** Keep `room.players` in sync with authoritative `room.gameState` (hands, scores, flags). */
   syncRoomPlayersFromGame(room: ServerRoom): void {
     if (!room.gameState) return;
+    room.status = room.gameState.phase === "END_GAME" ? "FINISHED" : "IN_PROGRESS";
     room.players = room.gameState.players.map((gp) => ({
       id: gp.id,
       nickname: gp.nickname,

@@ -7,10 +7,11 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useStore } from "zustand/react";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import type {
   MediaIncomingAnswer,
   MediaIncomingIceCandidate,
@@ -22,6 +23,7 @@ import type {
 } from "@sweet-spicy/shared-types";
 import { SOCKET_ERROR_CODE } from "@sweet-spicy/shared-types";
 import { getSocket, type GameSocket } from "@/lib/socket-client";
+import { toast } from "@/hooks/use-toast";
 import { useRoomStore } from "@/stores/roomStore";
 
 type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting";
@@ -31,15 +33,19 @@ interface RemoteParticipantView extends MediaParticipant {
   connectionState: RTCPeerConnectionState | "new";
 }
 
-interface RoomMediaSessionContextValue {
+interface MediaSessionViewState {
   status: MediaSessionStatus;
-  error: string | null;
   localStream: MediaStream | null;
   localAudioEnabled: boolean;
   localVideoEnabled: boolean;
+  isUpdatingAudio: boolean;
+  isUpdatingVideo: boolean;
+  isUpdatingSession: boolean;
   remoteParticipants: RemoteParticipantView[];
   isJoined: boolean;
-  clearError: () => void;
+}
+
+interface RoomMediaSessionContextValue extends MediaSessionViewState {
   toggleAudio: () => Promise<void>;
   toggleVideo: () => Promise<void>;
   leaveMedia: () => Promise<void>;
@@ -55,6 +61,25 @@ interface PeerRuntime {
   pendingIceCandidates: RTCIceCandidateInit[];
 }
 
+type LocalMediaKind = "audio" | "video";
+
+interface MediaDeviceAvailability {
+  audioInput: boolean;
+  videoInput: boolean;
+}
+
+interface MediaPendingState {
+  audio: boolean;
+  video: boolean;
+  session: boolean;
+}
+
+interface RoomMediaSessionActions {
+  toggleAudio: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
+  leaveMedia: () => Promise<void>;
+}
+
 const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: true,
   noiseSuppression: true,
@@ -67,21 +92,24 @@ const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   facingMode: "user",
 };
 
-const DEFAULT_CONTEXT_VALUE: RoomMediaSessionContextValue = {
+const DEFAULT_VIEW_STATE: MediaSessionViewState = {
   status: "idle",
-  error: null,
   localStream: null,
   localAudioEnabled: false,
   localVideoEnabled: false,
+  isUpdatingAudio: false,
+  isUpdatingVideo: false,
+  isUpdatingSession: false,
   remoteParticipants: [],
   isJoined: false,
-  clearError: () => {},
-  toggleAudio: async () => {},
-  toggleVideo: async () => {},
-  leaveMedia: async () => {},
 };
 
-const RoomMediaSessionContext = createContext<RoomMediaSessionContextValue>(DEFAULT_CONTEXT_VALUE);
+const RoomMediaSessionStoreContext = createContext<StoreApi<MediaSessionViewState> | null>(null);
+const RoomMediaSessionActionsContext = createContext<RoomMediaSessionActions | null>(null);
+
+function createMediaSessionStore() {
+  return createStore<MediaSessionViewState>(() => DEFAULT_VIEW_STATE);
+}
 
 function sortParticipantsByRoomOrder(
   participants: RemoteParticipantView[],
@@ -131,21 +159,28 @@ function toActionFailureMessage(
   }
 }
 
-function toDeviceErrorMessage(error: unknown, t: (key: string, defaultValue: string) => string): string {
+function toDeviceErrorMessage(
+  error: unknown,
+  kind: LocalMediaKind,
+  t: (key: string, defaultValue: string) => string,
+): string {
   if (error instanceof DOMException) {
     switch (error.name) {
       case "NotAllowedError":
       case "SecurityError":
-        return t(
-          "game.video.errors.permissionDenied",
-          "Browser permission is required to use your camera or microphone.",
-        );
+        return kind === "audio"
+          ? t("game.video.errors.microphonePermissionDenied", "Browser permission is required to use your microphone.")
+          : t("game.video.errors.cameraPermissionDenied", "Browser permission is required to use your camera.");
       case "NotFoundError":
       case "DevicesNotFoundError":
-        return t("game.video.errors.deviceNotFound", "No compatible camera or microphone was found.");
+        return kind === "audio"
+          ? t("game.video.errors.noMicrophone", "No microphone was found.")
+          : t("game.video.errors.noCamera", "No camera was found.");
       case "NotReadableError":
       case "TrackStartError":
-        return t("game.video.errors.deviceBusy", "Your camera or microphone is busy in another app.");
+        return kind === "audio"
+          ? t("game.video.errors.microphoneBusy", "Your microphone is busy in another app.")
+          : t("game.video.errors.cameraBusy", "Your camera is busy in another app.");
       case "OverconstrainedError":
       case "ConstraintNotSatisfiedError":
         return t(
@@ -153,11 +188,24 @@ function toDeviceErrorMessage(error: unknown, t: (key: string, defaultValue: str
           "This device cannot satisfy the requested media quality.",
         );
       default:
-        return t("game.video.errors.deviceUnavailable", "Camera or microphone is unavailable right now.");
+        return kind === "audio"
+          ? t("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
+          : t("game.video.errors.cameraUnavailable", "Camera is unavailable right now.");
     }
   }
 
-  return t("game.video.errors.deviceUnavailable", "Camera or microphone is unavailable right now.");
+  return kind === "audio"
+    ? t("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
+    : t("game.video.errors.cameraUnavailable", "Camera is unavailable right now.");
+}
+
+function toMissingDeviceMessage(
+  kind: LocalMediaKind,
+  t: (key: string, defaultValue: string) => string,
+): string {
+  return kind === "audio"
+    ? t("game.video.errors.noMicrophone", "No microphone was found.")
+    : t("game.video.errors.noCamera", "No camera was found.");
 }
 
 async function emitJoinAck(
@@ -198,14 +246,12 @@ export function RoomMediaSessionProvider({
   );
   const roomPlayers = useRoomStore((state) => state.players);
   const isRoomSocketConnected = useRoomStore((state) => state.isConnected);
-
-  const [status, setStatus] = useState<MediaSessionStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [localAudioEnabled, setLocalAudioEnabled] = useState(false);
-  const [localVideoEnabled, setLocalVideoEnabled] = useState(false);
-  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipantView[]>([]);
-  const [isJoined, setIsJoined] = useState(false);
+  const errorRef = useRef<string | null>(null);
+  const mediaSessionStoreRef = useRef<StoreApi<MediaSessionViewState> | null>(null);
+  if (!mediaSessionStoreRef.current) {
+    mediaSessionStoreRef.current = createMediaSessionStore();
+  }
+  const mediaSessionStore = mediaSessionStoreRef.current;
 
   const roomPlayerIdsRef = useRef<readonly string[]>(roomPlayers.map((player) => player.id));
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -213,6 +259,15 @@ export function RoomMediaSessionProvider({
   const iceServersRef = useRef<RTCIceServer[]>([]);
   const peerConnectionsRef = useRef<Map<string, PeerRuntime>>(new Map());
   const pendingIceCandidatesByPeerRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const pendingMediaRef = useRef<MediaPendingState>({
+    audio: false,
+    video: false,
+    session: false,
+  });
+  const deviceAvailabilityRef = useRef<MediaDeviceAvailability>({
+    audioInput: true,
+    videoInput: true,
+  });
   const desiredSessionRef = useRef({
     shouldBeJoined: false,
     audioEnabled: false,
@@ -220,15 +275,43 @@ export function RoomMediaSessionProvider({
   });
   const roomCodeRef = useRef(roomCode);
 
+  const setViewState = useCallback(
+    (
+      update:
+        | Partial<MediaSessionViewState>
+        | ((current: MediaSessionViewState) => Partial<MediaSessionViewState>),
+    ) => {
+      const current = mediaSessionStore.getState();
+      const partial = typeof update === "function" ? update(current) : update;
+      mediaSessionStore.setState({
+        ...current,
+        ...partial,
+      });
+    },
+    [mediaSessionStore],
+  );
+
+  const showError = useCallback(
+    (message: string) => {
+      errorRef.current = message;
+      toast({
+        variant: "destructive",
+        title: translate("game.video.title", "Video Call"),
+        description: message,
+      });
+    },
+    [translate],
+  );
+
   useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
   useEffect(() => {
     roomPlayerIdsRef.current = roomPlayers.map((player) => player.id);
-    setRemoteParticipants((currentParticipants) =>
-      sortParticipantsByRoomOrder(
-        currentParticipants.map((participant) => {
+    setViewState((currentState) => ({
+      remoteParticipants: sortParticipantsByRoomOrder(
+        currentState.remoteParticipants.map((participant) => {
           const roomPlayer = roomPlayers.find((player) => player.id === participant.peerId);
           if (!roomPlayer) {
             return participant;
@@ -242,25 +325,52 @@ export function RoomMediaSessionProvider({
         }),
         roomPlayerIdsRef.current,
       ),
-    );
-  }, [roomPlayers]);
+    }));
+  }, [roomPlayers, setViewState]);
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  const setPendingMediaFlag = useCallback((kind: keyof MediaPendingState, active: boolean) => {
+    pendingMediaRef.current = {
+      ...pendingMediaRef.current,
+      [kind]: active,
+    };
+    setViewState({
+      isUpdatingAudio: pendingMediaRef.current.audio,
+      isUpdatingVideo: pendingMediaRef.current.video,
+      isUpdatingSession: pendingMediaRef.current.session,
+    });
+  }, [setViewState]);
 
   const syncLocalStreamState = useCallback(() => {
     const stream = localStreamRef.current;
-    if (!stream) {
-      setLocalStream(null);
+    if (!stream || stream.getTracks().length === 0) {
+      setViewState({ localStream: null });
       return;
     }
 
-    setLocalStream(new MediaStream(stream.getTracks()));
+    setViewState({ localStream: stream });
+  }, [setViewState]);
+
+  const refreshDeviceAvailability = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      return null;
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const nextAvailability: MediaDeviceAvailability = {
+        audioInput: devices.some((device) => device.kind === "audioinput"),
+        videoInput: devices.some((device) => device.kind === "videoinput"),
+      };
+      deviceAvailabilityRef.current = nextAvailability;
+      return nextAvailability;
+    } catch {
+      return null;
+    }
   }, []);
 
   const upsertRemoteParticipant = useCallback((participant: MediaParticipant, stream?: MediaStream | null) => {
-    setRemoteParticipants((currentParticipants) => {
+    setViewState((currentState) => {
+      const currentParticipants = currentState.remoteParticipants;
       const roomPlayer = roomPlayers.find((player) => player.id === participant.peerId);
       const existingParticipant = currentParticipants.find((item) => item.peerId === participant.peerId);
       const nextParticipant: RemoteParticipantView = {
@@ -272,26 +382,31 @@ export function RoomMediaSessionProvider({
       };
 
       const withoutParticipant = currentParticipants.filter((item) => item.peerId !== participant.peerId);
-      return sortParticipantsByRoomOrder([...withoutParticipant, nextParticipant], roomPlayerIdsRef.current);
+      return {
+        remoteParticipants: sortParticipantsByRoomOrder(
+          [...withoutParticipant, nextParticipant],
+          roomPlayerIdsRef.current,
+        ),
+      };
     });
-  }, [roomPlayers]);
+  }, [roomPlayers, setViewState]);
 
   const updateRemoteConnectionState = useCallback(
     (peerId: string, connectionState: RTCPeerConnectionState | "new") => {
-      setRemoteParticipants((currentParticipants) =>
-        currentParticipants.map((participant) =>
+      setViewState((currentState) => ({
+        remoteParticipants: currentState.remoteParticipants.map((participant) =>
           participant.peerId === peerId ? { ...participant, connectionState } : participant,
         ),
-      );
+      }));
     },
-    [],
+    [setViewState],
   );
 
   const removeRemoteParticipant = useCallback((peerId: string) => {
-    setRemoteParticipants((currentParticipants) =>
-      currentParticipants.filter((participant) => participant.peerId !== peerId),
-    );
-  }, []);
+    setViewState((currentState) => ({
+      remoteParticipants: currentState.remoteParticipants.filter((participant) => participant.peerId !== peerId),
+    }));
+  }, [setViewState]);
 
   const closePeerConnection = useCallback(
     (peerId: string) => {
@@ -318,28 +433,33 @@ export function RoomMediaSessionProvider({
       }
 
       if (preserveParticipants) {
-        setRemoteParticipants((currentParticipants) =>
-          currentParticipants.map((participant) => ({
+        setViewState((currentState) => ({
+          remoteParticipants: currentState.remoteParticipants.map((participant) => ({
             ...participant,
             stream: null,
             connectionState: "new",
           })),
-        );
+        }));
         return;
       }
 
-      setRemoteParticipants([]);
+      setViewState({ remoteParticipants: [] });
     },
-    [closePeerConnection],
+    [closePeerConnection, setViewState],
   );
 
   const stopLocalTracks = useCallback(() => {
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
     localStreamRef.current = null;
-    setLocalAudioEnabled(false);
-    setLocalVideoEnabled(false);
+    setViewState({
+      localAudioEnabled: false,
+      localVideoEnabled: false,
+    });
     syncLocalStreamState();
-  }, [syncLocalStreamState]);
+  }, [setViewState, syncLocalStreamState]);
 
   const ensureLocalStreamContainer = useCallback(() => {
     if (!localStreamRef.current) {
@@ -381,42 +501,6 @@ export function RoomMediaSessionProvider({
     }
   }, []);
 
-  const acquireTrack = useCallback(
-    async (kind: "audio" | "video") => {
-      const existingTrack = getLiveTrack(kind);
-      if (existingTrack) {
-        return existingTrack;
-      }
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError(translate("game.video.errors.deviceUnavailable", "Camera or microphone is unavailable right now."));
-        return null;
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(
-          kind === "audio"
-            ? { audio: AUDIO_CONSTRAINTS, video: false }
-            : { audio: false, video: VIDEO_CONSTRAINTS },
-        );
-        const track =
-          kind === "audio" ? stream.getAudioTracks()[0] ?? null : stream.getVideoTracks()[0] ?? null;
-        if (!track) {
-          setError(translate("game.video.errors.deviceUnavailable", "Camera or microphone is unavailable right now."));
-          return null;
-        }
-
-        ensureLocalStreamContainer().addTrack(track);
-        syncLocalStreamState();
-        return track;
-      } catch (deviceError) {
-        setError(toDeviceErrorMessage(deviceError, translate));
-        return null;
-      }
-    },
-    [ensureLocalStreamContainer, getLiveTrack, syncLocalStreamState, translate],
-  );
-
   const emitMediaStateUpdate = useCallback(async () => {
     const socket = getSocket();
     if (!socket?.connected || !desiredSessionRef.current.shouldBeJoined) {
@@ -429,9 +513,105 @@ export function RoomMediaSessionProvider({
     });
 
     if (!result.success) {
-      setError(toActionFailureMessage(result.code, result.message, translate));
+      showError(toActionFailureMessage(result.code, result.message, translate));
     }
-  }, [translate]);
+  }, [showError, translate]);
+
+  const handleTrackEnded = useCallback(
+    async (kind: LocalMediaKind, trackId: string) => {
+      const stream = localStreamRef.current;
+      const track =
+        kind === "audio"
+          ? stream?.getAudioTracks().find((candidate) => candidate.id === trackId) ?? null
+          : stream?.getVideoTracks().find((candidate) => candidate.id === trackId) ?? null;
+
+      if (!track) {
+        return;
+      }
+
+      track.onended = null;
+      stream?.removeTrack(track);
+      removeTrackFromPeers(kind);
+      syncLocalStreamState();
+
+      if (kind === "audio") {
+        desiredSessionRef.current.audioEnabled = false;
+        setViewState({ localAudioEnabled: false });
+        showError(translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now."));
+      } else {
+        desiredSessionRef.current.videoEnabled = false;
+        setViewState({ localVideoEnabled: false });
+        showError(translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."));
+      }
+
+      await emitMediaStateUpdate();
+    },
+    [emitMediaStateUpdate, removeTrackFromPeers, setViewState, showError, syncLocalStreamState, translate],
+  );
+
+  const acquireTrack = useCallback(
+    async (kind: LocalMediaKind) => {
+      const existingTrack = getLiveTrack(kind);
+      if (existingTrack) {
+        return existingTrack;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        showError(
+          kind === "audio"
+            ? translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
+            : translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."),
+        );
+        return null;
+      }
+
+      const deviceAvailability = await refreshDeviceAvailability();
+      if (deviceAvailability) {
+        const hasRequestedDevice = kind === "audio" ? deviceAvailability.audioInput : deviceAvailability.videoInput;
+        if (!hasRequestedDevice) {
+          showError(toMissingDeviceMessage(kind, translate));
+          return null;
+        }
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(
+          kind === "audio"
+            ? { audio: AUDIO_CONSTRAINTS, video: false }
+            : { audio: false, video: VIDEO_CONSTRAINTS },
+        );
+        const track =
+          kind === "audio" ? stream.getAudioTracks()[0] ?? null : stream.getVideoTracks()[0] ?? null;
+        if (!track) {
+          showError(
+            kind === "audio"
+              ? translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
+              : translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."),
+          );
+          return null;
+        }
+
+        track.onended = () => {
+          void handleTrackEnded(kind, track.id);
+        };
+        ensureLocalStreamContainer().addTrack(track);
+        syncLocalStreamState();
+        return track;
+      } catch (deviceError) {
+        showError(toDeviceErrorMessage(deviceError, kind, translate));
+        return null;
+      }
+    },
+    [
+      ensureLocalStreamContainer,
+      getLiveTrack,
+      handleTrackEnded,
+      refreshDeviceAvailability,
+      showError,
+      syncLocalStreamState,
+      translate,
+    ],
+  );
 
   const createPeerConnection = useCallback(
     (participant: MediaParticipant) => {
@@ -546,7 +726,7 @@ export function RoomMediaSessionProvider({
       }
 
       const participant =
-        remoteParticipants.find((item) => item.peerId === fromPeerId) ??
+        mediaSessionStore.getState().remoteParticipants.find((item) => item.peerId === fromPeerId) ??
         ({
           peerId: fromPeerId,
           nickname: roomPlayers.find((player) => player.id === fromPeerId)?.nickname ?? fromPeerId,
@@ -581,7 +761,7 @@ export function RoomMediaSessionProvider({
         answer: runtime.connection.localDescription.toJSON(),
       });
     },
-    [createPeerConnection, flushPendingIceCandidates, remoteParticipants, roomPlayers],
+    [createPeerConnection, flushPendingIceCandidates, mediaSessionStore, roomPlayers],
   );
 
   const handleIncomingAnswer = useCallback(
@@ -620,7 +800,7 @@ export function RoomMediaSessionProvider({
     async (nextState: { audioEnabled: boolean; videoEnabled: boolean }, isReconnect = false) => {
       const socket = getSocket();
       if (!socket?.connected) {
-        setError(
+        showError(
           translate(
             "game.video.errors.socketNotReady",
             "The room connection is still starting. Try again in a moment.",
@@ -629,13 +809,10 @@ export function RoomMediaSessionProvider({
         return;
       }
 
-      setError(null);
-      setStatus(isReconnect ? "reconnecting" : "joining");
-
       if (nextState.audioEnabled) {
         const audioTrack = await acquireTrack("audio");
         if (!audioTrack) {
-          setStatus("idle");
+          stopLocalTracks();
           return;
         }
         audioTrack.enabled = true;
@@ -644,11 +821,13 @@ export function RoomMediaSessionProvider({
       if (nextState.videoEnabled) {
         const videoTrack = await acquireTrack("video");
         if (!videoTrack) {
-          setStatus("idle");
+          stopLocalTracks();
           return;
         }
         videoTrack.enabled = true;
       }
+
+      setViewState({ status: isReconnect ? "reconnecting" : "joining" });
 
       desiredSessionRef.current = {
         shouldBeJoined: true,
@@ -670,20 +849,22 @@ export function RoomMediaSessionProvider({
         };
         stopLocalTracks();
         closeAllPeerConnections({ preserveParticipants: false });
-        setIsJoined(false);
-        setStatus("idle");
-        setError(toActionFailureMessage(result.code, result.message, translate));
+        setViewState({
+          isJoined: false,
+          status: "idle",
+        });
+        showError(toActionFailureMessage(result.code, result.message, translate));
         return;
       }
 
       selfPeerIdRef.current = result.selfPeerId;
       iceServersRef.current = result.iceServers;
-      setLocalAudioEnabled(nextState.audioEnabled);
-      setLocalVideoEnabled(nextState.videoEnabled);
-      setIsJoined(true);
-      setStatus("joined");
-      setRemoteParticipants(
-        sortParticipantsByRoomOrder(
+      setViewState({
+        localAudioEnabled: nextState.audioEnabled,
+        localVideoEnabled: nextState.videoEnabled,
+        isJoined: true,
+        status: "joined",
+        remoteParticipants: sortParticipantsByRoomOrder(
           result.participants.map((participant) => ({
             ...participant,
             stream: null,
@@ -691,89 +872,124 @@ export function RoomMediaSessionProvider({
           })),
           roomPlayerIdsRef.current,
         ),
-      );
+      });
     },
-    [acquireTrack, closeAllPeerConnections, stopLocalTracks, translate],
+    [acquireTrack, closeAllPeerConnections, setViewState, showError, stopLocalTracks, translate],
   );
 
-  const leaveMedia = useCallback(async () => {
-    const socket = getSocket();
-    desiredSessionRef.current = {
-      shouldBeJoined: false,
-      audioEnabled: false,
-      videoEnabled: false,
-    };
-
-    if (socket?.connected && isJoined) {
-      await emitActionAck(socket, "webrtc:leave-room");
-    }
-
-    selfPeerIdRef.current = null;
-    setIsJoined(false);
-    setStatus("idle");
-    setError(null);
-    closeAllPeerConnections({ preserveParticipants: false });
-    stopLocalTracks();
-  }, [closeAllPeerConnections, isJoined, stopLocalTracks]);
-
-  const toggleAudio = useCallback(async () => {
-    if (!desiredSessionRef.current.shouldBeJoined) {
-      await joinMedia({ audioEnabled: true, videoEnabled: false });
-      return;
-    }
-
-    const existingTrack = getLiveTrack("audio");
-    if (!existingTrack) {
-      const acquiredTrack = await acquireTrack("audio");
-      if (!acquiredTrack) {
+  const runMediaOperation = useCallback(
+    async (
+      kind: keyof MediaPendingState,
+      operation: () => Promise<void>,
+      blockedKinds: ReadonlyArray<keyof MediaPendingState> = [kind, "session"],
+    ) => {
+      if (blockedKinds.some((blockedKind) => pendingMediaRef.current[blockedKind])) {
         return;
       }
 
-      acquiredTrack.enabled = true;
-      addTrackToPeers(acquiredTrack);
-      desiredSessionRef.current.audioEnabled = true;
-      setLocalAudioEnabled(true);
-      await emitMediaStateUpdate();
-      return;
-    }
+      setPendingMediaFlag(kind, true);
 
-    existingTrack.enabled = !desiredSessionRef.current.audioEnabled;
-    desiredSessionRef.current.audioEnabled = existingTrack.enabled;
-    setLocalAudioEnabled(existingTrack.enabled);
-    await emitMediaStateUpdate();
-  }, [acquireTrack, addTrackToPeers, emitMediaStateUpdate, getLiveTrack, joinMedia]);
+      try {
+        await operation();
+      } finally {
+        setPendingMediaFlag(kind, false);
+      }
+    },
+    [setPendingMediaFlag],
+  );
+
+  const leaveMedia = useCallback(async () => {
+    await runMediaOperation(
+      "session",
+      async () => {
+        const socket = getSocket();
+        desiredSessionRef.current = {
+          shouldBeJoined: false,
+          audioEnabled: false,
+          videoEnabled: false,
+        };
+
+        if (socket?.connected && mediaSessionStore.getState().isJoined) {
+          await emitActionAck(socket, "webrtc:leave-room");
+        }
+
+        selfPeerIdRef.current = null;
+        setViewState({
+          isJoined: false,
+          status: "idle",
+        });
+        closeAllPeerConnections({ preserveParticipants: false });
+        stopLocalTracks();
+      },
+      ["session", "audio", "video"],
+    );
+  }, [closeAllPeerConnections, mediaSessionStore, runMediaOperation, setViewState, stopLocalTracks]);
+
+  const toggleAudio = useCallback(async () => {
+    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
+    await runMediaOperation(needsJoin ? "session" : "audio", async () => {
+      if (!desiredSessionRef.current.shouldBeJoined) {
+        await joinMedia({ audioEnabled: true, videoEnabled: false });
+        return;
+      }
+
+      const existingTrack = getLiveTrack("audio");
+      if (!existingTrack) {
+        const acquiredTrack = await acquireTrack("audio");
+        if (!acquiredTrack) {
+          return;
+        }
+
+        acquiredTrack.enabled = true;
+        addTrackToPeers(acquiredTrack);
+        desiredSessionRef.current.audioEnabled = true;
+        setViewState({ localAudioEnabled: true });
+        await emitMediaStateUpdate();
+        return;
+      }
+
+      existingTrack.enabled = !desiredSessionRef.current.audioEnabled;
+      desiredSessionRef.current.audioEnabled = existingTrack.enabled;
+      setViewState({ localAudioEnabled: existingTrack.enabled });
+      await emitMediaStateUpdate();
+    }, needsJoin ? ["session", "audio", "video"] : ["audio", "session"]);
+  }, [acquireTrack, addTrackToPeers, emitMediaStateUpdate, getLiveTrack, joinMedia, runMediaOperation, setViewState]);
 
   const toggleVideo = useCallback(async () => {
-    if (!desiredSessionRef.current.shouldBeJoined) {
-      await joinMedia({ audioEnabled: false, videoEnabled: true });
-      return;
-    }
-
-    if (desiredSessionRef.current.videoEnabled) {
-      const track = getLiveTrack("video");
-      track?.stop();
-      if (track && localStreamRef.current) {
-        localStreamRef.current.removeTrack(track);
+    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
+    await runMediaOperation(needsJoin ? "session" : "video", async () => {
+      if (!desiredSessionRef.current.shouldBeJoined) {
+        await joinMedia({ audioEnabled: false, videoEnabled: true });
+        return;
       }
-      removeTrackFromPeers("video");
+
+      if (desiredSessionRef.current.videoEnabled) {
+        const track = getLiveTrack("video");
+        if (track) {
+          track.onended = null;
+          track.stop();
+          localStreamRef.current?.removeTrack(track);
+        }
+        removeTrackFromPeers("video");
+        syncLocalStreamState();
+        desiredSessionRef.current.videoEnabled = false;
+        setViewState({ localVideoEnabled: false });
+        await emitMediaStateUpdate();
+        return;
+      }
+
+      const track = await acquireTrack("video");
+      if (!track) {
+        return;
+      }
+
+      track.enabled = true;
+      addTrackToPeers(track);
       syncLocalStreamState();
-      desiredSessionRef.current.videoEnabled = false;
-      setLocalVideoEnabled(false);
+      desiredSessionRef.current.videoEnabled = true;
+      setViewState({ localVideoEnabled: true });
       await emitMediaStateUpdate();
-      return;
-    }
-
-    const track = await acquireTrack("video");
-    if (!track) {
-      return;
-    }
-
-    track.enabled = true;
-    addTrackToPeers(track);
-    syncLocalStreamState();
-    desiredSessionRef.current.videoEnabled = true;
-    setLocalVideoEnabled(true);
-    await emitMediaStateUpdate();
+    }, needsJoin ? ["session", "audio", "video"] : ["video", "session"]);
   }, [
     acquireTrack,
     addTrackToPeers,
@@ -781,8 +997,28 @@ export function RoomMediaSessionProvider({
     getLiveTrack,
     joinMedia,
     removeTrackFromPeers,
+    runMediaOperation,
+    setViewState,
     syncLocalStreamState,
   ]);
+
+  useEffect(() => {
+    void refreshDeviceAvailability();
+
+    if (!navigator.mediaDevices?.addEventListener) {
+      return;
+    }
+
+    const handleDeviceChange = () => {
+      void refreshDeviceAvailability();
+    };
+
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+
+    return () => {
+      navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+    };
+  }, [refreshDeviceAvailability]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -818,8 +1054,8 @@ export function RoomMediaSessionProvider({
         return;
       }
 
-      setRemoteParticipants((currentParticipants) =>
-        currentParticipants.map((participant) =>
+      setViewState((currentState) => ({
+        remoteParticipants: currentState.remoteParticipants.map((participant) =>
           participant.peerId === participantState.peerId
             ? {
                 ...participant,
@@ -828,7 +1064,7 @@ export function RoomMediaSessionProvider({
               }
             : participant,
         ),
-      );
+      }));
     };
 
     const handleConnect = () => {
@@ -837,12 +1073,17 @@ export function RoomMediaSessionProvider({
       }
 
       closeAllPeerConnections({ preserveParticipants: true });
-      void joinMedia(
-        {
-          audioEnabled: desiredSessionRef.current.audioEnabled,
-          videoEnabled: desiredSessionRef.current.videoEnabled,
-        },
-        true,
+      void runMediaOperation(
+        "session",
+        async () =>
+          joinMedia(
+            {
+              audioEnabled: desiredSessionRef.current.audioEnabled,
+              videoEnabled: desiredSessionRef.current.videoEnabled,
+            },
+            true,
+          ),
+        ["session", "audio", "video"],
       );
     };
 
@@ -851,8 +1092,7 @@ export function RoomMediaSessionProvider({
         return;
       }
 
-      setStatus("reconnecting");
-      setError(translate("game.video.reconnecting", "Reconnecting call…"));
+      setViewState({ status: "reconnecting" });
       closeAllPeerConnections({ preserveParticipants: true });
     };
 
@@ -894,6 +1134,7 @@ export function RoomMediaSessionProvider({
     handleIncomingOffer,
     joinMedia,
     removeRemoteParticipant,
+    runMediaOperation,
     translate,
     upsertRemoteParticipant,
   ]);
@@ -919,42 +1160,81 @@ export function RoomMediaSessionProvider({
       return;
     }
 
-    setStatus("reconnecting");
-    setError(translate("game.video.reconnecting", "Reconnecting call…"));
-  }, [isRoomSocketConnected, translate]);
+    setViewState({ status: "reconnecting" });
+  }, [isRoomSocketConnected, setViewState]);
 
-  const value = useMemo<RoomMediaSessionContextValue>(
+  const actions = useMemo<RoomMediaSessionActions>(
     () => ({
-      status,
-      error,
-      localStream,
-      localAudioEnabled,
-      localVideoEnabled,
-      remoteParticipants,
-      isJoined,
-      clearError,
       toggleAudio,
       toggleVideo,
       leaveMedia,
     }),
-    [
-      clearError,
-      error,
-      isJoined,
-      leaveMedia,
-      localAudioEnabled,
-      localStream,
-      localVideoEnabled,
-      remoteParticipants,
-      status,
-      toggleAudio,
-      toggleVideo,
-    ],
+    [leaveMedia, toggleAudio, toggleVideo],
   );
 
-  return <RoomMediaSessionContext.Provider value={value}>{children}</RoomMediaSessionContext.Provider>;
+  return (
+    <RoomMediaSessionStoreContext.Provider value={mediaSessionStore}>
+      <RoomMediaSessionActionsContext.Provider value={actions}>{children}</RoomMediaSessionActionsContext.Provider>
+    </RoomMediaSessionStoreContext.Provider>
+  );
+}
+
+function useRoomMediaSessionStoreApi(): StoreApi<MediaSessionViewState> {
+  const store = useContext(RoomMediaSessionStoreContext);
+  if (!store) {
+    throw new Error("useRoomMediaSession must be used within RoomMediaSessionProvider");
+  }
+
+  return store;
+}
+
+export function useRoomMediaSessionActions() {
+  const actions = useContext(RoomMediaSessionActionsContext);
+  if (!actions) {
+    throw new Error("useRoomMediaSession must be used within RoomMediaSessionProvider");
+  }
+
+  return actions;
+}
+
+export function useRoomMediaSessionStatusState() {
+  const store = useRoomMediaSessionStoreApi();
+  const status = useStore(store, (s) => s.status);
+  const isJoined = useStore(store, (s) => s.isJoined);
+  return { status, isJoined };
+}
+
+export function useRoomMediaSessionLocalState() {
+  const store = useRoomMediaSessionStoreApi();
+  const localStream = useStore(store, (s) => s.localStream);
+  const localAudioEnabled = useStore(store, (s) => s.localAudioEnabled);
+  const localVideoEnabled = useStore(store, (s) => s.localVideoEnabled);
+  return { localStream, localAudioEnabled, localVideoEnabled };
+}
+
+export function useRoomMediaSessionPendingState() {
+  const store = useRoomMediaSessionStoreApi();
+  const isUpdatingAudio = useStore(store, (s) => s.isUpdatingAudio);
+  const isUpdatingVideo = useStore(store, (s) => s.isUpdatingVideo);
+  const isUpdatingSession = useStore(store, (s) => s.isUpdatingSession);
+  return { isUpdatingAudio, isUpdatingVideo, isUpdatingSession };
+}
+
+export function useRoomMediaSessionRemoteParticipants() {
+  const store = useRoomMediaSessionStoreApi();
+  return useStore(store, (state) => state.remoteParticipants);
 }
 
 export function useRoomMediaSession() {
-  return useContext(RoomMediaSessionContext);
+  const store = useRoomMediaSessionStoreApi();
+  const state = useStore(store, (currentState) => currentState);
+  const actions = useRoomMediaSessionActions();
+
+  return useMemo<RoomMediaSessionContextValue>(
+    () => ({
+      ...state,
+      ...actions,
+    }),
+    [actions, state],
+  );
 }

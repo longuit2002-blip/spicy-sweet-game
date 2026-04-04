@@ -1,22 +1,22 @@
 import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
-import type { Server } from "socket.io";
 import { applyPenalty, nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
 import { RoomService } from "../room/room.service";
 import { GameBroadcastService } from "./game-broadcast.service";
+import type { RealtimeServer } from "../realtime/realtime-socket.types";
 
 @Injectable()
 export class GameLoopService {
-  private server: Server | null = null;
+  private server: RealtimeServer | null = null;
 
   constructor(
     private readonly roomService: RoomService,
     private readonly broadcast: GameBroadcastService,
   ) {}
 
-  attachServer(server: Server) {
+  attachServer(server: RealtimeServer) {
     this.server = server;
   }
 

@@ -22,14 +22,10 @@ import {
   isGameDndDrawPassData,
 } from "@/features/game/dnd/game-dnd-ids";
 import { useDeclareDragPreviewHand } from "@/features/game/dnd/declare-drag-preview-hand-context";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import {
-  PLAYER_HAND_CARD_WIDTH_NARROW_PX,
-  PLAYER_HAND_CARD_WIDTH_WIDE_PX,
   PLAYER_HAND_FAN_LOOSE_OVERLAP_PX,
   PLAYER_HAND_FAN_MAX_OVERLAP_PX,
-  PLAYER_HAND_FAN_MEDIA,
   PLAYER_HAND_FAN_MIN_VISIBLE_PX,
   PLAYER_HAND_FAN_ROTATION_MAX_DEG,
   PLAYER_HAND_FAN_ROTATION_NUMERATOR,
@@ -37,16 +33,13 @@ import {
   PLAYER_HAND_HOVER_Z_INDEX_BOOST,
   PLAYER_HAND_SELECTED_Z_INDEX,
   PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
+  handCardWidthFromStripPx,
 } from "@/lib/game-room.constants";
 
 export type PlayerHandDrawPassDropConfig = {
   active: boolean;
   pileDragActive: boolean;
 };
-
-function handCardWidthPx(isWide: boolean): number {
-  return isWide ? PLAYER_HAND_CARD_WIDTH_WIDE_PX : PLAYER_HAND_CARD_WIDTH_NARROW_PX;
-}
 
 function fanWidthPx(cardCount: number, cardWidthPx: number, overlapPx: number): number {
   if (cardCount <= 0) return 0;
@@ -104,6 +97,7 @@ type PlayerHandCardStripItemProps = {
   drawPassDrop: PlayerHandDrawPassDropConfig | null;
   skipNextClickRef: MutableRefObject<boolean>;
   registerCardEl: (cardId: string, el: HTMLDivElement | null) => void;
+  handCardWidthPx: number;
 };
 
 const PlayerHandCardStripItem = memo(function PlayerHandCardStripItem({
@@ -118,6 +112,7 @@ const PlayerHandCardStripItem = memo(function PlayerHandCardStripItem({
   drawPassDrop,
   skipNextClickRef,
   registerCardEl,
+  handCardWidthPx,
 }: PlayerHandCardStripItemProps) {
   const { active } = useDndContext();
   const declarePreviewHand = useDeclareDragPreviewHand();
@@ -200,6 +195,7 @@ const PlayerHandCardStripItem = memo(function PlayerHandCardStripItem({
         <SpiceCard
           card={card}
           size="hand"
+          handCardWidthPx={handCardWidthPx}
           selected={selected}
           isHovered={isBeingHoveredState}
           isDragging={isDragging}
@@ -249,7 +245,6 @@ export const PlayerHand = memo(function PlayerHand({
   const stripRef = useRef<HTMLDivElement | null>(null);
   const cardElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [stripWidth, setStripWidth] = useState(0);
-  const isWideHand = useMediaQuery(PLAYER_HAND_FAN_MEDIA);
   const handKey = useMemo(() => cards.map((c) => c.id).join("|"), [cards]);
 
   useDndMonitor({
@@ -293,7 +288,7 @@ export const PlayerHand = memo(function PlayerHand({
     return () => ro.disconnect();
   }, []);
 
-  const cardWidthPx = handCardWidthPx(isWideHand);
+  const cardWidthPx = useMemo(() => handCardWidthFromStripPx(stripWidth), [stripWidth]);
   const overlapPx = useMemo(
     () => computeFanOverlapPx(cards.length, cardWidthPx, stripWidth),
     [cards.length, cardWidthPx, stripWidth],
@@ -386,6 +381,7 @@ export const PlayerHand = memo(function PlayerHand({
                   drawPassDrop={drawPassDrop}
                   skipNextClickRef={skipNextClickRef}
                   registerCardEl={registerCardEl}
+                  handCardWidthPx={cardWidthPx}
                 />
               );
             })}

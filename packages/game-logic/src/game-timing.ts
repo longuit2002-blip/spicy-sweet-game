@@ -31,8 +31,14 @@ export const REVEAL_PHASE_COUNTDOWN_SECONDS =
 export const REVEAL_REMAIN_AFTER_LOCK_THRESHOLD =
   REVEAL_PHASE_COUNTDOWN_SECONDS - REVEAL_LOCK_COUNTDOWN_SECONDS;
 
-/** Pause after PENALTY / NEXT_TURN / TROPHY before advancing — not used for the main REVEAL countdown. */
+/** Pause after `NEXT_TURN` / `TROPHY_AWARDED` before advancing — not used for the main REVEAL countdown or `PENALTY`. */
 export const PHASE_STEP_PAUSE_SECONDS = 2;
+
+/**
+ * Server `challengeTimer` during `PENALTY` (1 Hz tick). Longer than {@link PHASE_STEP_PAUSE_SECONDS} so clients can show
+ * the round-result overlay and pile/draw flights without the phase flipping too early.
+ */
+export const PENALTY_PHASE_PAUSE_SECONDS = 5;
 
 /** Number of cards drawn as a failed-challenge penalty. */
 export const PENALTY_DRAW_COUNT = 2;

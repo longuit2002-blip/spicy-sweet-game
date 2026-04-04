@@ -28,7 +28,7 @@ function ActionLogList({
       <ul className="space-y-1 pr-3 text-left text-xs text-muted-foreground">
         {list.map((e) => (
           <li key={e.id} className="leading-snug">
-            <span className="font-mono text-[10px] tabular-nums text-muted-foreground/70">
+            <span className="font-mono text-ui-micro tabular-nums text-muted-foreground/70">
               {new Date(e.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>{" "}
             <span className="text-foreground/90">{e.text}</span>
@@ -50,12 +50,31 @@ export function ActionLog({
   if (variant === "embedded") {
     if (entries.length === 0) {
       return (
-        <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t("actionLog.empty")}</p>
+        <p className="flex h-full min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-sm text-muted-foreground">
+          {t("actionLog.empty")}
+        </p>
       );
     }
+    const list = [...entries].reverse();
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ActionLogList entries={entries} scrollClassName="h-full min-h-[8rem]" />
+      <div className="h-full min-h-0 overflow-y-auto overscroll-y-contain kawaii-scrollbar">
+        <ul className="space-y-3 px-4 py-4 text-left text-sm">
+          {list.map((e) => (
+            <li
+              key={e.id}
+              className="rounded-2xl border border-border/15 bg-muted/25 px-3 py-2 shadow-sm"
+            >
+              <span className="font-mono text-ui-micro tabular-nums text-muted-foreground/80">
+                {new Date(e.at).toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </span>
+              <p className="mt-1 text-sm leading-snug text-foreground/95">{e.text}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
@@ -67,7 +86,7 @@ export function ActionLog({
   return (
     <div className="w-full max-w-2xl rounded-2xl border border-border/25 bg-card/70 px-3 py-2 shadow-sm backdrop-blur-sm">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("actionLog.title")}</span>
+        <span className="text-ui-micro font-semibold uppercase tracking-wide text-muted-foreground">{t("actionLog.title")}</span>
         <Button
           type="button"
           variant="ghost"
@@ -93,7 +112,10 @@ export function ActionLog({
           collapsed ? "hidden md:block" : "block",
         )}
       >
-        <ActionLogList entries={entries} scrollClassName="h-[min(8.5rem,28vh)]" />
+        <ActionLogList
+          entries={entries}
+          scrollClassName="h-[min(7rem,24vh)] sm:h-[min(8.5rem,28vh)]"
+        />
       </div>
     </div>
   );

@@ -49,7 +49,10 @@ function ChallengerAxisPickCountdownInline({
       <span className="tabular-nums font-headline text-xs font-black leading-none text-foreground sm:text-sm" aria-hidden>
         {displaySeconds}
       </span>
-      <div className="h-1 w-[4.25rem] overflow-hidden rounded-full bg-muted/90 ring-1 ring-border/40 sm:w-[5rem]" aria-hidden>
+      <div
+        className="h-1 w-[3.5rem] overflow-hidden rounded-full bg-muted/90 ring-1 ring-border/40 sm:w-[4.25rem] md:w-[5rem]"
+        aria-hidden
+      >
         <div
           className={cn("h-full rounded-full transition-none", urgent ? "bg-destructive" : "bg-primary")}
           style={{ width: `${pct}%` }}
@@ -71,7 +74,7 @@ function ChallengerAxisRevealLockCountdownInline({ seconds }: ChallengerAxisReve
       <Icon name="lock" size={16} fill={1} className="shrink-0 text-primary" aria-hidden />
       <span className="tabular-nums font-headline text-xs font-black leading-none text-foreground sm:text-sm">
         {seconds}
-        <span className="ml-0.5 text-[9px] font-semibold text-muted-foreground sm:text-[10px]">s</span>
+        <span className="ml-0.5 text-ui-tiny font-semibold text-muted-foreground sm:text-ui-micro">s</span>
       </span>
     </div>
   );
@@ -128,7 +131,7 @@ export function ChallengerAxisIdentityStrip({
           {displayName}
         </p>
         {challengeAxisDisplay != null && axisBadgeLabel != null ? (
-          <p className="mt-0.5 text-[11px] font-semibold leading-snug text-primary sm:text-xs">
+          <p className="mt-0.5 text-ui-caption font-semibold text-primary sm:text-xs">
             <span className="text-foreground/80">{t("challenge.axisChallengingStatus")}</span>
             <span className="mx-1 text-muted-foreground" aria-hidden>
               ·
@@ -142,7 +145,7 @@ export function ChallengerAxisIdentityStrip({
       {revealLockCountdown != null ? <ChallengerAxisRevealLockCountdownInline {...revealLockCountdown} /> : null}
 
       {isLocalPlayer ? (
-        <span className="shrink-0 rounded-md border border-primary/35 bg-primary/12 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-primary sm:text-[10px]">
+        <span className="shrink-0 rounded-md border border-primary/35 bg-primary/12 px-2 py-1 text-ui-tiny font-bold uppercase tracking-widest text-primary sm:text-ui-micro">
           {t("seat.you")}
         </span>
       ) : null}

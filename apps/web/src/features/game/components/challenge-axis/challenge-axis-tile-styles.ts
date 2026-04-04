@@ -42,10 +42,10 @@ export const CHALLENGE_AXIS_TILE_SPECTATOR_WRAP_CLASS =
 export const CHALLENGE_AXIS_TILE_REVEAL_INACTIVE_WRAP_CLASS = "h-full opacity-[0.55] saturate-50";
 
 export const CHALLENGE_AXIS_TILE_LABEL_PRIMARY_CLASS =
-  "line-clamp-2 font-headline text-[11px] font-bold leading-snug text-foreground sm:text-xs";
+  "line-clamp-2 font-headline text-ui-caption font-bold text-foreground sm:text-xs";
 
 export const CHALLENGE_AXIS_TILE_LABEL_MUTED_CLASS =
-  "line-clamp-2 font-headline text-[11px] font-bold leading-snug text-muted-foreground sm:text-xs";
+  "line-clamp-2 font-headline text-ui-caption font-bold text-muted-foreground sm:text-xs";
 
 /** Two equal columns; always horizontal above the timer. */
 export const CHALLENGE_AXIS_TILE_ROW_CLASS =
@@ -64,4 +64,4 @@ export const CHALLENGE_AXIS_PLAYFIELD_STRIP_OUTER_CLASS =
  * Countdown lives in {@link ChallengerAxisIdentityStrip} — height budget is tiles + identity row only.
  */
 export const CHALLENGE_AXIS_PLAYFIELD_STRIP_INNER_FIXED_CLASS =
-  "mx-auto flex h-[11.5rem] max-h-[11.5rem] min-h-[11.5rem] w-full max-w-[min(100%,26rem)] shrink-0 flex-col overflow-hidden sm:h-[12.5rem] sm:max-h-[12.5rem] sm:min-h-[12.5rem] sm:max-w-[min(100%,28rem)]";
+  "mx-auto flex h-[10rem] max-h-[10rem] min-h-[10rem] w-full max-w-[min(100%,24rem)] shrink-0 flex-col overflow-hidden sm:h-[11.5rem] sm:max-h-[11.5rem] sm:min-h-[11.5rem] sm:max-w-[min(100%,26rem)] md:h-[12.5rem] md:max-h-[12.5rem] md:min-h-[12.5rem] md:max-w-[min(100%,28rem)]";

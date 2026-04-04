@@ -74,13 +74,13 @@ export function LobbyView({
           <h1 className="font-headline font-extrabold text-3xl md:text-5xl text-primary mb-3 italic tracking-tight leading-tight">
             Spicy Neko Party
           </h1>
-          <p className="font-label text-muted-foreground tracking-wider uppercase text-[11px] md:text-xs font-bold max-w-xl mx-auto">
+          <p className="font-label text-ui-caption font-bold uppercase tracking-wider text-muted-foreground md:text-xs max-w-xl mx-auto">
             {t("lobby.roomCode")}: <span className="text-secondary">{displayCode}</span>
             <span className="text-muted-foreground/80">&nbsp;&bull;&nbsp;</span>
             {t("lobby.title")}
           </p>
           {isConnected ? (
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-secondary">
+            <p className="mt-2 text-ui-micro font-bold uppercase tracking-widest text-secondary">
               {t("lobby.onlineConnected")}
             </p>
           ) : null}
@@ -99,29 +99,29 @@ export function LobbyView({
               )}
             >
               <div className="relative flex shrink-0 flex-col items-center pt-1">
-                <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full border-4 border-primary bg-surface-container-lowest shadow-inner sm:h-24 sm:w-24">
-                  <span className="text-2xl font-bold text-primary sm:text-4xl">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-primary bg-surface-container-lowest shadow-inner sm:h-24 sm:w-24">
+                  <span className="text-xl font-bold text-primary sm:text-4xl">
                     {player.nickname[0]?.toUpperCase()}
                   </span>
                 </div>
                 {player.isHost ? (
-                  <div className="absolute -bottom-1 -right-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase tracking-tighter text-white sm:-bottom-2 sm:-right-2 sm:px-3 sm:py-1 sm:text-xs">
+                  <div className="absolute -bottom-1 -right-1 rounded-full bg-secondary px-2 py-0.5 text-ui-micro font-bold uppercase tracking-tighter text-secondary-foreground sm:-bottom-2 sm:-right-2 sm:px-3 sm:py-1 sm:text-xs">
                     HOST
                   </div>
                 ) : null}
                 {"isBot" in player && player.isBot ? (
-                  <div className="absolute -bottom-1 -left-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-tighter text-foreground sm:-bottom-2 sm:-left-2 sm:px-2.5 sm:text-[11px]">
+                  <div className="absolute -bottom-1 -left-1 rounded-full bg-muted px-2 py-0.5 text-ui-micro font-bold uppercase tracking-tighter text-foreground sm:-bottom-2 sm:-left-2 sm:px-2.5 sm:text-ui-caption">
                     {t("lobby.botBadge")}
                   </div>
                 ) : null}
               </div>
-              <div className="w-full shrink-0 text-center min-h-[3rem] flex flex-col justify-end">
+              <div className="flex min-h-[2.75rem] w-full shrink-0 flex-col justify-end text-center sm:min-h-[3rem]">
                 <p className="font-headline text-sm font-bold leading-tight sm:text-lg line-clamp-2">
                   {player.nickname}
                 </p>
                 <p
                   className={cn(
-                    "mt-1 text-[10px] font-bold uppercase sm:text-xs",
+                    "mt-1 text-ui-micro font-bold uppercase sm:text-xs",
                     player.isReady ? "text-secondary" : "text-muted-foreground",
                   )}
                 >
@@ -141,7 +141,7 @@ export function LobbyView({
                 )}
               >
                 <Icon name="add_circle" size={36} className="shrink-0 text-outline-variant sm:h-10 sm:w-10" />
-                <p className="px-1 text-center font-headline text-[10px] font-bold uppercase tracking-widest text-outline-variant sm:text-sm">
+                <p className="px-1 text-center font-headline text-ui-micro font-bold uppercase tracking-widest text-outline-variant sm:text-sm">
                   {t("lobby.inviteFriend")}
                 </p>
               </div>
@@ -193,7 +193,7 @@ export function LobbyView({
           <div className="flex flex-wrap items-center justify-center gap-6 text-muted-foreground pb-6 md:pb-8">
             <div className="flex items-center gap-2">
               <Icon name="verified" size={18} className="text-secondary shrink-0" />
-              <span className="text-[11px] font-bold uppercase tracking-tight sm:text-xs">
+              <span className="text-ui-caption font-bold uppercase tracking-tight sm:text-xs">
                 {t("lobby.playerCount", {
                   current: players.length,
                   max: roomMaxPlayers,

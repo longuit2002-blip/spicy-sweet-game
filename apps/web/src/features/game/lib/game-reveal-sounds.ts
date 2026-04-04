@@ -138,6 +138,112 @@ export async function playChallengeLoseSound(): Promise<void> {
   osc.stop(t0 + dur + 0.03);
 }
 
+export type PenaltyResolutionSfxRole = "pile" | "draw" | "spectator";
+export type PenaltyResolutionSfxVariant = "caught" | "truth" | "timeout";
+
+const PENALTY_SFX_GAIN_PILE = 0.092;
+const PENALTY_SFX_GAIN_DRAW = 0.1;
+const PENALTY_SFX_GAIN_SPECTATOR = 0.078;
+const PENALTY_SFX_STACK_STEP_S = 0.055;
+
+/** Layered stinger when the round-resolution (`PENALTY`) overlay appears — stronger than REVEAL win/lose beeps. */
+export async function playPenaltyResolutionSound(
+  role: PenaltyResolutionSfxRole,
+  variant: PenaltyResolutionSfxVariant,
+): Promise<void> {
+  if (isSfxMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  await ensureRunning(ctx);
+
+  const pitchBoost =
+    variant === "caught" ? 1.06 : variant === "timeout" ? 1.03 : 1;
+  const t0 = ctx.currentTime;
+
+  if (role === "pile") {
+    const level = PENALTY_SFX_GAIN_PILE * pitchBoost;
+    const freqs = [392 * pitchBoost, 493.88 * pitchBoost, 587.33 * pitchBoost, 659.25 * pitchBoost] as const;
+    freqs.forEach((freq, i) => {
+      const t = t0 + i * PENALTY_SFX_STACK_STEP_S;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(level, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + PENALTY_SFX_STACK_STEP_S * 1.55);
+      osc.connect(gain);
+      connectToDestination(ctx, gain);
+      osc.start(t);
+      osc.stop(t + PENALTY_SFX_STACK_STEP_S * 1.75);
+    });
+    const boom = ctx.createOscillator();
+    const boomGain = ctx.createGain();
+    boom.type = "sine";
+    boom.frequency.setValueAtTime(118 * pitchBoost, t0);
+    boom.frequency.exponentialRampToValueAtTime(52, t0 + 0.28);
+    boomGain.gain.setValueAtTime(0.0001, t0);
+    boomGain.gain.linearRampToValueAtTime(0.055 * pitchBoost, t0 + 0.05);
+    boomGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+    boom.connect(boomGain);
+    connectToDestination(ctx, boomGain);
+    boom.start(t0);
+    boom.stop(t0 + 0.48);
+    return;
+  }
+
+  if (role === "draw") {
+    const level = PENALTY_SFX_GAIN_DRAW * (variant === "caught" ? 1.08 : 1);
+    const dur = 0.52;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(190 * pitchBoost, t0);
+    osc.frequency.exponentialRampToValueAtTime(68, t0 + dur * 0.92);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.linearRampToValueAtTime(level, t0 + 0.045);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain);
+    connectToDestination(ctx, gain);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.04);
+
+    const knockT = t0 + 0.08;
+    for (let i = 0; i < 2; i++) {
+      const kT = knockT + i * 0.12;
+      const kOsc = ctx.createOscillator();
+      const kGain = ctx.createGain();
+      kOsc.type = "square";
+      kOsc.frequency.setValueAtTime(84, kT);
+      kGain.gain.setValueAtTime(0.0001, kT);
+      kGain.gain.linearRampToValueAtTime(0.028, kT + 0.012);
+      kGain.gain.exponentialRampToValueAtTime(0.0001, kT + 0.09);
+      kOsc.connect(kGain);
+      connectToDestination(ctx, kGain);
+      kOsc.start(kT);
+      kOsc.stop(kT + 0.1);
+    }
+    return;
+  }
+
+  const level = PENALTY_SFX_GAIN_SPECTATOR;
+  const freqs = [311.13 * pitchBoost, 415.3 * pitchBoost] as const;
+  freqs.forEach((freq, i) => {
+    const t = t0 + i * 0.1;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(level, t + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    osc.connect(gain);
+    connectToDestination(ctx, gain);
+    osc.start(t);
+    osc.stop(t + 0.28);
+  });
+}
+
 /** Two-note ascending stinger when turn advances (NEXT_TURN or new `PLAYER_TURN` seat). */
 export async function playTurnHandoffStinger(): Promise<void> {
   if (isSfxMuted()) return;

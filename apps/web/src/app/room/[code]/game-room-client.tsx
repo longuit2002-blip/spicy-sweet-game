@@ -7,14 +7,12 @@ import {
   useRef,
   useMemo,
   useLayoutEffect,
-  type ReactNode,
 } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   createInitialState,
@@ -35,6 +33,7 @@ import {
   CHALLENGE_PICK_TYPE_SECONDS,
   PENALTY_DRAW_COUNT,
 } from "@sweet-spicy/game-logic";
+import type { SocketActionResult } from "@sweet-spicy/shared-types";
 import type {
   ChallengeType,
   GameCard,
@@ -48,7 +47,6 @@ import { GAME_PHASE, getDrawPileCount } from "@/shared/types/game";
 import { useGameStore } from "@/stores/gameStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useUserStore } from "@/stores/userStore";
-import { RoundPenaltyPhasePanel } from "@/features/game/components/RoundPenaltyPhasePanel";
 import { PlayerHand } from "@/features/game/components/PlayerHand";
 import { DeclareDialog } from "@/features/game/components/DeclareDialog";
 import { CardInspectDialog } from "@/features/game/components/CardInspectDialog";
@@ -82,6 +80,7 @@ import {
   OFFLINE_BOT_TRUTH_PLAY_THRESHOLD,
   OFFLINE_CHALLENGE_TICK_MS,
   OFFLINE_BOT_DISPLAY_NAMES,
+  OFFLINE_PENALTY_PHASE_AUTO_ADVANCE_MS,
   OFFLINE_PHASE_AUTO_ADVANCE_MS,
   ROOM_NICKNAME_SEARCH_PARAM,
   isTabletopLayoutPhase,
@@ -363,11 +362,11 @@ export function GameRoomClient() {
 
       prevPhaseRef.current = cur;
     }
-  }, [currentGameState, addLog, t]);
+  }, [currentGameState, addLog, penaltySnapshot, t]);
 
   // ── Penalty snapshot ──────────────────────────────────────────────────────
 
-  const penaltySnapshotRef = useRef<{
+  const [penaltySnapshot, setPenaltySnapshot] = useState<{
     result: ChallengeResult;
     pileCardCount: number;
   } | null>(null);
@@ -468,7 +467,11 @@ export function GameRoomClient() {
       currentGameState.phase === GAME_PHASE.NEXT_TURN ||
       currentGameState.phase === GAME_PHASE.TROPHY_AWARDED
     ) {
-      const timer = setTimeout(handleNextTurn, OFFLINE_PHASE_AUTO_ADVANCE_MS);
+      const delay =
+        currentGameState.phase === GAME_PHASE.PENALTY
+          ? OFFLINE_PENALTY_PHASE_AUTO_ADVANCE_MS
+          : OFFLINE_PHASE_AUTO_ADVANCE_MS;
+      const timer = setTimeout(handleNextTurn, delay);
       return () => clearTimeout(timer);
     }
   }, [currentGameState.phase, handleNextTurn]);
@@ -586,15 +589,27 @@ export function GameRoomClient() {
     t,
   ]);
 
+  const handleSocketActionResult = useCallback(
+    (result: SocketActionResult, title?: string): boolean => {
+      if (result.success) {
+        return true;
+      }
+
+      toast({
+        variant: "destructive",
+        title: title ?? t("room.actionFailedTitle", { defaultValue: "Action failed" }),
+        description: result.message,
+      });
+      return false;
+    },
+    [t, toast],
+  );
+
   const handleStartGame = () => {
     if (isConnected && roomPlayers.length >= MIN_PLAYERS_TO_START) {
       socketApi.startGame((result) => {
-        if (!result.success) {
-          toast({
-            variant: "destructive",
-            title: t("lobby.startGame"),
-            description: result.message,
-          });
+        if (!handleSocketActionResult(result, t("lobby.startGame"))) {
+          return;
         }
       });
       return;
@@ -605,19 +620,27 @@ export function GameRoomClient() {
 
   const leaveRoomAndNavigateHome = useCallback(() => {
     if (isConnected) {
-      socketApi.leaveRoom(() => {
+      socketApi.leaveRoom((result) => {
+        if (!handleSocketActionResult(result, t("room.leaveFailedTitle", { defaultValue: "Could not leave room" }))) {
+          return;
+        }
         router.push("/");
       });
       return;
     }
     socketApi.resetClientState();
     router.push("/");
-  }, [isConnected, router, socketApi]);
+  }, [handleSocketActionResult, isConnected, router, socketApi, t]);
 
   const handleToggleReady = () => {
     if (!localPlayer) return;
     if (isConnected) {
-      socketApi.setReady(!localPlayer.isReady);
+      socketApi.setReady(!localPlayer.isReady, (result) => {
+        handleSocketActionResult(
+          result,
+          t("room.readyFailedTitle", { defaultValue: "Could not update ready status" }),
+        );
+      });
     } else {
       setLocalGameState((prev) => ({
         ...prev,
@@ -647,11 +670,23 @@ export function GameRoomClient() {
     if (!selectedCard) return;
 
     if (isOnlineMode) {
-      socketApi.playCard(selectedCard, declaration);
-    } else {
-      setLocalGameState((prev) => playCardLocal(prev, selectedCard, declaration));
+      socketApi.playCard(selectedCard, declaration, (result) => {
+        if (
+          !handleSocketActionResult(
+            result,
+            t("room.playFailedTitle", { defaultValue: "Could not play card" }),
+          )
+        ) {
+          return;
+        }
+
+        setSelectedCardLocal(null);
+        setShowDeclare(false);
+      });
+      return;
     }
 
+    setLocalGameState((prev) => playCardLocal(prev, selectedCard, declaration));
     setSelectedCardLocal(null);
     setShowDeclare(false);
   };
@@ -661,38 +696,58 @@ export function GameRoomClient() {
     setSelectedCardLocal(null);
     setShowDeclare(false);
     if (isOnlineMode) {
-      socketApi.drawPass();
+      socketApi.drawPass((result) => {
+        handleSocketActionResult(
+          result,
+          t("room.drawFailedTitle", { defaultValue: "Could not draw and pass" }),
+        );
+      });
     } else {
       setLocalGameState((prev) => drawAndPassTurnLocal(prev, localPlayerId));
     }
-  }, [isMyTurn, currentGameState.phase, isOnlineMode, localPlayerId, socketApi]);
+  }, [currentGameState.phase, handleSocketActionResult, isMyTurn, isOnlineMode, localPlayerId, socketApi, t]);
 
   const handleChallenge = useCallback(
     (challengerId: string, challengeType: ChallengeType) => {
       if (isOnlineMode) {
-        socketApi.challenge(challengeType);
+        socketApi.challenge(challengeType, (result) => {
+          handleSocketActionResult(
+            result,
+            t("room.challengeFailedTitle", { defaultValue: "Could not resolve challenge" }),
+          );
+        });
       } else {
         setLocalGameState((prev) => resolveChallenge(prev, challengerId, challengeType));
       }
     },
-    [isOnlineMode, socketApi.challenge],
+    [handleSocketActionResult, isOnlineMode, socketApi.challenge, t],
   );
 
   const handleClaimChallenge = useCallback(() => {
     if (isOnlineMode) {
-      socketApi.claimChallenge();
+      socketApi.claimChallenge((result) => {
+        handleSocketActionResult(
+          result,
+          t("room.challengeClaimFailedTitle", { defaultValue: "Could not claim challenge" }),
+        );
+      });
     } else {
       setLocalGameState((prev) => claimChallenge(prev, localPlayerId) ?? prev);
     }
-  }, [isOnlineMode, localPlayerId, socketApi.claimChallenge]);
+  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi.claimChallenge, t]);
 
   const handleChallengePass = useCallback(() => {
     if (isOnlineMode) {
-      socketApi.challengePass();
+      socketApi.challengePass((result) => {
+        handleSocketActionResult(
+          result,
+          t("room.challengePassFailedTitle", { defaultValue: "Could not pass challenge" }),
+        );
+      });
     } else {
       setLocalGameState((prev) => recordChallengePass(prev, localPlayerId) ?? prev);
     }
-  }, [isOnlineMode, localPlayerId, socketApi.challengePass]);
+  }, [handleSocketActionResult, isOnlineMode, localPlayerId, socketApi.challengePass, t]);
 
   useEffect(() => {
     if (isOnlineMode) return;
@@ -746,45 +801,13 @@ export function GameRoomClient() {
         /** Outcome is shown on the playfield via {@link PlayfieldDeclaredCardFlip} (real card); server/offline timers advance phase. */
         return null;
 
-      case GAME_PHASE.PENALTY: {
-        const snap = penaltySnapshotRef.current;
-        const r = snap?.result;
-        const challenger = r
-          ? currentGameState.players.find((p) => p.id === r.challengerId)
-          : undefined;
-        const declarer = r
-          ? currentGameState.players.find((p) => p.id === r.playerId)
-          : undefined;
-        const pileN = snap?.pileCardCount ?? 0;
-        return (
-          <div className="w-full px-0">
-            {r && challenger && declarer ? (
-              <RoundPenaltyPhasePanel
-                result={r}
-                challenger={challenger}
-                declarer={declarer}
-                pileCardCount={pileN}
-                penaltyDrawCount={PENALTY_DRAW_COUNT}
-                localPlayerId={localPlayerId}
-              />
-            ) : (
-              <p className="text-center text-sm leading-relaxed text-muted-foreground">{t("phase.penalty")}</p>
-            )}
-          </div>
-        );
-      }
+      case GAME_PHASE.PENALTY:
+        /* Full-screen overlay + card flights: `PenaltyResultImpactOverlay` / `RoundResolutionFxOverlay` in BoardView. */
+        return null;
 
       case GAME_PHASE.NEXT_TURN:
-        return (
-          <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-1 px-2 py-0.5 text-center sm:gap-1.5 sm:px-3">
-            <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-muted-foreground">
-              {t("phases.nextTurn")}
-            </p>
-            <p className="text-xs leading-snug text-muted-foreground sm:text-sm sm:leading-relaxed">
-              {t("phase.nextTurn")}
-            </p>
-          </div>
-        );
+        /* Full-screen stinger: `NextTurnImpactOverlay` in BoardView. */
+        return null;
 
       case GAME_PHASE.TROPHY_AWARDED:
         return (
@@ -793,10 +816,10 @@ export function GameRoomClient() {
               initial={{ scale: 0.6, rotate: -8 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={SNAPPY_SPRING}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-[hsl(var(--trophy-gold)/0.45)] bg-[hsl(var(--trophy-gold)/0.14)] shadow-[0_0_20px_hsl(var(--trophy-glow)/0.3)] sm:h-16 sm:w-16"
+              className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-trophy-gold/45 bg-trophy-gold/15 shadow-trophy-glow-soft sm:h-16 sm:w-16"
             >
               <Trophy
-                className="h-9 w-9 text-[hsl(var(--trophy-gold))]"
+                className="h-9 w-9 text-trophy-gold"
                 strokeWidth={1.75}
                 aria-hidden
               />
@@ -864,7 +887,7 @@ export function GameRoomClient() {
   if (!hasUserHydrated) {
     return (
       <TooltipProvider delayDuration={350}>
-        <div className="kawaii-room-light-scope room-shell-bg flex min-h-screen items-center justify-center text-foreground">
+        <div className="kawaii-room-light-scope room-shell-bg flex min-h-dvh h-dvh items-center justify-center text-foreground">
           <p className="text-sm font-medium text-muted-foreground">{t("common.loading", { ns: "common" })}</p>
         </div>
       </TooltipProvider>
@@ -874,7 +897,7 @@ export function GameRoomClient() {
   if (isCreateRoute) {
     return (
       <TooltipProvider delayDuration={350}>
-        <div className="kawaii-room-light-scope room-shell-bg flex min-h-screen items-center justify-center text-foreground">
+        <div className="kawaii-room-light-scope room-shell-bg flex min-h-dvh h-dvh items-center justify-center text-foreground">
           <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-3xl border border-border/70 bg-card/95 px-6 py-8 text-center shadow-card backdrop-blur-sm">
             <p className="text-sm font-medium text-muted-foreground">
               {createError || t("home.creatingRoom", { ns: "common" })}
@@ -924,7 +947,7 @@ export function GameRoomClient() {
       <RoomMediaSessionProvider roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}>
         <div
           className={cn(
-            "kawaii-room-light-scope room-shell-bg flex min-h-screen flex-col text-foreground",
+            "kawaii-room-light-scope room-shell-bg flex h-dvh min-h-dvh flex-col text-foreground",
           )}
         >
           <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1011,7 +1034,7 @@ export function GameRoomClient() {
                       localPlayer && isTabletopLayoutPhase(currentGameState.phase) ? (
                         <div id={GAME_PLAYER_HAND_ANCHOR_ID} className="scroll-mt-24">
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-5">
-                            <div className="shrink-0 lg:max-w-[min(100%,220px)]">
+                            <div className="max-w-full shrink-0 sm:max-w-[min(100%,200px)] lg:max-w-[min(100%,220px)]">
                               <PlayerSeat
                                 player={localPlayer}
                                 isActive={isMyTurn}

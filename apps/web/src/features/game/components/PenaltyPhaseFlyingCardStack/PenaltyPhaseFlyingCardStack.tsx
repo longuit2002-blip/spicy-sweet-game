@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 /** Panel preview: min width so a single face-down card does not read as a thin vertical bar. */
 const PENALTY_STACK_PANEL_CARD_WIDTH_CLASS =
-  "min-w-[2.75rem] w-12 sm:min-w-[3.25rem] sm:w-14";
+  "min-w-[2.5rem] w-11 sm:min-w-[2.75rem] sm:w-12 md:min-w-[3.25rem] md:w-14";
 
 export type PenaltyPhaseStackDensity = "strip" | "panel";
 

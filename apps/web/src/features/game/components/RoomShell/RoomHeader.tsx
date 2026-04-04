@@ -12,7 +12,7 @@ export function RoomHeader({ localPlayerNickname, className }: RoomHeaderProps) 
   return (
     <header
       className={cn(
-        "fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-4 bg-background shadow-[0_8px_20px_hsl(343_40%_45%/0.08)] rounded-b-[3rem]",
+        "fixed top-0 left-0 z-50 flex w-full items-center justify-between rounded-b-[1.75rem] bg-background px-4 py-3 shadow-[0_8px_20px_hsl(var(--primary)/0.08)] sm:rounded-b-[3rem] sm:px-6 sm:py-4",
         className,
       )}
     >

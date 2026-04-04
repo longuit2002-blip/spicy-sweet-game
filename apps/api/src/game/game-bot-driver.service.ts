@@ -1,22 +1,22 @@
 import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
-import type { Server } from "socket.io";
 import { applyBotChallengePhaseStep, applyBotPlayerTurnIfCurrentIsBot } from "@sweet-spicy/game-logic";
 import { GAME_PHASE } from "@sweet-spicy/shared-types";
 import { RoomService } from "../room/room.service";
 import { BOT_DRIVER_TICK_MS } from "./game-loop.constants";
 import { GameBroadcastService } from "./game-broadcast.service";
+import type { RealtimeServer } from "../realtime/realtime-socket.types";
 
 @Injectable()
 export class GameBotDriverService {
-  private server: Server | null = null;
+  private server: RealtimeServer | null = null;
 
   constructor(
     private readonly roomService: RoomService,
     private readonly broadcast: GameBroadcastService,
   ) {}
 
-  attachServer(server: Server) {
+  attachServer(server: RealtimeServer) {
     this.server = server;
   }
 

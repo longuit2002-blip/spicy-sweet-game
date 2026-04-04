@@ -25,6 +25,7 @@ import {
   GAME_PLAYER_WON_PILE_ANCHOR_ID,
   ROUND_RESOLUTION_DRAW_FLIP_AT,
   ROUND_RESOLUTION_FX_MAX_PILE_CARDS,
+  ROUND_RESOLUTION_FX_Z,
 } from "@/lib/game-room.constants";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,6 @@ const PENALTY_FLIP_FACE_SCALE = Math.min(
   GHOST_CARD_H_PX / SPICE_CARD_SMALL_NOTIONAL_H_PX,
 );
 const FX_STAGGER_SECONDS = 0.055;
-const ROUND_RESOLUTION_FX_Z = 60;
 /** Extra dwell so draw + flip finishes before unmount. */
 const ROUND_RESOLUTION_DRAW_CLEAR_MS = 1280;
 const ROUND_RESOLUTION_PILE_CLEAR_MS = 920;

@@ -168,7 +168,7 @@ export function OpponentSeatBubble({
             ) : null}
             <div
               className={cn(
-                "relative z-[1] flex h-[4.25rem] w-[4.25rem] items-center justify-center overflow-hidden rounded-md border-[3px] bg-[hsl(var(--surface-rail)/0.85)] shadow-inner backdrop-blur-[1px] sm:h-[5rem] sm:w-[5rem]",
+                "relative z-[1] flex h-[3.75rem] w-[3.75rem] items-center justify-center overflow-hidden rounded-md border-[3px] bg-[hsl(var(--surface-rail)/0.85)] shadow-inner backdrop-blur-[1px] sm:h-[4.25rem] sm:w-[4.25rem] md:h-[5rem] md:w-[5rem]",
                 "transition-[border-color,box-shadow] duration-300",
                 isCurrentTurn
                   ? "border-[hsl(var(--primary)/0.7)] shadow-[inset_0_0_0_1px_hsl(var(--trophy-gold)/0.35),0_0_20px_hsl(var(--primary)/0.25)]"
@@ -177,7 +177,7 @@ export function OpponentSeatBubble({
                     : "border-[hsl(var(--trophy-gold)/0.28)]",
               )}
             >
-              <span className="select-none bg-[var(--gradient-gold)] bg-clip-text font-display text-3xl font-bold text-transparent drop-shadow-sm sm:text-4xl">
+              <span className="select-none bg-[var(--gradient-gold)] bg-clip-text font-display text-2xl font-bold text-transparent drop-shadow-sm sm:text-3xl md:text-4xl">
                 {opp.nickname[0]?.toUpperCase()}
               </span>
             </div>
@@ -186,14 +186,14 @@ export function OpponentSeatBubble({
           <div
             className={cn(
               "-skew-x-6 transform-gpu px-2 py-0.5 sm:py-1",
-              "w-[min(100%,9.5rem)] border border-[hsl(var(--trophy-gold)/0.4)] bg-gradient-to-b from-background/80 to-muted/70 text-center shadow-sm backdrop-blur-[2px]",
+              "w-[min(100%,8.25rem)] border border-[hsl(var(--trophy-gold)/0.4)] bg-gradient-to-b from-background/80 to-muted/70 text-center shadow-sm backdrop-blur-[2px] sm:w-[min(100%,9.5rem)]",
               isCurrentTurn && "border-[hsl(var(--primary)/0.55)] from-primary/15 to-primary/5",
               isUpNext && !isCurrentTurn && "border-dashed border-primary/45",
             )}
           >
             <span
               className={cn(
-                "block skew-x-6 truncate px-0.5 font-display text-[10px] font-bold uppercase leading-tight tracking-wide text-foreground sm:text-[11px]",
+                "block skew-x-6 truncate px-0.5 font-display text-ui-micro font-bold uppercase tracking-wide text-foreground sm:text-ui-caption",
                 isCurrentTurn && "text-[hsl(var(--trophy-gold))] drop-shadow-[0_0_8px_hsl(var(--trophy-glow)/0.35)]",
               )}
             >
@@ -208,7 +208,7 @@ export function OpponentSeatBubble({
           ) : null}
 
           <div
-            className="flex max-w-[8.5rem] flex-col items-center gap-1 text-[9px] text-muted-foreground sm:text-[10px]"
+            className="flex max-w-[7.25rem] flex-col items-center gap-1 text-ui-tiny text-muted-foreground sm:max-w-[8.5rem] sm:text-ui-micro"
             aria-hidden
           >
             <div className="flex flex-wrap justify-center gap-0.5">
@@ -219,7 +219,7 @@ export function OpponentSeatBubble({
                 />
               ))}
               {hand > OPPONENT_STAT_MAX_PIPS ? (
-                <span className="self-center text-[9px] text-muted-foreground">+{hand - OPPONENT_STAT_MAX_PIPS}</span>
+                <span className="self-center text-ui-tiny text-muted-foreground">+{hand - OPPONENT_STAT_MAX_PIPS}</span>
               ) : null}
             </div>
             <div className="flex w-full items-stretch justify-center gap-1.5 tabular-nums">

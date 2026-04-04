@@ -150,7 +150,7 @@ export function ChallengeRevealImpactOverlay({
             ? RING_DELAYS.slice(0, RING_COUNT).map((delay, i) => (
                 <motion.div
                   key={`ring-${i}`}
-                  className="pointer-events-none absolute left-1/2 top-[40%] h-[min(92vmin,520px)] w-[min(92vmin,520px)] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-primary/50"
+                  className="pointer-events-none absolute left-1/2 top-[40%] h-[min(82vmin,380px)] w-[min(82vmin,380px)] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-primary/50 sm:h-[min(92vmin,520px)] sm:w-[min(92vmin,520px)]"
                   initial={{ scale: 0.08, opacity: 0.72 }}
                   animate={{ scale: 1.72, opacity: 0 }}
                   transition={{
@@ -194,7 +194,7 @@ export function ChallengeRevealImpactOverlay({
             transition={{ duration: 0.38, ease: "easeOut" }}
           >
             <motion.p
-              className="mb-2 max-w-md px-4 text-center text-[11px] font-semibold uppercase leading-snug tracking-wide text-primary sm:mb-2.5 sm:text-xs"
+              className="mb-2 max-w-md px-4 text-center text-ui-caption font-semibold uppercase tracking-wide text-primary sm:mb-2.5 sm:text-xs"
               initial={reducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}

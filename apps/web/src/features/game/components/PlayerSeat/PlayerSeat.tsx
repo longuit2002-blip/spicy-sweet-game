@@ -59,9 +59,9 @@ export function PlayerSeat({
         {Array.from({ length: Math.min(handN, 8) }).map((_, i) => (
           <div key={i} className="h-3 w-2 rounded-sm border border-border bg-card-back" />
         ))}
-        {handN > 8 ? <span className="text-[9px] text-muted-foreground">+{handN - 8}</span> : null}
+        {handN > 8 ? <span className="text-ui-tiny text-muted-foreground">+{handN - 8}</span> : null}
       </div>
-      <div className="mt-1 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-[10px] text-muted-foreground">
+      <div className="mt-1 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-ui-micro text-muted-foreground">
         <span title={t("seat.wonPileHint")} id={isLocal && wonPileAnchorId ? wonPileAnchorId : undefined}>
           {t("seat.wonPile")}: <strong className="text-foreground tabular-nums">{won}</strong>
         </span>
@@ -70,7 +70,7 @@ export function PlayerSeat({
           🏆 <strong className="text-foreground tabular-nums">{trophies}</strong>
         </span>
       </div>
-      <span className="mt-0.5 block text-[10px] text-muted-foreground">
+      <span className="mt-0.5 block text-ui-micro text-muted-foreground">
         ⭐ <span className="tabular-nums text-foreground">{score}</span>
       </span>
     </>
@@ -83,12 +83,12 @@ export function PlayerSeat({
         {Array.from({ length: Math.min(handN, 5) }).map((_, i) => (
           <div key={i} className="h-2 w-1.5 rounded-sm border border-border bg-card-back" />
         ))}
-        {handN > 5 ? <span className="text-[9px] text-muted-foreground">+{handN - 5}</span> : null}
+        {handN > 5 ? <span className="text-ui-tiny text-muted-foreground">+{handN - 5}</span> : null}
       </div>
-      <span className="text-[9px] tabular-nums text-muted-foreground">
+      <span className="text-ui-tiny tabular-nums text-muted-foreground">
         ⭐ <strong className="text-foreground">{score}</strong>
       </span>
-      <span className="text-[9px] tabular-nums text-muted-foreground">
+      <span className="text-ui-tiny tabular-nums text-muted-foreground">
         🏆 <strong className="text-foreground">{trophies}</strong>
       </span>
     </div>
@@ -97,12 +97,12 @@ export function PlayerSeat({
       {Array.from({ length: Math.min(handN, 5) }).map((_, i) => (
         <div key={i} className="h-2 w-1.5 rounded-sm border border-border bg-card-back" />
       ))}
-      {handN > 5 ? <span className="text-[9px] text-muted-foreground">+</span> : null}
+      {handN > 5 ? <span className="text-ui-tiny text-muted-foreground">+</span> : null}
     </div>
   );
 
   const nameLine = (
-    <p className="truncate text-[11px] font-semibold leading-tight text-foreground sm:text-xs">
+    <p className="truncate text-ui-caption font-semibold text-foreground sm:text-xs">
       {player.nickname}
       {isLocal ? ` · ${t("seat.you")}` : ""}
     </p>
@@ -113,7 +113,7 @@ export function PlayerSeat({
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="mt-1 max-w-full truncate rounded bg-primary/15 px-1.5 py-0.5 text-[9px] font-medium text-primary"
+        className="mt-1 max-w-full truncate rounded bg-primary/15 px-1.5 py-0.5 text-ui-tiny font-medium text-primary"
       >
         {lastAction}
       </motion.p>
@@ -127,7 +127,7 @@ export function PlayerSeat({
             type="button"
             layout
             className={cn(
-              "flex h-14 min-w-[120px] max-w-[140px] shrink-0 items-center gap-2 rounded-2xl border px-2 py-1 text-left transition-colors",
+              "flex h-12 min-w-[100px] max-w-[128px] shrink-0 items-center gap-2 rounded-2xl border px-2 py-1 text-left transition-colors sm:h-14 sm:min-w-[120px] sm:max-w-[140px]",
               dock && "rounded-xl border-border/25 bg-transparent shadow-none",
               isActive
                 ? dock
@@ -139,13 +139,13 @@ export function PlayerSeat({
             )}
           >
             {avatar}
-            <div className="min-w-0 max-w-[72px]">
+            <div className="min-w-0 max-w-[64px] sm:max-w-[72px]">
               {nameLine}
               {details}
               {isLocal && wonPileAnchorId ? (
                 <span
                   id={wonPileAnchorId}
-                  className="mt-0.5 block text-[9px] tabular-nums text-muted-foreground"
+                  className="mt-0.5 block text-ui-tiny tabular-nums text-muted-foreground"
                   title={t("seat.wonPileHint")}
                 >
                   {t("seat.wonPile")}: <strong className="text-foreground">{won}</strong>
@@ -193,7 +193,7 @@ export function PlayerSeat({
     >
       {avatar}
       <div className="flex flex-col items-center text-center">
-        <div className="max-w-[100px]">{nameLine}</div>
+        <div className="max-w-[88px] sm:max-w-[100px]">{nameLine}</div>
         {details}
         {actionLine}
       </div>

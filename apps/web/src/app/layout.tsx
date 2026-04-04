@@ -63,7 +63,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <link rel="stylesheet" href={MATERIAL_SYMBOLS_HREF} />
       </head>
       <body
-        className={`${display.variable} ${body.variable} ${kawaiiDisplay.variable} ${kawaiiBody.variable} antialiased min-h-screen`}
+        className={`${display.variable} ${body.variable} ${kawaiiDisplay.variable} ${kawaiiBody.variable} antialiased min-h-dvh`}
         suppressHydrationWarning
       >
         <Providers initialLanguage={initialLanguage}>{children}</Providers>

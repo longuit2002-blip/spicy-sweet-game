@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useMemo, useRef } from "react";
 import { createSocket, getSocket, disconnectSocket } from "@/lib/socket-client";
+import { useToast } from "@/hooks/use-toast";
 import { refreshAccessToken, useUserStore } from "@/stores/userStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useGameStore } from "@/stores/gameStore";
@@ -23,6 +24,8 @@ import {
   SOCKET_ERROR_CODE,
   SOCKET_ERROR_DETAIL_MESSAGE,
 } from "@sweet-spicy/shared-types";
+
+const SOCKET_ERROR_TOAST_DEDUPE_MS = 1500;
 
 function normalizeJoinRoomCode(roomCode: string | null): string | null {
   if (!roomCode) {
@@ -48,7 +51,20 @@ function trimTrailingUndefined<TArgs extends readonly unknown[]>(args: TArgs): u
   return trimmedArgs;
 }
 
+function toRoomPlayersFromGameState(gameState: ClientGameState) {
+  return gameState.players.map((player) => ({
+    id: player.id,
+    nickname: player.nickname,
+    isReady: player.isReady,
+    isHost: player.isHost,
+    score: player.score,
+    trophyCount: player.trophyCount,
+    ...(player.isBot ? { isBot: true } : {}),
+  }));
+}
+
 export function useGameSocket() {
+  const { toast } = useToast();
   const accessToken = useUserStore((state) => state.accessToken);
   const isAuthenticated = useUserStore((state) => state.isAuthenticated);
   const setPlayers = useRoomStore((state) => state.setPlayers);
@@ -64,12 +80,39 @@ export function useGameSocket() {
   const resetGameState = useGameStore((state) => state.resetGameState);
   const addMessage = useChatStore((state) => state.addMessage);
   const clearMessages = useChatStore((state) => state.clearMessages);
+  const lastToastRef = useRef<{ key: string; at: number } | null>(null);
 
   const resetClientState = useCallback(() => {
     resetRoomStore();
     resetGameState();
     clearMessages();
   }, [clearMessages, resetGameState, resetRoomStore]);
+
+  const showSocketToast = useCallback(
+    (title: string, message: string) => {
+      if (!message) {
+        return;
+      }
+
+      const now = Date.now();
+      const key = message;
+      if (
+        lastToastRef.current &&
+        lastToastRef.current.key === key &&
+        now - lastToastRef.current.at < SOCKET_ERROR_TOAST_DEDUPE_MS
+      ) {
+        return;
+      }
+
+      lastToastRef.current = { key, at: now };
+      toast({
+        variant: "destructive",
+        title,
+        description: message,
+      });
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (!isAuthenticated || !accessToken) {
@@ -100,6 +143,7 @@ export function useGameSocket() {
       console.error("Socket connection error:", error);
       const msg = error?.message ?? String(error);
       if (!msg.includes("Unauthorized")) {
+        showSocketToast("Connection error", msg);
         return;
       }
       setConnected(false);
@@ -156,10 +200,14 @@ export function useGameSocket() {
     };
 
     const handleGameStart = (gameState: ClientGameState) => {
+      setPlayers(toRoomPlayersFromGameState(gameState));
+      setRoomCode(gameState.roomCode);
       setGameState(gameState);
     };
 
     const handleStateUpdate = (gameState: ClientGameState) => {
+      setPlayers(toRoomPlayersFromGameState(gameState));
+      setRoomCode(gameState.roomCode);
       setGameState(gameState);
     };
 
@@ -169,6 +217,7 @@ export function useGameSocket() {
 
     const handleSocketError = (error: { code: string; message: string }) => {
       console.error("Socket error:", error);
+      showSocketToast("Action failed", error.message);
     };
 
     socket.on("connect", handleConnect);
@@ -214,6 +263,7 @@ export function useGameSocket() {
     setPlayerReady,
     setPlayers,
     setRoomCode,
+    showSocketToast,
   ]);
 
   const emit = useCallback(
@@ -352,20 +402,38 @@ export function useGameSocket() {
     [emit],
   );
 
-  return {
-    joinRoom,
-    createRoom,
-    leaveRoom,
-    setReady,
-    startGame,
-    addLobbyBot,
-    playCard,
-    drawPass,
-    challenge,
-    claimChallenge,
-    acceptDeclaration,
-    challengePass,
-    sendChatMessage,
-    resetClientState,
-  };
+  return useMemo(
+    () => ({
+      joinRoom,
+      createRoom,
+      leaveRoom,
+      setReady,
+      startGame,
+      addLobbyBot,
+      playCard,
+      drawPass,
+      challenge,
+      claimChallenge,
+      acceptDeclaration,
+      challengePass,
+      sendChatMessage,
+      resetClientState,
+    }),
+    [
+      acceptDeclaration,
+      addLobbyBot,
+      challenge,
+      challengePass,
+      claimChallenge,
+      createRoom,
+      drawPass,
+      joinRoom,
+      leaveRoom,
+      playCard,
+      resetClientState,
+      sendChatMessage,
+      setReady,
+      startGame,
+    ],
+  );
 }

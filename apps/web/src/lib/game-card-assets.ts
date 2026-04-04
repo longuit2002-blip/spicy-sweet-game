@@ -12,6 +12,10 @@ export const TABLEAU_TROPHY_DISPLAY_CARD = {
  * Static card art under `public/game/`.
  * Suit folders: `chilis/`, `lemons/`, `avocados/` — filenames `{prefix}_{rank}.png`.
  * Special cards in `avocados/` match on-disk names (`tropy_card.png` spelling).
+ *
+ * **Bandwidth:** Source PNGs can be large; {@link SpiceCard} and {@link CardBackSurface} use `next/image`
+ * without `unoptimized` so Next serves resized WebP/AVIF from `/_next/image` using the `sizes` hint.
+ * You can still pre-shrink masters (e.g. max width 512–768px) + WebP on disk to cut repo size and cold-cache cost.
  */
 export const GAME_CARD_BACK_SRC = "/game/avocados/card_back.png" as const;
 

@@ -1,292 +1,309 @@
-@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Inter:wght@400;500;600;700&display=swap');
+/* Fonts: loaded via `next/font` in `layout.tsx` — avoid duplicating Google Fonts here. */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@source "../**/*.{ts,tsx}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-container: hsl(var(--primary-container));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-chili: hsl(var(--chili));
+  --color-chili-glow: hsl(var(--chili-glow));
+  --color-lemon: hsl(var(--lemon));
+  --color-lemon-glow: hsl(var(--lemon-glow));
+  --color-avocado: hsl(var(--avocado));
+  --color-avocado-glow: hsl(var(--avocado-glow));
+  --color-card-face: hsl(var(--card-face));
+  --color-card-back: hsl(var(--card-back));
+  --color-surface-felt: hsl(var(--surface-felt));
+  --color-surface-rail: hsl(var(--surface-rail));
+  --color-trophy-gold: hsl(var(--trophy-gold));
+  --color-trophy-glow: hsl(var(--trophy-glow));
+
+  --color-neko-pink: hsl(var(--neko-pink));
+  --color-surface-dim: hsl(var(--surface-dim));
+  --color-surface-container-lowest: hsl(var(--surface-container-lowest));
+  --color-surface-container-low: hsl(var(--surface-container-low));
+  --color-surface-container: hsl(var(--surface-container));
+  --color-surface-container-high: hsl(var(--surface-container-high));
+  --color-surface-container-highest: hsl(var(--surface-container-highest));
+  --color-outline: hsl(var(--outline));
+  --color-outline-variant: hsl(var(--outline-variant));
+
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: 3rem;
+
+  /**
+   * Game / social UI micro type scale (prefer over raw `text-[10px]`).
+   * line-height keeps dense labels readable without per-call `leading-*`.
+   */
+  --text-ui-tiny: 0.5625rem;
+  --text-ui-tiny--line-height: 1rem;
+  --text-ui-micro: 0.625rem;
+  --text-ui-micro--line-height: 1rem;
+  --text-ui-caption: 0.6875rem;
+  --text-ui-caption--line-height: 1.25rem;
+
+  --animate-play-drop-slot-invite: play-drop-slot-invite 2.6s ease-in-out infinite;
+  --animate-draw-pile-stack-invite: draw-pile-stack-invite 1.35s ease-in-out infinite;
+  --animate-trophy-pulse: trophy-pulse 2.4s ease-in-out infinite;
+  --animate-chili-pulse-glow: chili-pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes play-drop-slot-invite {
+  0%,
+  100% {
+    border-color: hsl(var(--primary) / 0.32);
+    background-color: hsl(var(--muted) / 0.12);
+  }
+  50% {
+    border-color: hsl(var(--primary) / 0.52);
+    background-color: hsl(var(--muted) / 0.24);
+  }
+}
+
+@keyframes draw-pile-stack-invite {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 8px 14px hsl(0 0% 0% / 0.12));
+  }
+  50% {
+    transform: translateY(6px) scale(1.02);
+    filter: drop-shadow(0 12px 22px hsl(var(--primary) / 0.22));
+  }
+}
+
+@keyframes trophy-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--trophy-gold) / 0.35);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px 2px hsl(var(--trophy-glow) / 0.45);
+    transform: scale(1.02);
+  }
+}
+
+@keyframes chili-pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px hsl(var(--primary) / 0.6);
+  }
+}
 
 @layer base {
-  /* Warm “spice table” dark — default */
+  /**
+   * UI/UX Pro Max design-system palette (search.py --design-system), manual HSL map.
+   * Light: :root (next-themes `class="light"` or no `dark`). Dark: html.dark.
+   * Primary #3B82F6, Secondary #60A5FA, CTA #F97316, bg #F8FAFC, text #1E293B.
+   * --accent / accent-foreground = CTA orange. Room `data-room-ui="kawaii"` only tweaks radius + fonts.
+   */
   :root {
-    --background: 20 14% 8%;
-    --foreground: 40 30% 92%;
+    --background: 210 40% 98%;
+    --foreground: 215 28% 18%;
 
-    --card: 20 12% 14%;
-    --card-foreground: 40 30% 92%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 18%;
 
-    --popover: 20 12% 12%;
-    --popover-foreground: 40 30% 92%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 18%;
 
-    --primary: 12 85% 55%;
-    --primary-foreground: 40 30% 96%;
-    --primary-container: 338 95% 75%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-container: 213 94% 92%;
 
-    --secondary: 45 90% 55%;
-    --secondary-foreground: 20 14% 8%;
+    --secondary: 213 94% 68%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 20 10% 18%;
-    --muted-foreground: 30 10% 55%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 45 90% 55%;
-    --accent-foreground: 20 14% 8%;
+    --accent: 25 95% 53%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 20 10% 22%;
-    --input: 20 10% 22%;
-    --ring: 12 85% 55%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
-    --chili: 0 80% 50%;
-    --chili-glow: 0 90% 60%;
-    --lemon: 0 0% 25%;
-    --lemon-glow: 0 0% 40%;
-    --avocado: 145 45% 42%;
-    --avocado-glow: 145 50% 55%;
+    --chili: 0 72% 51%;
+    --chili-glow: 0 78% 58%;
+    --lemon: 48 96% 48%;
+    --lemon-glow: 48 96% 56%;
+    --avocado: 142 65% 40%;
+    --avocado-glow: 142 60% 48%;
 
-    --card-face: 35 30% 88%;
-    --card-back: 12 60% 25%;
+    --card-face: 210 40% 98%;
+    --card-back: 217 55% 32%;
 
-    --gradient-fire: linear-gradient(135deg, hsl(12, 85%, 55%), hsl(35, 90%, 55%));
-    --gradient-dark: linear-gradient(180deg, hsl(20, 14%, 10%), hsl(20, 14%, 6%));
-    --gradient-gold: linear-gradient(135deg, hsl(45, 90%, 55%), hsl(35, 85%, 50%));
+    --gradient-fire: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-container)));
+    --gradient-dark: linear-gradient(180deg, hsl(210 40% 98%), hsl(210 45% 96%));
+    --gradient-gold: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--trophy-gold)));
+    --gradient-kawaii-cta: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-container)) 100%);
 
-    --shadow-fire: 0 4px 20px -4px hsl(12 85% 55% / 0.4);
-    --shadow-card: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 20px hsl(12 85% 55% / 0.3);
-    /* Game table: felt + trophy (gaming UX layer; tokens only) */
-    --surface-felt: 20 18% 11%;
-    --surface-rail: 20 12% 16%;
-    --trophy-gold: 43 96% 56%;
-    --trophy-glow: 43 100% 72%;
-    --accent-immersive: 265 85% 62%;
+    --shadow-fire: 0 4px 20px -4px hsl(var(--primary) / 0.35);
+    --shadow-card: 0 8px 24px -8px hsl(215 28% 18% / 0.1);
+    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.25);
+    --shadow-kawaii: 0 12px 32px hsl(var(--primary) / 0.08);
+
+    --surface-felt: 210 35% 92%;
+    --surface-rail: 210 40% 94%;
+    --trophy-gold: 38 92% 50%;
+    --trophy-glow: 43 100% 68%;
+    --accent-immersive: 213 94% 65%;
 
     --font-display: 'Dela Gothic One', cursive;
     --font-body: 'Inter', sans-serif;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 210 40% 97%;
+    --sidebar-foreground: 215 28% 18%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 94%;
+    --sidebar-accent-foreground: 215 28% 18%;
+    --sidebar-border: 214 32% 88%;
+    --sidebar-ring: 217 91% 60%;
+
+    --outline: 215 16% 47%;
+    --outline-variant: 214 32% 83%;
+
+    --neko-pink: 213 94% 94%;
+    --surface-dim: 210 35% 93%;
+    --surface-container-lowest: 0 0% 100%;
+    --surface-container-low: 210 40% 99%;
+    --surface-container: 210 40% 96%;
+    --surface-container-high: 214 32% 92%;
+    --surface-container-highest: 214 32% 88%;
   }
 
-  /* Light: parchment / card-table feel */
-  .light {
-    --background: 40 35% 96%;
-    --foreground: 20 18% 12%;
+  html.dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
 
-    --card: 40 30% 98%;
-    --card-foreground: 20 18% 12%;
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 40 30% 99%;
-    --popover-foreground: 20 18% 12%;
+    --popover: 222 47% 12%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 12 80% 48%;
-    --primary-foreground: 40 40% 98%;
-    --primary-container: 338 95% 75%;
+    --primary: 217 91% 62%;
+    --primary-foreground: 222 47% 11%;
+    --primary-container: 217 45% 22%;
 
-    --secondary: 45 85% 48%;
-    --secondary-foreground: 20 18% 10%;
+    --secondary: 213 94% 68%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 35 20% 90%;
-    --muted-foreground: 25 12% 40%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 45 85% 48%;
-    --accent-foreground: 20 18% 10%;
+    --accent: 25 95% 54%;
+    --accent-foreground: 222 47% 11%;
 
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 30 18% 82%;
-    --input: 30 18% 82%;
-    --ring: 12 80% 48%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 62%;
 
-    --shadow-fire: 0 4px 20px -4px hsl(12 80% 48% / 0.25);
-    --shadow-card: 0 8px 24px -8px hsl(30 30% 20% / 0.12);
-    --shadow-glow: 0 0 16px hsl(12 80% 48% / 0.2);
+    --chili: 0 75% 58%;
+    --chili-glow: 0 78% 64%;
+    --lemon: 48 96% 58%;
+    --lemon-glow: 48 98% 66%;
+    --avocado: 142 55% 48%;
+    --avocado-glow: 142 58% 55%;
+
+    --card-face: 222 35% 16%;
+    --card-back: 217 48% 22%;
+
+    --gradient-fire: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-container)));
+    --gradient-dark: linear-gradient(180deg, hsl(222 47% 13%), hsl(222 47% 9%));
+    --gradient-gold: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--trophy-gold)));
+
+    --shadow-fire: 0 4px 20px -4px hsl(var(--primary) / 0.45);
+    --shadow-card: 0 8px 24px -8px hsl(0 0% 0% / 0.45);
+    --shadow-glow: 0 0 24px hsl(var(--primary) / 0.35);
+    --shadow-kawaii: 0 12px 32px hsl(var(--primary) / 0.2);
+
+    --surface-felt: 222 40% 8%;
+    --surface-rail: 217 33% 14%;
+    --trophy-gold: 38 90% 54%;
+    --trophy-glow: 43 96% 62%;
+    --accent-immersive: 217 91% 58%;
+
+    --sidebar-background: 222 47% 12%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 62%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 217 33% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 20%;
+    --sidebar-ring: 217 91% 62%;
+
+    --outline: 215 20% 65%;
+    --outline-variant: 217 33% 35%;
+
+    --neko-pink: 217 40% 28%;
+    --surface-dim: 222 47% 9%;
+    --surface-container-lowest: 222 47% 15%;
+    --surface-container-low: 222 47% 13%;
+    --surface-container: 217 33% 18%;
+    --surface-container-high: 217 33% 22%;
+    --surface-container-highest: 217 33% 26%;
   }
 
-  /**
-   * Room route: Tactile Kawaii (Marshmallow Studio).
-   * Applied via document.documentElement[data-room-ui="kawaii"] so portals (Dialog) inherit tokens.
-   */
+  /** Room UI: larger radius + kawaii font stack only (colors follow global theme). */
   html[data-room-ui="kawaii"] {
-    --background: 48 67% 98%;
-    --foreground: 60 6% 22%;
-    --card: 0 0% 100%;
-    --card-foreground: 60 6% 22%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 60 6% 22%;
-    --primary: 343 40% 45%;
-    --primary-foreground: 0 0% 100%;
-    --primary-container: 338 95% 75%;
-    --secondary: 162 100% 23%;
-    --secondary-foreground: 48 67% 98%;
-    --muted: 50 22% 92%;
-    --muted-foreground: 30 10% 38%;
-    --accent: 338 60% 94%;
-    --accent-foreground: 343 40% 32%;
-    --destructive: 0 72% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 48 22% 88%;
-    --input: 50 25% 91%;
-    --ring: 343 45% 52%;
     --radius: 1rem;
-    --chili: 350 52% 46%;
-    --chili-glow: 350 60% 55%;
-    --lemon: 25 8% 28%;
-    --lemon-glow: 25 10% 40%;
-    --avocado: 162 100% 26%;
-    --avocado-glow: 162 70% 45%;
-    --card-face: 48 45% 97%;
-    --card-back: 343 32% 40%;
-    --surface-felt: 145 24% 86%;
-    --surface-rail: 140 20% 80%;
-    --trophy-gold: 43 96% 56%;
-    --trophy-glow: 43 100% 72%;
-    --accent-immersive: 265 75% 58%;
-    --gradient-fire: linear-gradient(135deg, hsl(343 40% 45%), hsl(338 95% 72%));
-    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 40% 45%) 0%, hsl(338 95% 75%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(48 55% 97%), hsl(48 40% 93%));
-    --shadow-fire: 0 4px 24px -4px hsl(343 40% 45% / 0.28);
-    --shadow-card: 0 12px 32px -10px hsl(343 40% 45% / 0.14);
-    --shadow-glow: 0 0 24px hsl(338 95% 75% / 0.35);
-    --shadow-kawaii: 0 12px 32px hsl(343 40% 45% / 0.08);
-    --sidebar-background: 48 50% 97%;
-    --sidebar-foreground: 60 6% 22%;
-    --sidebar-border: 48 22% 88%;
-
-    /* Marshmallow Studio — Tactile Kawaii surface hierarchy */
-    --neko-pink: 343 100% 85%;
-    --surface-dim: 40 14% 89%;
-    --surface-container-lowest: 0 0% 100%;
-    --surface-container-low: 48 44% 98%;
-    --surface-container: 40 22% 96%;
-    --surface-container-high: 40 14% 93%;
-    --surface-container-highest: 40 14% 91%;
-    --outline: 40 4% 51%;
-    --outline-variant: 40 14% 73%;
-  }
-
-  /**
-   * Game room shell: light kawaii tokens even when `html.dark` is set (rest of app can stay dark).
-   * Apply on the root wrapper of `/room/[code]` only.
-   */
-  html[data-room-ui="kawaii"] .kawaii-room-light-scope {
-    --background: 48 67% 98%;
-    --foreground: 60 6% 22%;
-    --card: 0 0% 100%;
-    --card-foreground: 60 6% 22%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 60 6% 22%;
-    --primary: 343 40% 45%;
-    --primary-foreground: 0 0% 100%;
-    --primary-container: 338 95% 75%;
-    --secondary: 162 100% 23%;
-    --secondary-foreground: 48 67% 98%;
-    --muted: 50 22% 92%;
-    --muted-foreground: 30 10% 38%;
-    --accent: 338 60% 94%;
-    --accent-foreground: 343 40% 32%;
-    --destructive: 0 72% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 48 22% 88%;
-    --input: 50 25% 91%;
-    --ring: 343 45% 52%;
-    --chili: 350 52% 46%;
-    --chili-glow: 350 60% 55%;
-    --lemon: 25 8% 28%;
-    --lemon-glow: 25 10% 40%;
-    --avocado: 162 100% 26%;
-    --avocado-glow: 162 70% 45%;
-    --card-face: 48 45% 97%;
-    --card-back: 343 32% 40%;
-    --surface-felt: 145 24% 86%;
-    --surface-rail: 140 20% 80%;
-    --trophy-gold: 43 96% 56%;
-    --trophy-glow: 43 100% 72%;
-    --accent-immersive: 265 75% 58%;
-    --gradient-fire: linear-gradient(135deg, hsl(343 40% 45%), hsl(338 95% 72%));
-    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 40% 45%) 0%, hsl(338 95% 75%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(48 55% 97%), hsl(48 40% 93%));
-    --shadow-fire: 0 4px 24px -4px hsl(343 40% 45% / 0.28);
-    --shadow-card: 0 12px 32px -10px hsl(343 40% 45% / 0.14);
-    --shadow-glow: 0 0 24px hsl(338 95% 75% / 0.35);
-    --shadow-kawaii: 0 12px 32px hsl(343 40% 45% / 0.08);
-    --sidebar-background: 48 50% 97%;
-    --sidebar-foreground: 60 6% 22%;
-    --sidebar-border: 48 22% 88%;
-    --neko-pink: 343 100% 85%;
-    --surface-dim: 40 14% 89%;
-    --surface-container-lowest: 0 0% 100%;
-    --surface-container-low: 48 44% 98%;
-    --surface-container: 40 22% 96%;
-    --surface-container-high: 40 14% 93%;
-    --surface-container-highest: 40 14% 91%;
-    --outline: 40 4% 51%;
-    --outline-variant: 40 14% 73%;
-  }
-
-  html.dark[data-room-ui="kawaii"] {
-    --background: 25 18% 11%;
-    --foreground: 48 35% 95%;
-    --card: 25 14% 17%;
-    --card-foreground: 48 35% 95%;
-    --popover: 25 14% 15%;
-    --popover-foreground: 48 35% 95%;
-    --primary: 343 48% 58%;
-    --primary-foreground: 25 18% 8%;
-    --primary-container: 338 45% 62%;
-    --secondary: 162 55% 40%;
-    --secondary-foreground: 25 18% 8%;
-    --muted: 25 12% 22%;
-    --muted-foreground: 45 15% 72%;
-    --accent: 25 14% 22%;
-    --accent-foreground: 48 35% 95%;
-    --destructive: 0 65% 55%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 25 10% 26%;
-    --input: 25 12% 20%;
-    --ring: 338 55% 65%;
-    --chili: 350 48% 55%;
-    --chili-glow: 350 55% 62%;
-    --lemon: 25 8% 72%;
-    --lemon-glow: 25 10% 80%;
-    --avocado: 162 55% 45%;
-    --avocado-glow: 162 60% 55%;
-    --card-face: 25 12% 24%;
-    --card-back: 343 28% 32%;
-    --surface-felt: 150 16% 14%;
-    --surface-rail: 145 12% 18%;
-    --trophy-gold: 43 90% 58%;
-    --trophy-glow: 43 95% 72%;
-    --accent-immersive: 265 70% 65%;
-    --gradient-fire: linear-gradient(135deg, hsl(343 48% 58%), hsl(338 50% 55%));
-    --gradient-kawaii-cta: linear-gradient(135deg, hsl(343 48% 58%) 0%, hsl(338 45% 55%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(25 18% 13%), hsl(25 18% 9%));
-    --shadow-fire: 0 4px 24px -4px hsl(343 48% 40% / 0.35);
-    --shadow-card: 0 12px 36px -12px hsl(0 0% 0% / 0.45);
-    --shadow-glow: 0 0 28px hsl(338 45% 50% / 0.25);
-    --shadow-kawaii: 0 12px 32px hsl(343 48% 30% / 0.2);
-    --sidebar-background: 25 14% 14%;
-    --sidebar-foreground: 48 35% 95%;
-    --sidebar-border: 25 10% 24%;
-
-    /* Marshmallow Studio dark — surface hierarchy */
-    --neko-pink: 343 100% 85%;
-    --surface-dim: 30 12% 18%;
-    --surface-container-lowest: 25 14% 22%;
-    --surface-container-low: 25 14% 18%;
-    --surface-container: 30 14% 20%;
-    --surface-container-high: 35 14% 24%;
-    --surface-container-highest: 40 14% 28%;
-    --outline: 40 8% 45%;
-    --outline-variant: 40 14% 55%;
   }
 
   html[data-room-ui="kawaii"] body {
@@ -312,13 +329,32 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 60px 20px hsl(338 95% 75% / 0.4); }
-  50% { box-shadow: 0 0 80px 30px hsl(338 95% 75% / 0.55); }
+  0%,
+  100% {
+    box-shadow: 0 0 60px 20px hsl(var(--primary-container) / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 80px 30px hsl(var(--primary-container) / 0.55);
+  }
 }
 
 @layer base {
   * {
     @apply border-border;
+  }
+
+  /**
+   * Preflight resets buttons to default cursor; restore pointer for real controls (accessibility / UX checklist).
+   * Utilities like cursor-grab or cursor-default still win (higher layer).
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
   }
 
   body {
@@ -332,12 +368,44 @@
 }
 
 @layer utilities {
+  /** Board playfield: enables `cqi` / `@container`-relative spacing in {@link BoardView}. */
+  .board-playfield-cq {
+    container-type: inline-size;
+  }
+
   .font-display {
     font-family: var(--font-display);
   }
 
   .font-body {
     font-family: var(--font-body);
+  }
+
+  .font-headline {
+    font-family: var(--font-kawaii-display), var(--font-display), ui-sans-serif, sans-serif;
+  }
+
+  /** Uppercase / meta labels — matches kawaii body stack on room routes. */
+  .font-label {
+    font-family: var(--font-kawaii-body), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /** Trophy accent glow — use instead of one-off `shadow-[0_0_20px_hsl(var(--trophy-glow)/…)]`. */
+  .shadow-trophy-glow-soft {
+    box-shadow: 0 0 20px hsl(var(--trophy-glow) / 0.3);
+  }
+
+  .shadow-trophy-glow-md {
+    box-shadow: 0 0 14px hsl(var(--trophy-glow) / 0.45);
+  }
+
+  /** Inset highlight on filled chips / hero rings (replaces raw `rgb(255 255 255 / …)`). */
+  .shadow-inset-surface-highlight {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+
+  .shadow-inset-surface-highlight-subtle {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1);
   }
 
   .text-gradient-fire {
@@ -496,7 +564,8 @@
   }
 
   html[data-room-ui="kawaii"] .game-glass-panel {
-    @apply rounded-[1.5rem] border-border/30 bg-card/95 shadow-[0_12px_32px_hsl(343_40%_45%/0.1)] backdrop-blur-lg;
+    @apply rounded-[1.5rem] border-border/30 bg-card/95 backdrop-blur-lg;
+    box-shadow: 0 12px 32px hsl(var(--primary) / 0.1);
   }
 
   .shadow-kawaii {
@@ -587,7 +656,9 @@ html[data-room-ui="kawaii"] .kawaii-room-light-scope .room-shell-bg {
 }
 
 html[data-room-ui="kawaii"] .cartoon-button-shadow {
-  box-shadow: 0 12px 0px 0px rgba(0, 0, 0, 0.1), 0 20px 30px -10px hsl(343 40% 45% / 0.3);
+  box-shadow:
+    0 12px 0px 0px rgb(0 0 0 / 0.1),
+    0 20px 30px -10px hsl(var(--primary) / 0.3);
 }
 
 html[data-room-ui="kawaii"] .cartoon-button-shadow-alt {
@@ -602,17 +673,17 @@ html[data-room-ui="kawaii"] .cartoon-button:active {
 html[data-room-ui="kawaii"] .bluff-bubble {
   box-shadow:
     inset 0 10px 20px hsl(0 0% 100% / 0.4),
-    inset 0 -10px 20px rgba(0, 0, 0, 0.2),
+    inset 0 -10px 20px rgb(0 0 0 / 0.2),
     0 15px 0 hsl(var(--primary) / 0.8),
-    0 25px 30px hsl(343 40% 45% / 0.3);
+    0 25px 30px hsl(var(--primary) / 0.3);
 }
 
 html[data-room-ui="kawaii"] .bluff-bubble:active {
   box-shadow:
     inset 0 5px 10px hsl(0 0% 100% / 0.2),
-    inset 0 -5px 10px rgba(0, 0, 0, 0.1),
+    inset 0 -5px 10px rgb(0 0 0 / 0.1),
     0 4px 0 hsl(var(--primary) / 0.8),
-    0 8px 15px hsl(343 40% 45% / 0.2);
+    0 8px 15px hsl(var(--primary) / 0.2);
   transform: translateY(11px) scale(0.98);
 }
 
@@ -625,12 +696,12 @@ html[data-room-ui="kawaii"] .animate-kawaii-bounce {
 }
 
 html[data-room-ui="kawaii"] .halo-glow {
-  box-shadow: 0 0 60px 20px hsl(338 95% 75% / 0.4);
+  box-shadow: 0 0 60px 20px hsl(var(--primary-container) / 0.4);
   animation: pulse-glow 2s infinite ease-in-out;
 }
 
 html[data-room-ui="kawaii"] .bubbly-text {
-  text-shadow: 4px 4px 0px hsl(338 95% 75% / 0.3);
+  text-shadow: 4px 4px 0 hsl(var(--primary-container) / 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {

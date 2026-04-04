@@ -79,7 +79,7 @@ export function RoomEntryGate({
     status === ROOM_ENTRY_STATUS.JOIN_FAILED;
 
   return (
-    <div className="kawaii-room-light-scope room-shell-bg flex min-h-screen items-center justify-center px-4 py-10 text-foreground">
+    <div className="kawaii-room-light-scope room-shell-bg flex min-h-dvh items-center justify-center px-4 py-10 text-foreground">
       <div className="w-full max-w-md rounded-3xl border border-border/70 bg-card/95 p-6 shadow-card backdrop-blur-sm sm:p-8">
         <div className="mb-8 text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-secondary">
