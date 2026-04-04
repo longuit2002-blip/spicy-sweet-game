@@ -16,6 +16,7 @@ import {
 } from "@/lib/game-room.constants";
 import { STAGGER_CONTAINER_DELAY_CHILDREN_SECONDS } from "@/features/game/animations";
 import { OpponentSeatBubble } from "./OpponentSeatBubble";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type BoardPlayer = GamePlayer | ClientGamePlayer;
 
@@ -63,7 +64,11 @@ export function OpponentsTurnCarousel({
   reducedMotion,
 }: OpponentsTurnCarouselProps) {
   const { t } = useTranslation("game");
+  const isMobile = useIsMobile();
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  /** Disable 3D parallax on mobile to reduce GPU load. */
+  const disable3d = reducedMotion || isMobile;
 
   const focusIx = useMemo(() => anchorListIndex(slots, currentPlayer), [slots, currentPlayer]);
 
@@ -99,9 +104,9 @@ export function OpponentsTurnCarousel({
           "gap-3 px-1 py-3 sm:gap-4 sm:px-2 sm:py-4",
           /** Few opponents: center the row on the mat; many: stay scroll-safe (no clipped snap). */
           "[justify-content:safe_center]",
-          !reducedMotion && "[perspective:1100px] [perspective-origin:50%_85%]",
+          !disable3d && "[perspective:1100px] [perspective-origin:50%_85%]",
         )}
-        style={!reducedMotion ? { transformStyle: "preserve-3d" } : undefined}
+        style={!disable3d ? { transformStyle: "preserve-3d" } : undefined}
       >
         {slots.map((slot, listIndex) => {
           const isCurrentTurn = currentPlayer?.id === slot.player.id;
@@ -130,11 +135,11 @@ export function OpponentsTurnCarousel({
             >
               <div
                 className={cn(
-                  "flex min-h-0 w-full flex-col items-center justify-end origin-bottom will-change-transform",
-                  !reducedMotion && "transition-[transform,filter] duration-300 ease-out",
+                  "flex min-h-0 w-full flex-col items-center justify-end origin-bottom",
+                  !disable3d && "transition-[transform,filter] duration-300 ease-out will-change-transform",
                 )}
                 style={
-                  reducedMotion
+                  disable3d
                     ? undefined
                     : {
                         transform: `rotateY(${arcDeg}deg) translateZ(${translateZ}px)`,

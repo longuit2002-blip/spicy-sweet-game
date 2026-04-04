@@ -10,7 +10,10 @@ import type { PenaltyFxSnapshot } from "@/features/game/components/RoundResoluti
 import { PHASE_TRANSITION_REDUCED } from "@/features/game/animations";
 import { DEFAULT_LOBBY_NICKNAME, PENALTY_RESULT_IMPACT_Z } from "@/lib/game-room.constants";
 import { cn } from "@/lib/utils";
-import { GAME_PHASE, type GamePhase } from "@/shared/types/game";
+import { GAME_PHASE, SPICE_EMOJI, SPICE_LABEL, type GamePhase } from "@/shared/types/game";
+import type { ChallengeResult } from "@/shared/types/game";
+import { SpiceCard } from "@/features/game/components/SpiceCard";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const DIM_ENTER: Transition = { duration: 0.26, ease: [0.32, 0.72, 0, 1] };
 const DIM_EXIT: Transition = { duration: 0.34, ease: [0.4, 0, 0.2, 1] };
@@ -19,6 +22,7 @@ const TITLE_SPRING: Transition = { type: "spring", stiffness: 300, damping: 22 }
 const RING_COUNT = 6;
 const RING_DELAYS = [0, 0.05, 0.1, 0.15, 0.2, 0.25] as const;
 const SPARKLE_COUNT = 16;
+const SPARKLE_COUNT_MOBILE = 8;
 
 export type PenaltyResultImpactOverlayProps = {
   phase: GamePhase;
@@ -26,6 +30,67 @@ export type PenaltyResultImpactOverlayProps = {
   localPlayerId: string;
   players: readonly { id: string; nickname: string }[];
 };
+
+/** Compact declared-vs-real card comparison strip shown between headline and player bands. */
+function CardComparisonStrip({
+  result,
+  reducedMotion,
+}: {
+  result: ChallengeResult;
+  reducedMotion: boolean;
+}) {
+  const { t } = useTranslation("game");
+  const isCaught = result.challengeCorrect;
+
+  return (
+    <motion.div
+      className="flex w-full max-w-sm items-center justify-center gap-2.5 sm:gap-3"
+      initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ ...TITLE_SPRING, delay: reducedMotion ? 0 : 0.08 }}
+    >
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-ui-micro font-bold uppercase tracking-wider text-muted-foreground sm:text-ui-caption">
+          {t("phase.revealDeclaredLabel")}
+        </p>
+        <div
+          className={cn(
+            "rounded-lg border-2 border-dashed px-2 py-1.5 sm:px-2.5 sm:py-2",
+            isCaught
+              ? "border-destructive/35 bg-destructive/8"
+              : "border-secondary/35 bg-secondary/8",
+          )}
+        >
+          <p className="font-headline text-sm font-bold tabular-nums text-foreground sm:text-base">
+            {SPICE_EMOJI[result.declaredCard.type]}{" "}
+            {SPICE_LABEL[result.declaredCard.type]}{" "}
+            <span className="text-primary">{result.declaredCard.number}</span>
+          </p>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 font-headline text-ui-micro font-black sm:h-8 sm:w-8 sm:text-xs",
+          isCaught
+            ? "border-destructive/45 bg-destructive/18 text-destructive"
+            : "border-secondary/45 bg-secondary/18 text-secondary",
+        )}
+      >
+        VS
+      </div>
+
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-ui-micro font-bold uppercase tracking-wider text-muted-foreground sm:text-ui-caption">
+          {t("phase.revealRealLabel")}
+        </p>
+        <div className="w-12 sm:w-14">
+          <SpiceCard card={result.realCard} size="small" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
 function displayName(nickname: string): string {
   const n = nickname.trim();
@@ -152,6 +217,7 @@ export function PenaltyResultImpactOverlay({
 }: PenaltyResultImpactOverlayProps) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
+  const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -227,9 +293,10 @@ export function PenaltyResultImpactOverlay({
     variant === "caught" ? "ring-destructive/15" : variant === "truth" ? "ring-secondary/15" : "";
   const drawBandExtra = "ring-destructive/12";
 
+  const effectiveSparkleCount = isMobile ? SPARKLE_COUNT_MOBILE : SPARKLE_COUNT;
   const sparkleAngles = useMemo(
-    () => Array.from({ length: SPARKLE_COUNT }, (_, i) => (i / SPARKLE_COUNT) * Math.PI * 2),
-    [],
+    () => Array.from({ length: effectiveSparkleCount }, (_, i) => (i / effectiveSparkleCount) * Math.PI * 2),
+    [effectiveSparkleCount],
   );
 
   const receivesPileRole = t("phase.penaltyRoleReceivesPile");
@@ -313,7 +380,7 @@ export function PenaltyResultImpactOverlay({
               ))
             : null}
 
-          <div className="relative z-[2] flex w-full max-w-4xl flex-col items-center">
+          <div className="relative z-[2] flex w-full max-w-full flex-col items-center sm:max-w-4xl">
             <motion.p
               className="mb-2 text-center text-ui-caption font-bold uppercase tracking-[0.22em] text-muted-foreground sm:text-xs"
               initial={reducedMotion ? false : { opacity: 0, y: 10 }}
@@ -323,13 +390,13 @@ export function PenaltyResultImpactOverlay({
               {t("phase.penalty")}
             </motion.p>
 
-            <div className="flex flex-col items-center gap-3 sm:gap-4">
+            <div className="flex flex-col items-center gap-2 sm:gap-4">
               <motion.div
                 initial={reducedMotion ? false : { scale: 0.85, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ ...TITLE_SPRING, delay: reducedMotion ? 0 : 0.03 }}
                 className={cn(
-                  "flex h-[3.85rem] w-[3.85rem] items-center justify-center rounded-full border-[3px] sm:h-[4.5rem] sm:w-[4.5rem]",
+                  "flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-full border-[3px] sm:h-[4.5rem] sm:w-[4.5rem]",
                   heroRing,
                 )}
                 aria-hidden
@@ -339,7 +406,7 @@ export function PenaltyResultImpactOverlay({
 
               <motion.h2
                 id="penalty-result-headline"
-                className="max-w-[min(100%,36rem)] text-center font-headline text-[1.65rem] font-black leading-tight tracking-tight text-foreground drop-shadow-[0_4px_22px_hsl(var(--primary)/0.35)] sm:text-4xl md:text-5xl"
+                className="max-w-[min(100%,36rem)] text-center font-headline text-2xl font-black leading-tight tracking-tight text-foreground drop-shadow-[0_4px_22px_hsl(var(--primary)/0.35)] sm:text-4xl md:text-5xl"
                 initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.72, filter: "blur(12px)" }}
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, filter: "blur(8px)" }}
@@ -355,7 +422,12 @@ export function PenaltyResultImpactOverlay({
               </motion.h2>
             </div>
 
-            <div className="mt-7 flex w-full min-w-0 flex-col items-stretch justify-center gap-3 sm:mt-9 sm:flex-row sm:items-start sm:gap-4 md:gap-6">
+            {/* Card comparison strip: declared vs real */}
+            <div className="mt-3 sm:mt-5">
+              <CardComparisonStrip result={r} reducedMotion={reducedMotion} />
+            </div>
+
+            <div className="mt-5 flex w-full min-w-0 flex-col items-stretch justify-center gap-3 sm:mt-9 sm:flex-row sm:items-start sm:gap-4 md:gap-6">
               {r.challengeCorrect ? (
                 <>
                   <OutcomePlayerBand

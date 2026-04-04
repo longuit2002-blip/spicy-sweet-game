@@ -48,6 +48,7 @@ import {
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
 } from "@/lib/game-room.constants";
 import { PlayfieldRevealActionStrip } from "@/features/game/components/PlayfieldRevealActionStrip";
+import { useIsLandscapeMobile } from "@/hooks/use-mobile";
 import {
   GAME_DND_DROP_HAND_DRAW_PASS,
   GAME_DND_DROP_PLAY_ZONE,
@@ -168,6 +169,7 @@ function BoardViewImpl({
   const [drawPassOverlayVisible, setDrawPassOverlayVisible] = useState(false);
   const [declareOverlayCardId, setDeclareOverlayCardId] = useState<string | null>(null);
   const { drawStackRef, roundPileRailRef } = usePlaymatAnchors();
+  const isLandscapeMobile = useIsLandscapeMobile();
   const reducedMotion = useReducedMotion() === true;
   useChallengeRevealSfx(phase, challengeResult, localPlayerId, reducedMotion);
   usePenaltyResultSfx(phase, penaltyFxSnapshot, localPlayerId, reducedMotion);
@@ -393,7 +395,8 @@ function BoardViewImpl({
         mergeRoundResolutionInTable
           ? "relative z-10 mx-auto w-full min-w-0 max-w-6xl px-3 sm:px-4 xl:max-w-7xl"
           : [
-              "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)] px-3 sm:px-4",
+              "relative z-10 mx-auto w-full min-w-0 max-w-[min(100%,42rem)]",
+              "px-[max(4.75rem,12%)] min-[420px]:px-[max(5.75rem,14%)] sm:px-[max(6.25rem,10%)] md:px-4",
               "md:w-[min(100%,max(17rem,calc(100%-19rem)))]",
               "lg:w-[min(100%,max(19rem,calc(100%-23rem)))]",
               "xl:max-w-[min(100%,48rem)] xl:w-[min(100%,max(21rem,calc(100%-26rem)))]",
@@ -518,6 +521,7 @@ function BoardViewImpl({
         "board-playfield-cq flex w-full min-h-0 flex-1 flex-col",
         (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
         "items-stretch overflow-visible",
+        isLandscapeMobile && "landscape-compact-playfield",
       )}
     >
       <div
@@ -528,7 +532,7 @@ function BoardViewImpl({
       >
         <div
           className={cn(
-            "pointer-events-auto absolute left-2 z-20 sm:left-4 lg:left-5 xl:left-6",
+            "pointer-events-auto absolute left-1 z-20 sm:left-2 lg:left-5 xl:left-6",
             DUEL_SUPPLY_RAIL_ANCHOR_VERTICAL_CENTER_CLASS,
           )}
         >
@@ -540,7 +544,7 @@ function BoardViewImpl({
         </div>
         <div
           className={cn(
-            "pointer-events-auto absolute right-2 z-20 sm:right-4 lg:right-5 xl:right-6",
+            "pointer-events-auto absolute right-1 z-20 sm:right-2 lg:right-5 xl:right-6",
             DUEL_SUPPLY_RAIL_ANCHOR_VERTICAL_CENTER_CLASS,
             drawPassAction != null && "z-30",
           )}
@@ -594,6 +598,7 @@ function BoardViewImpl({
         challengeResult={challengeResult}
         localPlayerId={localPlayerId}
         challengeTimer={challengeTimer}
+        challengeOutcomeNames={challengeOutcomeNames}
       />
       <NextTurnImpactOverlay
         phase={phase}
@@ -615,7 +620,7 @@ function BoardViewImpl({
       <div className="relative mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col px-2 py-1.5 sm:px-4 sm:py-2">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 sm:gap-2.5">
           {sortedOpponentSlots.length > 0 ? (
-            <div className="w-full min-w-0 shrink-0">
+            <div className={cn("w-full min-w-0 shrink-0", isLandscapeMobile && "landscape-compact-opponents")}>
               <OpponentsTurnCarousel
                 slots={sortedOpponentSlots.map(({ player, turnRelative }) => ({ player, turnRelative }))}
                 currentPlayer={currentPlayer}
@@ -638,7 +643,10 @@ function BoardViewImpl({
                 {playfieldStageColumn}
 
                 {tableFooter != null ? (
-                  <div className="w-full shrink-0 -mx-1 bg-transparent px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 sm:-mx-2 sm:px-6 sm:pt-3">
+                  <div className={cn(
+                    "w-full shrink-0 -mx-1 bg-transparent px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 sm:-mx-2 sm:px-6 sm:pt-3",
+                    isLandscapeMobile && "pt-1 pb-1 sm:pt-1",
+                  )}>
                     {tableFooter}
                   </div>
                 ) : null}

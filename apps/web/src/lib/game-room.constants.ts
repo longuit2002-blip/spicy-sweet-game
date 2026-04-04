@@ -366,3 +366,16 @@ export const CHALLENGE_PICK_STANDALONE_TILE_SURFACE_CLASS =
   "flex aspect-[4/5] min-h-[6.75rem] w-full flex-col items-center justify-center gap-2 rounded-md p-3 text-center sm:min-h-[8rem] sm:gap-2.5 sm:p-4 md:min-h-[8.25rem]" as const;
 
 export const CHALLENGE_PICK_STANDALONE_TILE_MAX_W_CLASS = "max-w-[11.25rem] sm:max-w-[13rem]" as const;
+
+// ---------------------------------------------------------------------------
+// PWA & touch constants
+// ---------------------------------------------------------------------------
+
+/** Minimum touch-target size (px) per WCAG 2.5.5 — applied to all interactive elements on mobile. */
+export const TOUCH_TARGET_MIN_SIZE_PX = 44;
+
+/** Duration (ms) the install-prompt banner stays hidden after the user dismisses it (7 days). */
+export const PWA_INSTALL_DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Service Worker cache version — bump when cache schema changes to force a full re-cache. */
+export const SW_CACHE_VERSION = 1;

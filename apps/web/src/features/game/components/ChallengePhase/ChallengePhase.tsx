@@ -52,24 +52,24 @@ function ChallengePickContextChip({
   return (
     <div
       className={cn(
-        "flex min-w-0 max-w-[14rem] flex-col gap-2 rounded-2xl border px-3 py-2.5 shadow-kawaii sm:max-w-[16rem]",
+        "flex min-w-0 max-w-[12rem] flex-col gap-1.5 rounded-2xl border px-2 py-2 shadow-kawaii sm:max-w-[16rem] sm:gap-2 sm:px-3 sm:py-2.5",
         "border-primary/45 bg-primary/10 ring-2 ring-primary/35 ring-offset-2 ring-offset-background",
-        focal && "gap-2.5 px-4 py-3 sm:py-3.5",
+        focal && "gap-2 px-3 py-2.5 sm:gap-2.5 sm:px-4 sm:py-3 sm:py-3.5",
       )}
     >
       <span
         className={cn(
           "font-semibold uppercase tracking-wide text-muted-foreground",
-          focal ? "text-ui-caption" : "text-ui-micro",
+          focal ? "text-ui-micro sm:text-ui-caption" : "text-ui-micro",
         )}
       >
         {roleLabel}
       </span>
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
         <div
           className={cn(
             "flex shrink-0 items-center justify-center rounded-full border-2 border-primary bg-primary/15 font-bold text-foreground",
-            focal ? "h-11 w-11 text-sm" : "h-9 w-9 text-xs",
+            focal ? "h-9 w-9 text-xs sm:h-11 sm:w-11 sm:text-sm" : "h-8 w-8 text-[0.65rem] sm:h-9 sm:w-9 sm:text-xs",
           )}
           aria-hidden
         >
@@ -78,7 +78,7 @@ function ChallengePickContextChip({
         <p
           className={cn(
             "min-w-0 truncate font-headline font-bold text-foreground",
-            focal ? "text-sm sm:text-base" : "text-xs font-semibold",
+            focal ? "text-xs sm:text-base" : "text-[0.7rem] font-semibold sm:text-xs",
           )}
         >
           {player.nickname}
@@ -86,8 +86,8 @@ function ChallengePickContextChip({
       </div>
       <div
         className={cn(
-          "flex flex-wrap items-center gap-x-2.5 gap-y-1 text-muted-foreground",
-          focal ? "text-ui-caption sm:text-xs" : "text-ui-micro",
+          "flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground sm:gap-x-2.5",
+          focal ? "text-ui-micro sm:text-ui-caption sm:text-xs" : "text-ui-micro",
         )}
         aria-label={t("challenge.contextChipStats", { hand, score, trophies })}
       >
@@ -134,7 +134,7 @@ function ChallengePickTimeBar({
       role="timer"
       aria-label={t("challenge.timeRemainingSr", { seconds: displaySeconds })}
     >
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/90 ring-1 ring-border/40">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/90 ring-1 ring-border/40 sm:h-3">
         <div
           className={cn(
             "h-full rounded-full transition-none",
@@ -374,7 +374,7 @@ export function ChallengePhase({
                     variant="outline"
                     size="sm"
                     className={cn(
-                      "h-9 w-full gap-2 border-dashed text-xs font-medium shadow-sm transition-colors sm:h-10 sm:text-sm",
+                      "min-h-[44px] min-w-[44px] w-full gap-2 border-dashed text-xs font-medium shadow-sm transition-colors sm:h-10 sm:text-sm",
                       "border-border/90 hover:border-primary/45 hover:bg-primary/5",
                       localPassedClaimRace &&
                         "pointer-events-none border-primary/35 bg-primary/10 text-primary hover:bg-primary/10",

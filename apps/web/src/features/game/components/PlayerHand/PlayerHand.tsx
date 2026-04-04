@@ -23,6 +23,7 @@ import {
 } from "@/features/game/dnd/game-dnd-ids";
 import { useDeclareDragPreviewHand } from "@/features/game/dnd/declare-drag-preview-hand-context";
 import { cn } from "@/lib/utils";
+import { useIsLandscapeMobile } from "@/hooks/use-mobile";
 import {
   PLAYER_HAND_FAN_LOOSE_OVERLAP_PX,
   PLAYER_HAND_FAN_MAX_OVERLAP_PX,
@@ -41,13 +42,13 @@ export type PlayerHandDrawPassDropConfig = {
   pileDragActive: boolean;
 };
 
-function fanWidthPx(cardCount: number, cardWidthPx: number, overlapPx: number): number {
+export function fanWidthPx(cardCount: number, cardWidthPx: number, overlapPx: number): number {
   if (cardCount <= 0) return 0;
   if (cardCount === 1) return cardWidthPx;
   return cardCount * cardWidthPx - (cardCount - 1) * overlapPx;
 }
 
-function computeFanOverlapPx(
+export function computeFanOverlapPx(
   cardCount: number,
   cardWidthPx: number,
   containerInnerWidthPx: number,
@@ -164,7 +165,7 @@ const PlayerHandCardStripItem = memo(function PlayerHandCardStripItem({
     <div
       ref={setCardStripRef}
       className={cn(
-        "origin-bottom shrink-0",
+        "origin-bottom shrink-0 snap-center",
         allowDrag && "touch-none",
         isDragging && "cursor-grabbing",
         allowDrag && !isDragging && "cursor-grab",
@@ -240,6 +241,7 @@ export const PlayerHand = memo(function PlayerHand({
 }: PlayerHandProps) {
   const { t } = useTranslation("game");
   const reduced = useReducedMotion();
+  const isLandscapeMobile = useIsLandscapeMobile();
   const skipNextClickRef = useRef(false);
   const prevHandKeyRef = useRef<string | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -344,7 +346,10 @@ export const PlayerHand = memo(function PlayerHand({
           className={cn(
             "relative z-[1] flex w-full min-w-0 items-end justify-center overflow-x-auto overscroll-x-contain px-4 pb-4 pt-6 sm:px-8 sm:pb-5 sm:pt-7",
             PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
+            isLandscapeMobile && "landscape-compact-hand pt-2 pb-2 sm:pt-2 sm:pb-2",
             "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "snap-x snap-mandatory md:snap-none",
+            isLandscapeMobile && "!snap-x !snap-mandatory",
             drawPassDrop?.active === true &&
               drawPassDrop.pileDragActive &&
               cn(
@@ -361,7 +366,7 @@ export const PlayerHand = memo(function PlayerHand({
               : t("hand.playerHandAria")
           }
         >
-          <div className="flex w-max max-w-none items-end justify-center px-6 sm:px-10">
+          <div className="flex w-max max-w-full items-end justify-center px-6 md:max-w-none sm:px-10">
             <AnimatePresence mode="popLayout">
             {cards.map((card, index) => {
               const selected = selectedCardId === card.id;

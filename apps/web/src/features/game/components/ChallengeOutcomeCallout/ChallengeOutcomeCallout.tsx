@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { ChallengeResult } from "@/shared/types/game";
+import { SPICE_EMOJI, SPICE_LABEL } from "@/shared/types/game";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { PHASE_TRANSITION_REDUCED, SNAPPY_SPRING } from "@/features/game/animations";
@@ -23,7 +24,7 @@ export type ChallengeOutcomeCalloutProps = {
   motionEntrance?: boolean;
   /** When false, only headline + icon (e.g. PENALTY uses phase copy below). Default true. */
   showSubline?: boolean;
-  /** When set, the losing seat sees destructive (red) styling even on global “truth” outcomes. */
+  /** When set, the losing seat sees destructive (red) styling even on global "truth" outcomes. */
   localPlayerId?: string;
 };
 
@@ -39,12 +40,13 @@ export function ChallengeOutcomeCallout({
 }: ChallengeOutcomeCalloutProps) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
-  const { challengeCorrect, timedOut } = result;
+  const { challengeCorrect, timedOut, realCard, declaredCard, challengeType } = result;
   const challenger = challengerName.trim() || DEFAULT_LOBBY_NICKNAME;
   const declarer = declarerName.trim() || DEFAULT_LOBBY_NICKNAME;
 
   const timeoutBranch = timedOut && !challengeCorrect;
   const localLost = isLocalChallengeLoser(result, localPlayerId);
+  const isNegative = timeoutBranch || challengeCorrect || localLost;
 
   const headlineIcon = timeoutBranch ? (
     <Icon name="timer_off" size={compact ? 22 : 28} className="shrink-0 text-destructive" />
@@ -69,6 +71,35 @@ export function ChallengeOutcomeCallout({
       : localLost
         ? "text-destructive"
         : "text-secondary";
+
+  /** Inline card comparison: "Declared X ≠ Real Y" or "Declared X = Real Y". */
+  const cardComparisonLine = (
+    <div className={cn(
+      "flex flex-wrap items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs tabular-nums sm:gap-2 sm:px-2.5",
+      isNegative
+        ? "border-destructive/25 bg-destructive/5"
+        : "border-secondary/25 bg-secondary/5",
+    )}>
+      <span className="font-medium text-muted-foreground">
+        {SPICE_EMOJI[declaredCard.type]} {SPICE_LABEL[declaredCard.type]} {declaredCard.number}
+      </span>
+      <span className={cn(
+        "font-headline text-sm font-black",
+        challengeCorrect ? "text-destructive" : "text-secondary",
+      )}>
+        {challengeCorrect ? "≠" : "="}
+      </span>
+      <span className="font-semibold text-foreground">
+        {SPICE_EMOJI[realCard.type]} {SPICE_LABEL[realCard.type]} {realCard.number}
+      </span>
+      <span className={cn(
+        "ml-0.5 text-ui-micro font-bold uppercase tracking-wider",
+        isNegative ? "text-destructive/70" : "text-secondary/70",
+      )}>
+        ({challengeType === "suit" ? t("result.suitAttr") : t("result.numberAttr")})
+      </span>
+    </div>
+  );
 
   const subline =
     timeoutBranch ? (
@@ -105,7 +136,7 @@ export function ChallengeOutcomeCallout({
       role="status"
       className={cn(
         "flex w-full max-w-md flex-col items-center gap-2 rounded-lg border px-3 py-2 text-center shadow-sm backdrop-blur-[2px] sm:px-4 sm:py-2.5",
-        timeoutBranch || challengeCorrect || localLost
+        isNegative
           ? "border-destructive/35 bg-destructive/8 ring-1 ring-destructive/15"
           : "border-secondary/40 bg-secondary/10 ring-1 ring-secondary/20",
         compact ? "sm:max-w-lg" : "sm:max-w-md",
@@ -124,6 +155,7 @@ export function ChallengeOutcomeCallout({
           {headlineText}
         </p>
       </div>
+      {cardComparisonLine}
       {showSubline ? subline : null}
     </div>
   );

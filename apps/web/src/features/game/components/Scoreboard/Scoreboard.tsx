@@ -47,25 +47,25 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
     >
       <motion.div
         transition={{ type: "spring", stiffness: 300, damping: 24 }}
-        className="game-glass-panel w-full max-w-md max-h-[min(88dvh,34rem)] overflow-y-auto rounded-3xl border-border/30 p-4 shadow-kawaii sm:max-h-[90vh] sm:p-6"
+        className="game-glass-panel w-full max-w-md max-h-[min(88dvh,34rem)] overflow-y-auto rounded-3xl border-border/30 p-3 shadow-kawaii sm:max-h-[90vh] sm:p-6"
       >
-        <h2 className="mb-1 bg-gradient-to-r from-primary to-[hsl(var(--primary-container))] bg-clip-text text-center text-2xl font-bold text-transparent">
+        <h2 className="mb-1 bg-gradient-to-r from-primary to-[hsl(var(--primary-container))] bg-clip-text text-center text-xl font-bold text-transparent sm:text-2xl">
           {t("game.winner.title")}
         </h2>
         {winners.length > 1 ? (
-          <p className="text-center text-foreground mb-6">
+          <p className="text-center text-xs text-foreground mb-4 sm:mb-6 sm:text-sm">
             🏆 {t("game.winner.tie")}:{" "}
             <span className="font-semibold">{winners.map((p) => p.nickname).join(", ")}</span>
           </p>
         ) : (
           winner && (
-            <p className="text-center text-foreground mb-6">
+            <p className="text-center text-xs text-foreground mb-4 sm:mb-6 sm:text-sm">
               🏆 <span className="font-semibold">{winner.nickname}</span> {t("game.winner.wins")}!
             </p>
           )
         )}
 
-        <div className="space-y-3 mb-6">
+        <div className="space-y-2 mb-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:space-y-3 sm:mb-6">
           {sorted.map((player, i) => (
             <motion.div
               key={player.id}
@@ -73,18 +73,18 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.08, type: "spring", stiffness: 280, damping: 28 }}
               className={cn(
-                "flex flex-col gap-2 rounded-2xl border p-3",
+                "flex flex-col gap-1.5 rounded-2xl border p-2 sm:gap-2 sm:p-3",
                 topIds.has(player.id) ? "border-primary/50 bg-primary/10 shadow-kawaii" : "border-border/35 bg-card/80",
               )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="shrink-0 text-lg text-muted-foreground">
+              <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-2 min-w-0 sm:gap-3">
+                  <span className="shrink-0 text-base text-muted-foreground sm:text-lg">
                     {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                   </span>
                   <div className="min-w-0">
-                    <p className="font-semibold text-foreground truncate">{player.nickname}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs font-semibold text-foreground truncate sm:text-sm">{player.nickname}</p>
+                    <p className="text-[10px] text-muted-foreground sm:text-xs">
                       {t("game.winner.trophies")}:{" "}
                       {"trophyCount" in player ? player.trophyCount : 0} · {t("game.winner.cardsLeft")}:{" "}
                       {getPlayerHandCount(player)}
@@ -93,7 +93,7 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
                 </div>
                 <AnimatedScore
                   value={scoreForPlayer(player)}
-                  className="shrink-0 text-xl font-semibold tabular-nums text-foreground"
+                  className="shrink-0 text-base font-semibold tabular-nums text-foreground sm:text-xl"
                 />
               </div>
               {isFullGamePlayer(player) ? (
@@ -110,11 +110,11 @@ export function Scoreboard({ players, winner, winners, onPlayAgain, onLeave }: S
           ))}
         </div>
 
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-full border-border/40" onClick={onLeave}>
+        <div className="flex gap-2 sm:gap-3">
+          <Button variant="outline" className="flex-1 rounded-full border-border/40 text-xs sm:text-sm" onClick={onLeave}>
             {t("game.winner.leave")}
           </Button>
-          <Button variant="kawaii" className="flex-1 rounded-full" onClick={onPlayAgain}>
+          <Button variant="kawaii" className="flex-1 rounded-full text-xs sm:text-sm" onClick={onPlayAgain}>
             {t("game.winner.playAgain")} 🔥
           </Button>
         </div>

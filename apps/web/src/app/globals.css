@@ -362,6 +362,19 @@
     font-family: var(--font-body);
   }
 
+  /**
+   * Safe area padding for PWA standalone mode (notch, dynamic island, gesture bar).
+   * Only applies when installed to home screen — browser chrome handles insets otherwise.
+   */
+  @media (display-mode: standalone) {
+    body {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+    }
+  }
+
   h1, h2, h3 {
     font-family: var(--font-display);
   }
@@ -371,6 +384,28 @@
   /** Board playfield: enables `cqi` / `@container`-relative spacing in {@link BoardView}. */
   .board-playfield-cq {
     container-type: inline-size;
+  }
+
+  /**
+   * Landscape phone overrides — when width ≥ 768px (triggers Tailwind `md:`) but height ≤ 500px.
+   * Reverts oversized `md:` min-heights back to compact mobile values so the game fits on screen.
+   */
+  @media (min-width: 768px) and (max-height: 500px) and (orientation: landscape) {
+    .landscape-compact-hand {
+      min-height: 10rem !important;
+    }
+    .landscape-compact-playfield {
+      min-height: min(32dvh, 10rem) !important;
+    }
+    .landscape-compact-opponents {
+      padding-top: 0.25rem !important;
+      padding-bottom: 0.25rem !important;
+    }
+    .landscape-compact-opponents > [role="list"] {
+      padding-top: 0.25rem !important;
+      padding-bottom: 0.25rem !important;
+      gap: 0.5rem !important;
+    }
   }
 
   .font-display {

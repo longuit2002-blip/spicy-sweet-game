@@ -10,6 +10,28 @@ import i18n, {
 import { Toaster } from "@/components/ui/toaster";
 import { useState, useEffect, useLayoutEffect, type ReactNode } from "react";
 
+/** Register the service worker after page load so it doesn't block initial rendering. */
+function useServiceWorkerRegistration() {
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+
+    const register = () => {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[SW] Registration failed:", err);
+      });
+    };
+
+    // Defer registration until after the page has fully loaded
+    if (document.readyState === "complete") {
+      register();
+    } else {
+      window.addEventListener("load", register, { once: true });
+      return () => window.removeEventListener("load", register);
+    }
+  }, []);
+}
+
 /** Radix toast portal is not SSR-critical; mounting after hydration avoids extension-touched DOM mismatches in that subtree. */
 function ClientToaster() {
   const [mounted, setMounted] = useState(false);
@@ -41,6 +63,8 @@ export function Providers({
   useEffect(() => {
     applyStoredOrBrowserLanguage();
   }, []);
+
+  useServiceWorkerRegistration();
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>

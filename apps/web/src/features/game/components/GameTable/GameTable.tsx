@@ -1255,7 +1255,7 @@ export function GameTableDeclarationSection({
                                 aria-hidden
                               />
                             ))}
-                          <div className="absolute left-0 top-0 z-[20] h-full w-full will-change-transform">
+                          <div className="absolute left-0 top-0 z-[20] h-full w-full">
                             <PlayfieldDeclaredCardFlip
                               faceCard={playedCard.card}
                               showFaceUp={showDeclaredCardFace}

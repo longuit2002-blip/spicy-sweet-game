@@ -339,6 +339,9 @@ const enGame = {
     revealImpactNeutral: 'Round resolved',
     revealImpactLocalWin: 'You seize the round!',
     revealImpactLocalLose: 'A harsh reveal…',
+    revealImpactTimedOut: 'TIME\'S UP!',
+    revealDeclaredLabel: 'Declared',
+    revealRealLabel: 'Real card',
     nextTurnImpactEyebrow: 'The duel shifts',
     nextTurnImpactTitle: 'Next duelist',
     nextTurnImpactLocal: 'Your move — draw!',
@@ -354,6 +357,11 @@ const enGame = {
     trophyAwarded: 'Trophy',
     nextTurn: 'Next turn',
     endGame: 'Game over',
+  },
+  installBanner: {
+    message: 'Install Sweet & Spicy for a better experience',
+    install: 'Install',
+    dismissAria: 'Dismiss install banner',
   },
 };
 
@@ -688,6 +696,9 @@ const viGame = {
     revealImpactNeutral: 'Kết quả vòng',
     revealImpactLocalWin: 'Bạn thắng vòng!',
     revealImpactLocalLose: 'Lật bài tàn khốc…',
+    revealImpactTimedOut: 'HẾT GIỜ!',
+    revealDeclaredLabel: 'Tuyên bố',
+    revealRealLabel: 'Bài thật',
     nextTurnImpactEyebrow: 'Sân bài chuyển lượt',
     nextTurnImpactTitle: 'Đấu thủ kế tiếp',
     nextTurnImpactLocal: 'Tới lượt bạn — đánh thôi!',
@@ -702,6 +713,11 @@ const viGame = {
     trophyAwarded: 'Chiến tích',
     nextTurn: 'Lượt sau',
     endGame: 'Kết thúc',
+  },
+  installBanner: {
+    message: 'Cài đặt Sweet & Spicy để chơi tốt hơn',
+    install: 'Cài đặt',
+    dismissAria: 'Đóng banner cài đặt',
   },
 };
 

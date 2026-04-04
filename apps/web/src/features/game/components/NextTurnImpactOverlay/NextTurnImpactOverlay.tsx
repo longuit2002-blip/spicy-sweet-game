@@ -10,6 +10,7 @@ import {
   NEXT_TURN_IMPACT_HOLD_MS,
 } from "@/lib/game-room.constants";
 import { PHASE_TRANSITION_REDUCED } from "@/features/game/animations";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const DIM_ENTER: Transition = { duration: 0.2, ease: [0.32, 0.72, 0, 1] };
 const DIM_EXIT: Transition = { duration: 0.18, ease: [0.4, 0, 0.2, 1] };
@@ -19,6 +20,7 @@ const RING_COUNT = 5;
 const RING_DELAYS = [0, 0.06, 0.12, 0.18, 0.24] as const;
 
 const SPARKLE_COUNT = 12;
+const SPARKLE_COUNT_MOBILE = 6;
 
 export type NextTurnImpactOverlayProps = {
   phase: GamePhase;
@@ -40,6 +42,7 @@ export function NextTurnImpactOverlay({
 }: NextTurnImpactOverlayProps) {
   const { t } = useTranslation("game");
   const reducedMotion = useReducedMotion() === true;
+  const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
   const [autoDismissed, setAutoDismissed] = useState(false);
 
@@ -62,9 +65,10 @@ export function NextTurnImpactOverlay({
   const portalVisible = active && !autoDismissed;
   const isLocalNext = nextActorId != null && nextActorId === localPlayerId;
 
+  const effectiveSparkleCount = isMobile ? SPARKLE_COUNT_MOBILE : SPARKLE_COUNT;
   const sparkleAngles = useMemo(
-    () => Array.from({ length: SPARKLE_COUNT }, (_, i) => (i / SPARKLE_COUNT) * Math.PI * 2),
-    [],
+    () => Array.from({ length: effectiveSparkleCount }, (_, i) => (i / effectiveSparkleCount) * Math.PI * 2),
+    [effectiveSparkleCount],
   );
 
   if (!mounted || typeof document === "undefined") return null;
@@ -147,7 +151,7 @@ export function NextTurnImpactOverlay({
             : null}
 
           <motion.div
-            className="relative z-[2] flex w-full max-w-lg flex-col items-center px-6 text-center sm:max-w-xl"
+            className="relative z-[2] flex w-full max-w-lg flex-col items-center px-4 text-center sm:max-w-xl sm:px-6"
             initial={false}
             animate={
               !reducedMotion && isLocalNext ? { x: [0, -5, 5, -3, 3, 0] } : { x: 0 }
@@ -164,7 +168,7 @@ export function NextTurnImpactOverlay({
             </motion.p>
 
             <motion.p
-              className="font-headline text-2xl font-black uppercase tracking-tight text-foreground drop-shadow-[0_3px_16px_hsl(var(--primary)/0.45)] sm:text-5xl"
+              className="font-headline text-2xl font-black uppercase tracking-tight text-foreground drop-shadow-[0_3px_16px_hsl(var(--primary)/0.45)] sm:text-4xl"
               initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.68, filter: "blur(12px)" }}
               animate={
                 reducedMotion
@@ -186,7 +190,7 @@ export function NextTurnImpactOverlay({
             </motion.p>
 
             <motion.p
-              className="mt-3 max-w-md font-headline text-xl font-bold text-primary drop-shadow-[0_2px_12px_hsl(var(--background)/0.85)] sm:mt-4 sm:text-3xl"
+              className="mt-2 max-w-md font-headline text-lg font-bold text-primary drop-shadow-[0_2px_12px_hsl(var(--background)/0.85)] sm:mt-4 sm:text-3xl"
               initial={reducedMotion ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={TITLE_SPRING}
@@ -196,7 +200,7 @@ export function NextTurnImpactOverlay({
 
             {isLocalNext ? (
               <motion.p
-                className="mt-3 font-headline text-lg font-semibold text-secondary drop-shadow-[0_2px_10px_hsl(var(--background)/0.75)] sm:mt-3.5 sm:text-xl"
+                className="mt-2 font-headline text-base font-semibold text-secondary drop-shadow-[0_2px_10px_hsl(var(--background)/0.75)] sm:mt-3.5 sm:text-xl"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={TITLE_SPRING}

@@ -86,7 +86,10 @@ export function PlayfieldDeclaredCardFlip({
       aria-label={ariaLabel}
     >
       <motion.div
-        className="absolute inset-0 [transform-style:preserve-3d]"
+        className={cn(
+          "absolute inset-0 [transform-style:preserve-3d]",
+          showFaceUp && faceCard != null && !reducedMotion && "will-change-transform",
+        )}
         initial={{ rotateY: 0 }}
         animate={{ rotateY: showFaceUp && faceCard != null ? 180 : 0 }}
         transition={
