@@ -16,6 +16,10 @@ export const SOCKET_ERROR_CODE = {
   HOST_ONLY: "HOST_ONLY",
   MIN_PLAYERS_NOT_MET: "MIN_PLAYERS_NOT_MET",
   ALL_PLAYERS_NOT_READY: "ALL_PLAYERS_NOT_READY",
+  MEDIA_BOTS_NOT_SUPPORTED: "MEDIA_BOTS_NOT_SUPPORTED",
+  MEDIA_ALREADY_ACTIVE_IN_ANOTHER_TAB: "MEDIA_ALREADY_ACTIVE_IN_ANOTHER_TAB",
+  MEDIA_PEER_NOT_FOUND: "MEDIA_PEER_NOT_FOUND",
+  MEDIA_NOT_JOINED: "MEDIA_NOT_JOINED",
 } as const;
 
 export type SocketErrorCode = (typeof SOCKET_ERROR_CODE)[keyof typeof SOCKET_ERROR_CODE];
@@ -36,6 +40,11 @@ export const SOCKET_ERROR_MESSAGE = {
   [SOCKET_ERROR_CODE.HOST_ONLY]: "Only the host can do this",
   [SOCKET_ERROR_CODE.MIN_PLAYERS_NOT_MET]: "Need at least 2 players",
   [SOCKET_ERROR_CODE.ALL_PLAYERS_NOT_READY]: "All players must be ready",
+  [SOCKET_ERROR_CODE.MEDIA_BOTS_NOT_SUPPORTED]: "Bots cannot join voice or video",
+  [SOCKET_ERROR_CODE.MEDIA_ALREADY_ACTIVE_IN_ANOTHER_TAB]:
+    "Voice or video is already active in another tab",
+  [SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND]: "The target media peer is not available",
+  [SOCKET_ERROR_CODE.MEDIA_NOT_JOINED]: "Join voice or video before sending media updates",
 } as const satisfies Partial<Record<SocketErrorCode, string>>;
 
 /** Extra user-facing strings for specific `INVALID_PAYLOAD` / phase cases. */

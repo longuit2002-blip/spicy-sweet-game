@@ -21,6 +21,10 @@ import {
 } from "@sweet-spicy/game-logic";
 import type {
   Declaration,
+  MediaParticipant,
+  MediaSignalAnswer,
+  MediaSignalIceCandidate,
+  MediaSignalOffer,
   SocketActionResult,
   SocketErrorCode,
 } from "@sweet-spicy/shared-types";
@@ -40,6 +44,10 @@ import { RoomCreateDto } from "./dto/room-create.dto";
 import { PlayCardDto } from "./dto/play-card.dto";
 import { ChatSendDto } from "./dto/chat-send.dto";
 import { ChallengeDto } from "./dto/challenge.dto";
+import { WebrtcJoinRoomDto } from "./dto/webrtc-join-room.dto";
+import { WebrtcMediaStateDto } from "./dto/webrtc-media-state.dto";
+import { MediaConfigService } from "./media-config.service";
+import { MediaPresenceService } from "./media-presence.service";
 import { parseRoomJoinCode } from "./parse-room-join";
 
 const SOCKET_VALIDATION_PIPE = new ValidationPipe({
@@ -58,6 +66,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @WebSocketServer() server!: Server;
   private readonly activeSocketIdsByUser = new Map<string, Set<string>>();
   private readonly disconnectTimersByUser = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly mediaDisconnectTimersBySocket = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly jwt: JwtService,
@@ -66,6 +75,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly gameBotDriver: GameBotDriverService,
     private readonly broadcast: GameBroadcastService,
     private readonly rateLimiter: SocketRateLimiterService,
+    private readonly mediaConfig: MediaConfigService,
+    private readonly mediaPresence: MediaPresenceService,
   ) {}
 
   private emitSocketError(client: Socket, code: SocketErrorCode, message: string): void {
@@ -127,6 +138,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!userId) {
       return;
     }
+    this.scheduleMediaDisconnect(client.id);
     const activeSocketIds = this.activeSocketIdsByUser.get(userId);
     if (activeSocketIds) {
       activeSocketIds.delete(client.id);
@@ -157,6 +169,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       .filter((socket): socket is Socket => socket !== undefined);
   }
 
+  private getActiveSocketIdsForUser(userId: string): ReadonlySet<string> {
+    return this.activeSocketIdsByUser.get(userId) ?? new Set<string>();
+  }
+
   private clearRoomMembershipFromActiveSockets(userId: string, roomCode: string): void {
     for (const socket of this.getActiveSocketsForUser(userId)) {
       void socket.leave(roomCode);
@@ -181,8 +197,102 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!leaveResult.roomCode) {
       return;
     }
+    const mediaParticipant = this.mediaPresence.leaveRoom(leaveResult.roomCode, userId);
+    if (mediaParticipant) {
+      this.server.to(leaveResult.roomCode).emit("webrtc:peer-left", { peerId: mediaParticipant.peerId });
+    }
     this.clearRoomMembershipFromActiveSockets(userId, leaveResult.roomCode);
     this.broadcastLeaveResult(userId, leaveResult);
+  }
+
+  private getResolvedRoomCode(client: Socket, requestedRoomCode?: string): string | null {
+    if (requestedRoomCode && requestedRoomCode.trim().length > 0) {
+      return requestedRoomCode.trim().toUpperCase();
+    }
+
+    const userId = client.data.userId as string | undefined;
+    if (!userId) {
+      return null;
+    }
+
+    const roomForUser = this.roomService.getRoomForUser(userId);
+    if (roomForUser) {
+      return roomForUser.roomCode;
+    }
+
+    const socketRoomCode = client.data.roomId as string | undefined;
+    return socketRoomCode?.toUpperCase() ?? null;
+  }
+
+  private getRoomForMediaAction(client: Socket, requestedRoomCode?: string) {
+    const roomCode = this.getResolvedRoomCode(client, requestedRoomCode);
+    if (!roomCode) {
+      return null;
+    }
+
+    return this.roomService.getRoomByCode(roomCode) ?? null;
+  }
+
+  private emitToMediaPeer<K extends "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate">(
+    roomCode: string,
+    peerId: string,
+    event: K,
+    payload: Parameters<import("@sweet-spicy/shared-types").ServerToClientEvents[K]>[0],
+  ): boolean {
+    const targetSocketId = this.mediaPresence.getParticipantSocketId(roomCode, peerId);
+    if (!targetSocketId) {
+      return false;
+    }
+
+    const targetSocket = this.getActiveSocketsForUser(peerId).find((socket) => socket.id === targetSocketId);
+    if (!targetSocket) {
+      return false;
+    }
+
+    targetSocket.emit(event, payload);
+    return true;
+  }
+
+  private emitMediaState(roomCode: string, participant: MediaParticipant): void {
+    this.server.to(roomCode).emit("webrtc:peer-media-state", {
+      peerId: participant.peerId,
+      audioEnabled: participant.audioEnabled,
+      videoEnabled: participant.videoEnabled,
+    });
+  }
+
+  private scheduleMediaDisconnect(socketId: string): void {
+    const roomCode = this.mediaPresence.getRoomCodeForSocket(socketId);
+    if (!roomCode) {
+      return;
+    }
+
+    const existingTimer = this.mediaDisconnectTimersBySocket.get(socketId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.mediaDisconnectTimersBySocket.delete(socketId);
+      const participant = this.mediaPresence.leaveBySocket(socketId);
+      if (!participant) {
+        return;
+      }
+
+      this.server.to(roomCode).emit("webrtc:peer-left", { peerId: participant.peerId });
+    }, DISCONNECT_GRACE_PERIOD_MS);
+
+    this.mediaDisconnectTimersBySocket.set(socketId, timer);
+  }
+
+  private clearMediaDisconnectTimer(socketId: string): void {
+    const timer = this.mediaDisconnectTimersBySocket.get(socketId);
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    this.mediaDisconnectTimersBySocket.delete(socketId);
   }
 
   @SubscribeMessage("room:create")
@@ -629,57 +739,193 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("webrtc:join-room")
-  handleWebrtcJoin(@ConnectedSocket() client: Socket, @MessageBody() _roomCode?: string) {
-    const roomCode = (client.data.roomId as string) ?? _roomCode;
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handleWebrtcJoin(@ConnectedSocket() client: Socket, @MessageBody() data: WebrtcJoinRoomDto) {
     const userId = client.data.userId as string;
-    if (!roomCode) return { success: false };
-    client.to(roomCode).emit("webrtc:peer-joined", { peerId: userId });
-    return { success: true };
+    this.clearMediaDisconnectTimer(client.id);
+    const room = this.getRoomForMediaAction(client, data.roomCode);
+    if (!room) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
+      );
+    }
+
+    const result = this.mediaPresence.joinRoom({
+      room,
+      userId,
+      socketId: client.id,
+      audioEnabled: data.audioEnabled,
+      videoEnabled: data.videoEnabled,
+      activeSocketIds: this.getActiveSocketIdsForUser(userId),
+    });
+
+    if (!result.ok) {
+      return this.failureResult(result.code, result.message);
+    }
+
+    client.data.roomId = room.roomCode;
+    if (result.joined) {
+      client.to(room.roomCode).emit("webrtc:peer-joined", {
+        participant: result.participant,
+      });
+    }
+
+    return this.successResult({
+      selfPeerId: result.selfPeerId,
+      participants: result.participants,
+      iceServers: this.mediaConfig.getIceServers(),
+    });
   }
 
   @SubscribeMessage("webrtc:leave-room")
   handleWebrtcLeave(@ConnectedSocket() client: Socket) {
-    const roomCode = client.data.roomId as string | undefined;
+    this.clearMediaDisconnectTimer(client.id);
+    const roomCode = this.mediaPresence.getRoomCodeForSocket(client.id) ?? this.getResolvedRoomCode(client) ?? null;
+    const participant = this.mediaPresence.leaveBySocket(client.id);
+    if (!participant) {
+      return this.successResult();
+    }
+
+    if (roomCode) {
+      this.server.to(roomCode).emit("webrtc:peer-left", { peerId: participant.peerId });
+    }
+    return this.successResult();
+  }
+
+  @SubscribeMessage("webrtc:update-media-state")
+  @UsePipes(SOCKET_VALIDATION_PIPE)
+  handleWebrtcUpdateMediaState(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: WebrtcMediaStateDto,
+  ) {
+    const room = this.getRoomForMediaAction(client);
     const userId = client.data.userId as string;
-    if (!roomCode) return { success: false };
-    client.to(roomCode).emit("webrtc:peer-left", { peerId: userId });
-    return { success: true };
+    if (!room) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
+      );
+    }
+
+    const participant = this.mediaPresence.updateMediaState(room, userId, data);
+    if (!participant) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_NOT_JOINED,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_NOT_JOINED] as string,
+      );
+    }
+
+    this.emitMediaState(room.roomCode, participant);
+    return this.successResult();
   }
 
   @SubscribeMessage("webrtc:offer")
   handleOffer(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { peerId: string; offer: RTCSessionDescriptionInit },
+    @MessageBody() data: MediaSignalOffer,
   ) {
-    const roomCode = client.data.roomId as string | undefined;
+    const room = this.getRoomForMediaAction(client);
     const userId = client.data.userId as string;
-    if (!roomCode) return { success: false };
-    client.to(roomCode).emit("webrtc:offer", { peerId: userId, offer: data.offer });
-    return { success: true };
+    if (!room) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
+      );
+    }
+
+    if (!this.mediaPresence.getParticipant(room.roomCode, userId)) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_NOT_JOINED,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_NOT_JOINED] as string,
+      );
+    }
+
+    const didEmit = this.emitToMediaPeer(room.roomCode, data.targetPeerId, "webrtc:offer", {
+      fromPeerId: userId,
+      offer: data.offer,
+    });
+
+    if (!didEmit) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND] as string,
+      );
+    }
+
+    return this.successResult();
   }
 
   @SubscribeMessage("webrtc:answer")
   handleAnswer(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { peerId: string; answer: RTCSessionDescriptionInit },
+    @MessageBody() data: MediaSignalAnswer,
   ) {
-    const roomCode = client.data.roomId as string | undefined;
+    const room = this.getRoomForMediaAction(client);
     const userId = client.data.userId as string;
-    if (!roomCode) return { success: false };
-    client.to(roomCode).emit("webrtc:answer", { peerId: userId, answer: data.answer });
-    return { success: true };
+    if (!room) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
+      );
+    }
+
+    if (!this.mediaPresence.getParticipant(room.roomCode, userId)) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_NOT_JOINED,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_NOT_JOINED] as string,
+      );
+    }
+
+    const didEmit = this.emitToMediaPeer(room.roomCode, data.targetPeerId, "webrtc:answer", {
+      fromPeerId: userId,
+      answer: data.answer,
+    });
+
+    if (!didEmit) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND] as string,
+      );
+    }
+
+    return this.successResult();
   }
 
   @SubscribeMessage("webrtc:ice-candidate")
   handleIce(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { peerId: string; candidate: RTCIceCandidateInit },
+    @MessageBody() data: MediaSignalIceCandidate,
   ) {
-    const roomCode = client.data.roomId as string | undefined;
+    const room = this.getRoomForMediaAction(client);
     const userId = client.data.userId as string;
-    if (!roomCode) return { success: false };
-    client.to(roomCode).emit("webrtc:ice-candidate", { peerId: userId, candidate: data.candidate });
-    return { success: true };
+    if (!room) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.NOT_IN_ROOM,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM] as string,
+      );
+    }
+
+    if (!this.mediaPresence.getParticipant(room.roomCode, userId)) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_NOT_JOINED,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_NOT_JOINED] as string,
+      );
+    }
+
+    const didEmit = this.emitToMediaPeer(room.roomCode, data.targetPeerId, "webrtc:ice-candidate", {
+      fromPeerId: userId,
+      candidate: data.candidate,
+    });
+
+    if (!didEmit) {
+      return this.failureResult(
+        SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND,
+        SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND] as string,
+      );
+    }
+
+    return this.successResult();
   }
 
   private syncRoomPlayers(room: import("../room/room.service").ServerRoom) {

@@ -11,6 +11,7 @@ import { ActionLog } from "@/features/game/components/ActionLog/ActionLog";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import type { ChatMessage } from "@/shared/types/socket";
 import { useChatStore } from "@/stores/chatStore";
+import { useRoomStore } from "@/stores/roomStore";
 import { useUserStore } from "@/stores/userStore";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export function SidePanelSocial({
   const { messages: storeMessages } = useChatStore();
   const user = useUserStore((state) => state.user);
   const hasUserHydrated = useUserStore((state) => state.hasHydrated);
+  const maxPlayers = useRoomStore((state) => state.maxPlayers);
   const messages = messagesProp ?? storeMessages;
   const [chatInput, setChatInput] = useState("");
   const [socialTab, setSocialTab] = useState<"chat" | "log">("chat");
@@ -43,24 +45,18 @@ export function SidePanelSocial({
   const currentUserId = hasUserHydrated ? user?.id ?? null : null;
 
   const {
+    status,
+    error,
     localStream,
-    peers,
-    isAudioEnabled,
-    isVideoEnabled,
-    isConnected,
-    startLocalStream,
+    localAudioEnabled,
+    localVideoEnabled,
+    remoteParticipants,
+    isJoined,
+    clearError,
     toggleAudio,
     toggleVideo,
-    endCall,
+    leaveMedia,
   } = useWebRTC(roomCode);
-
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -91,80 +87,137 @@ export function SidePanelSocial({
     },
   ];
 
+  const statusLabel =
+    status === "joined"
+      ? t("game.video.connected")
+      : status === "reconnecting"
+        ? t("game.video.reconnecting", { defaultValue: "Reconnecting call…" })
+        : status === "joining"
+          ? t("game.video.connecting", { defaultValue: "Connecting" })
+          : t("game.video.idle", { defaultValue: "Idle" });
+  const statusTone =
+    status === "joined"
+      ? "bg-emerald-500/15 text-emerald-700"
+      : status === "reconnecting"
+        ? "bg-amber-500/15 text-amber-700"
+        : "bg-muted text-muted-foreground";
+  const remoteEmptySlotCount = Math.max(0, maxPlayers - 1 - remoteParticipants.length);
+
   return (
-    <div className={cn("flex flex-col h-full", className)}>
-      {/* Video Feeds Grid */}
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Icon name="videocam" size={24} className="text-primary" />
-          <h3 className="font-headline font-bold text-sm text-primary uppercase tracking-wider">
-            {t("game.video.title")}
-          </h3>
+    <div className={cn("flex h-full flex-col", className)}>
+      <div className="space-y-3 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Icon name="videocam" size={24} className="text-primary" />
+            <h3 className="font-headline font-bold text-sm uppercase tracking-wider text-primary">
+              {t("game.video.title")}
+            </h3>
+          </div>
+          <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide", statusTone)}>
+            {statusLabel}
+          </span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {/* Self video */}
-          <div className="relative aspect-square rounded-2xl bg-surface-container-high border-2 border-neko-pink overflow-hidden group">
-            {localStream && isVideoEnabled ? (
-              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                <Icon name="videocam_off" size={28} />
-              </div>
-            )}
-            <div className="absolute bottom-1 left-2 bg-black/40 px-1.5 rounded text-[8px] text-white">
-              {t("game.video.you")}
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {isJoined
+            ? t("game.video.liveHint", {
+                defaultValue: "Mic and camera are opt-in. You can stay to watch even if both are off.",
+              })
+            : t("game.video.idleHint", {
+                defaultValue: "Enable your mic or camera when you want to join the room call.",
+              })}
+        </p>
+
+        {error ? (
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="flex items-start justify-between gap-3">
+              <span>{error}</span>
+              <button
+                type="button"
+                className="text-[10px] font-semibold uppercase tracking-wide"
+                onClick={clearError}
+              >
+                {t("common.dismiss", { ns: "common", defaultValue: "Dismiss" })}
+              </button>
             </div>
           </div>
+        ) : null}
 
-          {/* Peer videos */}
-          {peers.slice(0, 3).map((peer) => (
-            <div key={peer.peerId} className="relative aspect-square rounded-2xl bg-surface-container-high border-2 border-white overflow-hidden">
-              {peer.stream ? (
-                <VideoStreamComponent stream={peer.stream} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                  <Icon name="videocam_off" size={28} />
-                </div>
-              )}
-              <div className="absolute bottom-1 left-2 bg-black/40 px-1.5 rounded text-[8px] text-white truncate max-w-[90%]">
-                {peer.peerId.slice(0, 8)}
+        <div className="grid grid-cols-2 gap-3">
+          <MediaTile
+            label={t("game.video.you")}
+            stream={localStream}
+            showVideo={localVideoEnabled}
+            audioEnabled={localAudioEnabled}
+            videoEnabled={localVideoEnabled}
+            isLocal
+          />
+
+          {remoteParticipants.map((participant) => (
+            <MediaTile
+              key={participant.peerId}
+              label={participant.nickname}
+              stream={participant.stream}
+              showVideo={participant.videoEnabled}
+              audioEnabled={participant.audioEnabled}
+              videoEnabled={participant.videoEnabled}
+              connectionState={participant.connectionState}
+            />
+          ))}
+
+          {Array.from({ length: remoteEmptySlotCount }).map((_, index) => (
+            <div
+              key={`empty-${index}`}
+              className="flex aspect-square items-center justify-center rounded-2xl border-2 border-dashed border-outline/30 bg-surface-container-high"
+            >
+              <div className="flex flex-col items-center gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-outline/60">
+                <Icon name="person_add" size={18} className="text-outline/50" />
+                <span>{t("game.video.waiting")}</span>
               </div>
             </div>
           ))}
-
-          {/* Empty slots */}
-          {peers.length < 3 &&
-            Array.from({ length: 3 - peers.length }).map((_, i) => (
-              <div key={`empty-${i}`} className="aspect-square rounded-2xl bg-surface-container-high border-2 border-dashed border-outline/30 flex items-center justify-center">
-                <Icon name="person_add" size={20} className="text-outline/30" />
-              </div>
-            ))}
         </div>
 
-        {/* Video controls */}
         <div className="flex justify-center gap-2 pt-1">
           <Button
-            variant={isAudioEnabled ? "secondary" : "destructive"}
+            variant={isJoined && localAudioEnabled ? "secondary" : "outline"}
             size="icon"
             className="h-9 w-9 rounded-full"
-            onClick={toggleAudio}
+            onClick={() => {
+              void toggleAudio();
+            }}
+            aria-label={
+              localAudioEnabled
+                ? t("game.video.disableAudio", { defaultValue: "Mute microphone" })
+                : t("game.video.enableAudio", { defaultValue: "Enable microphone" })
+            }
           >
-            {isAudioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+            {localAudioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
           </Button>
           <Button
-            variant={isVideoEnabled ? "secondary" : "destructive"}
+            variant={isJoined && localVideoEnabled ? "secondary" : "outline"}
             size="icon"
             className="h-9 w-9 rounded-full"
-            onClick={toggleVideo}
+            onClick={() => {
+              void toggleVideo();
+            }}
+            aria-label={
+              localVideoEnabled
+                ? t("game.video.disableVideo", { defaultValue: "Turn camera off" })
+                : t("game.video.enableVideo", { defaultValue: "Enable camera" })
+            }
           >
-            {isVideoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+            {localVideoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
           </Button>
           <Button
-            variant={localStream ? "destructive" : "outline"}
+            variant="destructive"
             size="icon"
             className="h-9 w-9 rounded-full"
-            onClick={endCall}
-            disabled={!localStream}
+            onClick={() => {
+              void leaveMedia();
+            }}
+            disabled={!isJoined}
+            aria-label={t("game.video.leave", { defaultValue: "Leave call" })}
           >
             <PhoneOff className="h-4 w-4" />
           </Button>
@@ -290,14 +343,63 @@ export function SidePanelSocial({
   );
 }
 
-function VideoStreamComponent({ stream }: { stream: MediaStream }) {
+function MediaTile({
+  label,
+  stream,
+  showVideo,
+  audioEnabled,
+  videoEnabled,
+  connectionState,
+  isLocal = false,
+}: {
+  label: string;
+  stream: MediaStream | null;
+  showVideo: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  connectionState?: RTCPeerConnectionState | "new";
+  isLocal?: boolean;
+}) {
+  const { t } = useTranslation("game");
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    if (!videoRef.current) {
+      return;
     }
+
+    videoRef.current.srcObject = stream;
   }, [stream]);
 
-  return <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />;
+  return (
+    <div className="relative aspect-square overflow-hidden rounded-2xl border-2 border-white/70 bg-surface-container-high shadow-sm">
+      {stream && showVideo ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted={isLocal}
+          playsInline
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-card via-muted/60 to-muted">
+          <Icon name={videoEnabled ? "person" : "videocam_off"} size={28} className="text-muted-foreground" />
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-black/45 px-2 py-1 text-[10px] text-white">
+        <span className="truncate font-semibold">{label}</span>
+        <div className="flex items-center gap-1">
+          {audioEnabled ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
+          {videoEnabled ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
+        </div>
+      </div>
+
+      {!isLocal && connectionState === "new" ? (
+        <div className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white">
+          {t("game.video.connecting", { defaultValue: "Connecting" })}
+        </div>
+      ) : null}
+    </div>
+  );
 }

@@ -66,6 +66,7 @@ import {
   useRoomEntryController,
 } from "@/hooks/use-room-entry-controller";
 import { SidePanelSocial } from "@/features/social";
+import { RoomMediaSessionProvider } from "@/features/social/media/room-media-session";
 import { useGameSocket } from "@/hooks/useGameSocket";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -920,195 +921,197 @@ export function GameRoomClient() {
 
   return (
     <TooltipProvider delayDuration={350}>
-      <div
-        className={cn(
-          "kawaii-room-light-scope room-shell-bg flex min-h-screen flex-col text-foreground",
-        )}
-      >
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <main className="relative flex flex-1 flex-col overflow-hidden">
-            {currentGameState.phase === GAME_PHASE.LOBBY ? (
-              <LobbyView
-                players={currentGameState.players}
-                localPlayer={localPlayer}
-                displayCode={displayCode}
-                isConnected={isConnected}
-                isCreatingRoom={isCreatingRoom}
-                roomMaxPlayers={roomMaxPlayers}
-                canAddBot={canAddLobbyBot}
-                onAddBot={addBot}
-                onStartGame={handleStartGame}
-                onToggleReady={handleToggleReady}
-              />
-            ) : isMainGamePhase ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <BoardView
+      <RoomMediaSessionProvider roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}>
+        <div
+          className={cn(
+            "kawaii-room-light-scope room-shell-bg flex min-h-screen flex-col text-foreground",
+          )}
+        >
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <main className="relative flex flex-1 flex-col overflow-hidden">
+              {currentGameState.phase === GAME_PHASE.LOBBY ? (
+                <LobbyView
                   players={currentGameState.players}
-                  localPlayerId={localPlayerId}
-                  currentPlayerIndex={currentGameState.currentPlayerIndex}
-                  currentPlayer={currentPlayer}
-                  isMyTurn={isMyTurn}
-                  playedCard={currentGameState.playedCard}
-                  currentPlayerName={currentPlayer?.nickname ?? ""}
-                  phase={currentGameState.phase}
-                  lastResolvedDeclaration={currentGameState.lastResolvedDeclaration}
-                  lockedSuit={currentGameState.lockedSuit}
-                  tablePileCount={tablePileCount}
-                  drawPileCount={drawPileCount}
-                  supremeReserve={currentGameState.supremeReserve}
-                  trophiesRemaining={currentGameState.trophiesRemaining}
-                  challengeTimer={currentGameState.challengeTimer}
-                  drawPassAction={
-                    isMyTurn &&
-                    currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
-                    drawPileCount > 0
-                      ? { onDrawPass: handleDrawPass }
-                      : null
-                  }
-                  handDragActive={handDragActive}
-                  handDragActiveRef={handDragActiveRef}
-                  onDrawPassPileDragSession={setDrawPileDragActive}
-                  onHandCardDragSessionChange={(active) => {
-                    handDragActiveRef.current = active;
-                    setHandDragActive(active);
-                  }}
-                  declareDragPreviewCards={localPlayer?.hand ?? []}
-                  playDropZone={
-                    isMyTurn &&
-                    currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
-                    currentGameState.playedCard == null
-                      ? {
-                          highlighted: handDragActive,
-                          onCardDrop: openDeclareWithCard,
-                        }
-                      : null
-                  }
-                  challengeResult={currentGameState.challengeResult}
-                  penaltyFxSnapshot={penaltyFxSnapshot}
-                  phaseContent={renderPhaseUI()}
-                  inlineChallenge={
-                    currentGameState.phase === GAME_PHASE.CHALLENGE_PHASE && currentGameState.playedCard
-                      ? {
-                          players: currentGameState.players,
-                          localPlayerId,
-                          challengeStep: currentGameState.challengeStep ?? "CLAIM_RACE",
-                          challengeClaimHolderId: currentGameState.challengeClaimHolderId ?? null,
-                          challengePassIds: currentGameState.challengePassIds ?? [],
-                          challengeTimer: currentGameState.challengeTimer,
-                          countdownTotalSeconds:
-                            currentGameState.challengeStep === "PICK_TYPE"
-                              ? CHALLENGE_PICK_TYPE_SECONDS
-                              : CHALLENGE_CLAIM_RACE_SECONDS,
-                          onClaimChallenge: handleClaimChallenge,
-                          onChallenge: handleChallenge,
-                          onChallengePass: handleChallengePass,
-                        }
-                      : null
-                  }
-                  tableFooter={
-                    localPlayer && isTabletopLayoutPhase(currentGameState.phase) ? (
-                      <div id={GAME_PLAYER_HAND_ANCHOR_ID} className="scroll-mt-24">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-5">
-                          <div className="shrink-0 lg:max-w-[min(100%,220px)]">
-                            <PlayerSeat
-                              player={localPlayer}
-                              isActive={isMyTurn}
-                              isLocal
-                              dock
-                              compact={isMobileCompact}
-                              wonPileAnchorId={GAME_PLAYER_WON_PILE_ANCHOR_ID}
-                              lastAction={lastActionByPlayerId[localPlayerId]}
-                            />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <PlayerHand
-                              cards={localPlayer.hand}
-                              onInspectCard={handleInspectCard}
-                              selectedCardId={selectedCard}
-                              disabled={
-                                !isMyTurn || currentGameState.phase !== GAME_PHASE.PLAYER_TURN
-                              }
-                              drawPassDrop={
-                                isMyTurn &&
-                                currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
-                                drawPileCount > 0
-                                  ? {
-                                      active: true,
-                                      pileDragActive: drawPileDragActive,
-                                    }
-                                  : null
-                              }
-                            />
+                  localPlayer={localPlayer}
+                  displayCode={displayCode}
+                  isConnected={isConnected}
+                  isCreatingRoom={isCreatingRoom}
+                  roomMaxPlayers={roomMaxPlayers}
+                  canAddBot={canAddLobbyBot}
+                  onAddBot={addBot}
+                  onStartGame={handleStartGame}
+                  onToggleReady={handleToggleReady}
+                />
+              ) : isMainGamePhase ? (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <BoardView
+                    players={currentGameState.players}
+                    localPlayerId={localPlayerId}
+                    currentPlayerIndex={currentGameState.currentPlayerIndex}
+                    currentPlayer={currentPlayer}
+                    isMyTurn={isMyTurn}
+                    playedCard={currentGameState.playedCard}
+                    currentPlayerName={currentPlayer?.nickname ?? ""}
+                    phase={currentGameState.phase}
+                    lastResolvedDeclaration={currentGameState.lastResolvedDeclaration}
+                    lockedSuit={currentGameState.lockedSuit}
+                    tablePileCount={tablePileCount}
+                    drawPileCount={drawPileCount}
+                    supremeReserve={currentGameState.supremeReserve}
+                    trophiesRemaining={currentGameState.trophiesRemaining}
+                    challengeTimer={currentGameState.challengeTimer}
+                    drawPassAction={
+                      isMyTurn &&
+                      currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
+                      drawPileCount > 0
+                        ? { onDrawPass: handleDrawPass }
+                        : null
+                    }
+                    handDragActive={handDragActive}
+                    handDragActiveRef={handDragActiveRef}
+                    onDrawPassPileDragSession={setDrawPileDragActive}
+                    onHandCardDragSessionChange={(active) => {
+                      handDragActiveRef.current = active;
+                      setHandDragActive(active);
+                    }}
+                    declareDragPreviewCards={localPlayer?.hand ?? []}
+                    playDropZone={
+                      isMyTurn &&
+                      currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
+                      currentGameState.playedCard == null
+                        ? {
+                            highlighted: handDragActive,
+                            onCardDrop: openDeclareWithCard,
+                          }
+                        : null
+                    }
+                    challengeResult={currentGameState.challengeResult}
+                    penaltyFxSnapshot={penaltyFxSnapshot}
+                    phaseContent={renderPhaseUI()}
+                    inlineChallenge={
+                      currentGameState.phase === GAME_PHASE.CHALLENGE_PHASE && currentGameState.playedCard
+                        ? {
+                            players: currentGameState.players,
+                            localPlayerId,
+                            challengeStep: currentGameState.challengeStep ?? "CLAIM_RACE",
+                            challengeClaimHolderId: currentGameState.challengeClaimHolderId ?? null,
+                            challengePassIds: currentGameState.challengePassIds ?? [],
+                            challengeTimer: currentGameState.challengeTimer,
+                            countdownTotalSeconds:
+                              currentGameState.challengeStep === "PICK_TYPE"
+                                ? CHALLENGE_PICK_TYPE_SECONDS
+                                : CHALLENGE_CLAIM_RACE_SECONDS,
+                            onClaimChallenge: handleClaimChallenge,
+                            onChallenge: handleChallenge,
+                            onChallengePass: handleChallengePass,
+                          }
+                        : null
+                    }
+                    tableFooter={
+                      localPlayer && isTabletopLayoutPhase(currentGameState.phase) ? (
+                        <div id={GAME_PLAYER_HAND_ANCHOR_ID} className="scroll-mt-24">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-5">
+                            <div className="shrink-0 lg:max-w-[min(100%,220px)]">
+                              <PlayerSeat
+                                player={localPlayer}
+                                isActive={isMyTurn}
+                                isLocal
+                                dock
+                                compact={isMobileCompact}
+                                wonPileAnchorId={GAME_PLAYER_WON_PILE_ANCHOR_ID}
+                                lastAction={lastActionByPlayerId[localPlayerId]}
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <PlayerHand
+                                cards={localPlayer.hand}
+                                onInspectCard={handleInspectCard}
+                                selectedCardId={selectedCard}
+                                disabled={
+                                  !isMyTurn || currentGameState.phase !== GAME_PHASE.PLAYER_TURN
+                                }
+                                drawPassDrop={
+                                  isMyTurn &&
+                                  currentGameState.phase === GAME_PHASE.PLAYER_TURN &&
+                                  drawPileCount > 0
+                                    ? {
+                                        active: true,
+                                        pileDragActive: drawPileDragActive,
+                                      }
+                                    : null
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null
-                  }
-                />
-              </div>
-            ) : (
-              <div className="flex flex-grow flex-col items-center justify-center px-4 py-8">
-                {renderPhaseUI()}
-              </div>
-            )}
-          </main>
+                      ) : null
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-grow flex-col items-center justify-center px-4 py-8">
+                  {renderPhaseUI()}
+                </div>
+              )}
+            </main>
 
-          <aside className="hidden min-h-0 w-80 shrink-0 side-panel-glass xl:flex flex-col">
-          <SidePanelSocial
+            <aside className="hidden min-h-0 w-80 shrink-0 side-panel-glass xl:flex flex-col">
+              <SidePanelSocial
+                roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
+                onSendMessage={socketApi.sendChatMessage}
+                actionLogEntries={
+                  currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
+                }
+              />
+            </aside>
+          </div>
+
+          <MobileChatSheet
+            open={mobileChatOpen}
+            onClose={() => setMobileChatOpen(false)}
             roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
             onSendMessage={socketApi.sendChatMessage}
             actionLogEntries={
               currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
             }
           />
-        </aside>
+
+          <MobileChatFAB
+            onClick={() => setMobileChatOpen(true)}
+            label={t("game.chat.title")}
+          />
+
+          <CardInspectDialog
+            card={inspectCard}
+            open={inspectCard != null}
+            onOpenChange={(open) => {
+              if (!open) setInspectCard(null);
+            }}
+            canChooseToPlay={
+              isMyTurn && currentGameState.phase === GAME_PHASE.PLAYER_TURN
+            }
+            onChooseToPlay={() => {
+              if (inspectCard) openDeclareWithCard(inspectCard.id);
+            }}
+          />
+
+          <DeclareDialog
+            open={showDeclare}
+            onOpenChange={setShowDeclare}
+            card={localPlayer?.hand.find((c) => c.id === selectedCard) ?? null}
+            onDeclare={handleDeclare}
+            lockedSuit={currentGameState.lockedSuit}
+            minDeclarationNumber={minDeclarationRankForState({
+              lockedSuit: currentGameState.lockedSuit,
+              lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+            })}
+            maxDeclarationNumber={maxDeclarationRankForState({
+              lockedSuit: currentGameState.lockedSuit,
+              lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+            })}
+          />
         </div>
-
-        <MobileChatSheet
-          open={mobileChatOpen}
-          onClose={() => setMobileChatOpen(false)}
-          roomCode={code === NEW_ROOM_ROUTE_SEGMENT ? "" : code}
-          onSendMessage={socketApi.sendChatMessage}
-          actionLogEntries={
-            currentGameState.phase === GAME_PHASE.LOBBY ? [] : gameLog
-          }
-        />
-
-        <MobileChatFAB
-          onClick={() => setMobileChatOpen(true)}
-          label={t("game.chat.title")}
-        />
-
-        <CardInspectDialog
-          card={inspectCard}
-          open={inspectCard != null}
-          onOpenChange={(open) => {
-            if (!open) setInspectCard(null);
-          }}
-          canChooseToPlay={
-            isMyTurn && currentGameState.phase === GAME_PHASE.PLAYER_TURN
-          }
-          onChooseToPlay={() => {
-            if (inspectCard) openDeclareWithCard(inspectCard.id);
-          }}
-        />
-
-        <DeclareDialog
-          open={showDeclare}
-          onOpenChange={setShowDeclare}
-          card={localPlayer?.hand.find((c) => c.id === selectedCard) ?? null}
-          onDeclare={handleDeclare}
-          lockedSuit={currentGameState.lockedSuit}
-          minDeclarationNumber={minDeclarationRankForState({
-            lockedSuit: currentGameState.lockedSuit,
-            lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-          })}
-          maxDeclarationNumber={maxDeclarationRankForState({
-            lockedSuit: currentGameState.lockedSuit,
-            lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-          })}
-        />
-      </div>
+      </RoomMediaSessionProvider>
     </TooltipProvider>
   );
 }
