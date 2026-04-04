@@ -1,0 +1,122 @@
+# Build Docker images, push to GHCR, optionally SSH to EC2 and run compose pull/up.
+#
+# Setup (one-time):
+# 1. Repository variables (Settings → Secrets and variables → Actions → Variables):
+#    - NEXT_PUBLIC_API_URL   e.g. https://your.domain/api
+#    - NEXT_PUBLIC_SOCKET_URL e.g. https://your.domain (no trailing slash)
+# 2. Optional — auto-deploy from GitHub to EC2:
+#    - Variable: DEPLOY_TO_EC2 = true
+#    - Secrets: EC2_HOST (IP or hostname), EC2_USER (e.g. ubuntu), EC2_SSH_KEY (private key PEM)
+# 3. On the EC2 host, follow deploy/vm/README.md: /opt/sweet-spicy/, docker-compose.prod.yml,
+#    .env, and `docker login ghcr.io` if images are private.
+#
+# Images are pushed as:
+#   ghcr.io/<lowercase owner>/<lowercase repo>-web:<sha>  (+ branch tag main, latest)
+#   ghcr.io/<lowercase owner>/<lowercase repo>-api:<sha>
+
+name: Build, push, deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      web_image: ${{ steps.image-names.outputs.web_full }}
+      api_image: ${{ steps.image-names.outputs.api_full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require web build URL variables
+        if: ${{ vars.NEXT_PUBLIC_API_URL == '' || vars.NEXT_PUBLIC_SOCKET_URL == '' }}
+        run: |
+          echo "::error::Add Actions variables NEXT_PUBLIC_API_URL and NEXT_PUBLIC_SOCKET_URL (repo Settings → Secrets and variables → Actions → Variables)."
+          exit 1
+
+      - name: Compute image base (lowercase for GHCR)
+        id: image-names
+        run: |
+          REPO_LC=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          BASE="ghcr.io/${REPO_LC}"
+          echo "base=${BASE}" >> "${GITHUB_OUTPUT}"
+          echo "web_full=${BASE}-web:${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "api_full=${BASE}-api:${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "web_branch=${BASE}-web:main" >> "${GITHUB_OUTPUT}"
+          echo "api_branch=${BASE}-api:main" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.image-names.outputs.api_full }}
+            ${{ steps.image-names.outputs.api_branch }}
+            ${{ steps.image-names.outputs.base }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SOCKET_URL=${{ vars.NEXT_PUBLIC_SOCKET_URL }}
+          tags: |
+            ${{ steps.image-names.outputs.web_full }}
+            ${{ steps.image-names.outputs.web_branch }}
+            ${{ steps.image-names.outputs.base }}-web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-ec2:
+    needs: build-and-push
+    if: vars.DEPLOY_TO_EC2 == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          WEB_IMAGE: ${{ needs.build-and-push.outputs.web_image }}
+          API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          envs: WEB_IMAGE,API_IMAGE
+          script: |
+            set -euo pipefail
+            cd /opt/sweet-spicy
+            export WEB_IMAGE API_IMAGE
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml ps
