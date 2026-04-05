@@ -53,7 +53,7 @@ describe("DeclareDialog — mobile vs desktop rendering", () => {
   const defaultProps = {
     open: true,
     onOpenChange: vi.fn(),
-    card: { id: "c1", type: "chili" as const, number: 3, kind: "spice" as const },
+    card: { id: "c1", type: "chili" as const, number: 3, kind: "normal" as const },
     onDeclare: vi.fn(),
   };
 

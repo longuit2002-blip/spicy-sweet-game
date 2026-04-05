@@ -13,6 +13,12 @@ import {
   SNAPPY_SPRING,
 } from "@/features/game/animations";
 import { playerPresenceStats } from "@/features/game/lib/player-presence-stats";
+import {
+  TABLETOP_LAPTOP_OPPONENT_AVATAR_FRAME_CLASS,
+  TABLETOP_LAPTOP_OPPONENT_INITIAL_LETTER_CLASS,
+  TABLETOP_LAPTOP_OPPONENT_NAME_PLATE_CLASS,
+  TABLETOP_LAPTOP_OPPONENT_STATS_BLOCK_CLASS,
+} from "@/lib/viewport-layout.constants";
 
 type BoardPlayer = GamePlayer | ClientGamePlayer;
 
@@ -169,6 +175,7 @@ export function OpponentSeatBubble({
             <div
               className={cn(
                 "relative z-[1] flex h-[3.75rem] w-[3.75rem] items-center justify-center overflow-hidden rounded-md border-[3px] bg-[hsl(var(--surface-rail)/0.85)] shadow-inner backdrop-blur-[1px] sm:h-[4.25rem] sm:w-[4.25rem] md:h-[5rem] md:w-[5rem]",
+                TABLETOP_LAPTOP_OPPONENT_AVATAR_FRAME_CLASS,
                 "transition-[border-color,box-shadow] duration-300",
                 isCurrentTurn
                   ? "border-[hsl(var(--primary)/0.7)] shadow-[inset_0_0_0_1px_hsl(var(--trophy-gold)/0.35),0_0_20px_hsl(var(--primary)/0.25)]"
@@ -177,7 +184,12 @@ export function OpponentSeatBubble({
                     : "border-[hsl(var(--trophy-gold)/0.28)]",
               )}
             >
-              <span className="select-none bg-[var(--gradient-gold)] bg-clip-text font-display text-2xl font-bold text-transparent drop-shadow-sm sm:text-3xl md:text-4xl">
+              <span
+                className={cn(
+                  "select-none bg-[var(--gradient-gold)] bg-clip-text font-display text-2xl font-bold text-transparent drop-shadow-sm sm:text-3xl md:text-4xl",
+                  TABLETOP_LAPTOP_OPPONENT_INITIAL_LETTER_CLASS,
+                )}
+              >
                 {opp.nickname[0]?.toUpperCase()}
               </span>
             </div>
@@ -187,6 +199,7 @@ export function OpponentSeatBubble({
             className={cn(
               "-skew-x-6 transform-gpu px-2 py-0.5 sm:py-1",
               "w-[min(100%,8.25rem)] border border-[hsl(var(--trophy-gold)/0.4)] bg-gradient-to-b from-background/80 to-muted/70 text-center shadow-sm backdrop-blur-[2px] sm:w-[min(100%,9.5rem)]",
+              TABLETOP_LAPTOP_OPPONENT_NAME_PLATE_CLASS,
               isCurrentTurn && "border-[hsl(var(--primary)/0.55)] from-primary/15 to-primary/5",
               isUpNext && !isCurrentTurn && "border-dashed border-primary/45",
             )}
@@ -208,7 +221,10 @@ export function OpponentSeatBubble({
           ) : null}
 
           <div
-            className="flex max-w-[7.25rem] flex-col items-center gap-1 text-ui-tiny text-muted-foreground sm:max-w-[8.5rem] sm:text-ui-micro"
+            className={cn(
+              "flex max-w-[7.25rem] flex-col items-center gap-1 text-ui-tiny text-muted-foreground sm:max-w-[8.5rem] sm:text-ui-micro",
+              TABLETOP_LAPTOP_OPPONENT_STATS_BLOCK_CLASS,
+            )}
             aria-hidden
           >
             <div className="flex flex-wrap justify-center gap-0.5">

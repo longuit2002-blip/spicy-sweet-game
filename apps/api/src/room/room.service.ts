@@ -6,18 +6,21 @@ import {
   SOCKET_ERROR_CODE,
   SOCKET_ERROR_DETAIL_MESSAGE,
   SOCKET_ERROR_MESSAGE,
-  type SocketErrorCode,
   type GameState,
   type RoomPlayer,
   type RoomState,
+  type SocketErrorCode,
 } from "@sweet-spicy/shared-types";
 import {
   computePlayerFinalScore,
   createInitialState,
+  generateRoomCode,
   pickNextLobbyBotNickname,
   startGame as engineStartGame,
-  generateRoomCode,
 } from "@sweet-spicy/game-logic";
+import { RoomObservabilityService } from "./room-observability.service";
+import { RoomRepository } from "./room.repository";
+import { RoomSessionPersistenceService } from "./room-session-persistence.service";
 
 export interface ServerRoom {
   roomCode: string;
@@ -27,6 +30,8 @@ export interface ServerRoom {
   players: RoomPlayer[];
   gameState: GameState | null;
   createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
 }
 
 interface RoomFailure {
@@ -49,11 +54,14 @@ export interface LeaveRoomResult {
 
 @Injectable()
 export class RoomService {
-  readonly rooms = new Map<string, ServerRoom>();
-  readonly userToRoom = new Map<string, string>();
+  constructor(
+    private readonly roomRepository: RoomRepository,
+    private readonly persistence: RoomSessionPersistenceService,
+    private readonly observability: RoomObservabilityService,
+  ) {}
 
   private findRoomCodeByGamePlayer(userId: string): string | null {
-    for (const [roomCode, room] of this.rooms) {
+    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
       if (room.gameState?.players.some((player) => player.id === userId)) {
         return roomCode;
       }
@@ -92,12 +100,12 @@ export class RoomService {
   }
 
   private exitPreviousRoomForSwitch(userId: string): LeaveRoomResult | undefined {
-    const roomCode = this.userToRoom.get(userId);
+    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
     if (!roomCode) {
       return undefined;
     }
 
-    const room = this.rooms.get(roomCode);
+    const room = this.roomRepository.getRoomByCode(roomCode);
     if (room?.gameState) {
       return this.handoffUserToBot(userId);
     }
@@ -150,9 +158,12 @@ export class RoomService {
       players: [player],
       gameState: null,
       createdAt: new Date(),
+      startedAt: null,
+      finishedAt: null,
     };
-    this.rooms.set(roomCode, room);
-    this.userToRoom.set(userId, roomCode);
+    this.roomRepository.saveRoom(room);
+    this.roomRepository.assignUserToRoom(userId, roomCode);
+    this.persistence.persistRoomSnapshot(room);
     return { room, previousExit };
   }
 
@@ -162,8 +173,8 @@ export class RoomService {
     nickname: string,
   ): (RoomSuccess & { resumed?: boolean; previousExit?: LeaveRoomResult }) | RoomFailure {
     const code = roomCode.toUpperCase();
-    const previousCode = this.userToRoom.get(userId);
-    const room = this.rooms.get(code);
+    const previousCode = this.roomRepository.getRoomCodeForUser(userId);
+    const room = this.roomRepository.getRoomByCode(code);
     if (!room) {
       return {
         ok: false,
@@ -173,13 +184,17 @@ export class RoomService {
     }
 
     if (this.reclaimGameSeat(room, userId, nickname)) {
-      this.userToRoom.set(userId, code);
+      this.roomRepository.assignUserToRoom(userId, code);
+      this.observability.recordReconnectSuccess();
+      this.persistence.persistRoomSnapshot(room);
       return { ok: true, room, resumed: true };
     }
 
     const hasExistingPlayer = this.reclaimLobbySeat(room, userId, nickname);
     if (hasExistingPlayer) {
-      this.userToRoom.set(userId, code);
+      this.roomRepository.assignUserToRoom(userId, code);
+      this.observability.recordReconnectSuccess();
+      this.persistence.persistRoomSnapshot(room);
       return { ok: true, room, resumed: true };
     }
 
@@ -195,13 +210,6 @@ export class RoomService {
         ok: false,
         code: SOCKET_ERROR_CODE.ROOM_FULL,
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ROOM_FULL],
-      };
-    }
-    if (hasExistingPlayer) {
-      return {
-        ok: false,
-        code: SOCKET_ERROR_CODE.ALREADY_IN_ROOM,
-        message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.ALREADY_IN_ROOM],
       };
     }
 
@@ -220,67 +228,77 @@ export class RoomService {
       trophyCount: 0,
     };
     room.players.push(player);
-    this.userToRoom.set(userId, code);
+    this.roomRepository.assignUserToRoom(userId, code);
+    this.persistence.persistRoomSnapshot(room);
     return { ok: true, room, previousExit };
   }
 
   leaveRoom(userId: string): LeaveRoomResult {
-    const roomCode = this.userToRoom.get(userId) ?? null;
-    if (!roomCode) return { roomCode: null, room: null };
-    const room = this.rooms.get(roomCode);
-    if (!room) {
-      this.userToRoom.delete(userId);
+    const roomCode = this.roomRepository.getRoomCodeForUser(userId) ?? null;
+    if (!roomCode) {
       return { roomCode: null, room: null };
     }
 
-    room.players = room.players.filter((p) => p.id !== userId);
-    this.userToRoom.delete(userId);
+    const room = this.roomRepository.getRoomByCode(roomCode);
+    if (!room) {
+      this.roomRepository.clearUserRoom(userId);
+      return { roomCode: null, room: null };
+    }
+
+    room.players = room.players.filter((player) => player.id !== userId);
+    this.roomRepository.clearUserRoom(userId);
 
     if (room.players.length === 0) {
-      this.rooms.delete(roomCode);
+      this.roomRepository.deleteRoom(roomCode);
+      this.persistence.deleteRoomSnapshot(roomCode);
       return { roomCode, room: null };
     }
 
     let newHostId: string | undefined;
     if (room.hostId === userId) {
-      const nextHost = room.players.find((p) => !p.isBot) ?? room.players[0];
+      const nextHost = room.players.find((player) => !player.isBot) ?? room.players[0];
       room.hostId = nextHost.id;
-      for (const p of room.players) {
-        p.isHost = p.id === room.hostId;
-      }
+      room.players = room.players.map((player) => ({
+        ...player,
+        isHost: player.id === room.hostId,
+      }));
       newHostId = room.hostId;
     }
 
+    this.persistence.persistRoomSnapshot(room);
     return { roomCode, room, newHostId, handedOffToBot: false };
   }
 
   handoffUserToBot(userId: string): LeaveRoomResult {
-    const roomCode = this.userToRoom.get(userId) ?? this.findRoomCodeByGamePlayer(userId);
+    const roomCode =
+      this.roomRepository.getRoomCodeForUser(userId) ?? this.findRoomCodeByGamePlayer(userId);
     if (!roomCode) {
       return { roomCode: null, room: null, handedOffToBot: false };
     }
 
-    const room = this.rooms.get(roomCode);
+    const room = this.roomRepository.getRoomByCode(roomCode);
     if (!room?.gameState) {
-      this.userToRoom.delete(userId);
+      this.roomRepository.clearUserRoom(userId);
       return { roomCode, room: room ?? null, handedOffToBot: false };
     }
 
     const player = room.gameState.players.find((gamePlayer) => gamePlayer.id === userId);
     if (!player) {
-      this.userToRoom.delete(userId);
+      this.roomRepository.clearUserRoom(userId);
       return { roomCode, room, handedOffToBot: false };
     }
 
     player.isBot = true;
-    this.userToRoom.delete(userId);
+    this.roomRepository.clearUserRoom(userId);
     this.syncRoomPlayersFromGame(room);
+    this.observability.recordDisconnectHandoff();
+    this.persistence.persistRoomSnapshot(room);
 
     return { roomCode, room, handedOffToBot: true };
   }
 
   setReady(userId: string, ready: boolean): RoomSuccess | RoomFailure {
-    const roomCode = this.userToRoom.get(userId);
+    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
     if (!roomCode) {
       return {
         ok: false,
@@ -288,15 +306,17 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    const room = this.rooms.get(roomCode);
+
+    const room = this.roomRepository.getRoomByCode(roomCode);
     if (!room) {
-      this.userToRoom.delete(userId);
+      this.roomRepository.clearUserRoom(userId);
       return {
         ok: false,
         code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
+
     if (room.status !== "WAITING") {
       return {
         ok: false,
@@ -304,7 +324,8 @@ export class RoomService {
         message: SOCKET_ERROR_DETAIL_MESSAGE.READY_WRONG_PHASE,
       };
     }
-    const player = room.players.find((p) => p.id === userId);
+
+    const player = room.players.find((roomPlayer) => roomPlayer.id === userId);
     if (!player) {
       return {
         ok: false,
@@ -312,7 +333,9 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
+
     player.isReady = ready;
+    this.persistence.persistRoomSnapshot(room);
     return { ok: true, room };
   }
 
@@ -321,13 +344,15 @@ export class RoomService {
     socketRoomCode?: string | null,
   ): ({ ok: true; room: ServerRoom; player: RoomPlayer } & RoomSuccess) | RoomFailure {
     const normalizedSocketCode = socketRoomCode ? socketRoomCode.toUpperCase() : undefined;
-    let room: ServerRoom | undefined = normalizedSocketCode ? this.rooms.get(normalizedSocketCode) : undefined;
-    if (room && !room.players.some((p) => p.id === hostUserId)) {
+    let room = normalizedSocketCode
+      ? this.roomRepository.getRoomByCode(normalizedSocketCode)
+      : undefined;
+    if (room && !room.players.some((player) => player.id === hostUserId)) {
       room = undefined;
     }
     if (!room) {
-      const mappedCode = this.userToRoom.get(hostUserId);
-      room = mappedCode ? this.rooms.get(mappedCode) : undefined;
+      const mappedCode = this.roomRepository.getRoomCodeForUser(hostUserId);
+      room = mappedCode ? this.roomRepository.getRoomByCode(mappedCode) : undefined;
     }
     if (!room) {
       return {
@@ -336,16 +361,16 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    if (!room.players.some((p) => p.id === hostUserId)) {
+    if (!room.players.some((player) => player.id === hostUserId)) {
       return {
         ok: false,
         code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    const mapCode = this.userToRoom.get(hostUserId);
-    if (mapCode !== room.roomCode) {
-      this.userToRoom.set(hostUserId, room.roomCode);
+    const mappedCode = this.roomRepository.getRoomCodeForUser(hostUserId);
+    if (mappedCode !== room.roomCode) {
+      this.roomRepository.assignUserToRoom(hostUserId, room.roomCode);
     }
     if (room.hostId !== hostUserId) {
       return {
@@ -369,7 +394,7 @@ export class RoomService {
       };
     }
 
-    const nickname = pickNextLobbyBotNickname(room.players.map((p) => p.nickname));
+    const nickname = pickNextLobbyBotNickname(room.players.map((player) => player.nickname));
     const player: RoomPlayer = {
       id: `bot:${randomUUID()}`,
       nickname,
@@ -382,11 +407,12 @@ export class RoomService {
       trophyCount: 0,
     };
     room.players.push(player);
+    this.persistence.persistRoomSnapshot(room);
     return { ok: true, room, player };
   }
 
   startGame(hostId: string): RoomSuccess | RoomFailure {
-    const roomCode = this.userToRoom.get(hostId);
+    const roomCode = this.roomRepository.getRoomCodeForUser(hostId);
     if (!roomCode) {
       return {
         ok: false,
@@ -394,7 +420,7 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    const room = this.rooms.get(roomCode);
+    const room = this.roomRepository.getRoomByCode(roomCode);
     if (!room) {
       return {
         ok: false,
@@ -416,7 +442,7 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.MIN_PLAYERS_NOT_MET],
       };
     }
-    if (!room.players.every((p) => p.isReady)) {
+    if (!room.players.every((player) => player.isReady)) {
       return {
         ok: false,
         code: SOCKET_ERROR_CODE.ALL_PLAYERS_NOT_READY,
@@ -425,56 +451,75 @@ export class RoomService {
     }
 
     room.status = "IN_PROGRESS";
-    let gs = createInitialState(room.roomCode);
-    gs.players = room.players.map((p) => ({
-      id: p.id,
-      nickname: p.nickname,
+    room.startedAt = new Date();
+    room.finishedAt = null;
+    let gameState = createInitialState(room.roomCode);
+    gameState.players = room.players.map((player) => ({
+      id: player.id,
+      nickname: player.nickname,
       hand: [],
       wonPile: [],
       trophyCount: 0,
-      isReady: p.isReady,
-      isHost: p.isHost,
-      ...(p.isBot ? { isBot: true as const } : {}),
+      isReady: player.isReady,
+      isHost: player.isHost,
+      ...(player.isBot ? { isBot: true as const } : {}),
     }));
-    gs = engineStartGame(gs);
-    room.gameState = gs;
-    room.players = gs.players.map((gp) => ({
-      id: gp.id,
-      nickname: gp.nickname,
-      isHost: room.hostId === gp.id,
+    gameState = engineStartGame(gameState);
+    room.gameState = gameState;
+    room.players = gameState.players.map((player) => ({
+      id: player.id,
+      nickname: player.nickname,
+      isHost: room.hostId === player.id,
       isReady: true,
-      score: computePlayerFinalScore(gp),
-      hand: gp.hand,
-      wonPileCount: gp.wonPile.length,
-      trophyCount: gp.trophyCount,
-      ...(gp.isBot ? { isBot: true as const } : {}),
+      score: computePlayerFinalScore(player),
+      hand: player.hand,
+      wonPileCount: player.wonPile.length,
+      trophyCount: player.trophyCount,
+      ...(player.isBot ? { isBot: true as const } : {}),
     }));
+    this.persistence.persistRoomSnapshot(room);
     return { ok: true, room };
   }
 
   getRoomByCode(roomCode: string): ServerRoom | undefined {
-    return this.rooms.get(roomCode.toUpperCase());
+    return this.roomRepository.getRoomByCode(roomCode);
   }
 
   getRoomForUser(userId: string): ServerRoom | undefined {
-    const code = this.userToRoom.get(userId);
-    return code ? this.rooms.get(code) : undefined;
+    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
+    return roomCode ? this.roomRepository.getRoomByCode(roomCode) : undefined;
   }
 
   /** Keep `room.players` in sync with authoritative `room.gameState` (hands, scores, flags). */
   syncRoomPlayersFromGame(room: ServerRoom): void {
-    if (!room.gameState) return;
+    if (!room.gameState) {
+      return;
+    }
+
     room.status = room.gameState.phase === "END_GAME" ? "FINISHED" : "IN_PROGRESS";
-    room.players = room.gameState.players.map((gp) => ({
-      id: gp.id,
-      nickname: gp.nickname,
-      isHost: room.hostId === gp.id,
+    if (room.status === "FINISHED" && room.finishedAt == null) {
+      room.finishedAt = new Date();
+      if (room.startedAt) {
+        const durationSeconds = Math.max(
+          0,
+          Math.round((room.finishedAt.getTime() - room.startedAt.getTime()) / 1000),
+        );
+        this.observability.recordMatchCompleted(durationSeconds);
+      }
+      this.persistence.persistMatchSummary(room);
+    }
+
+    room.players = room.gameState.players.map((player) => ({
+      id: player.id,
+      nickname: player.nickname,
+      isHost: room.hostId === player.id,
       isReady: true,
-      score: computePlayerFinalScore(gp),
-      hand: gp.hand,
-      wonPileCount: gp.wonPile.length,
-      trophyCount: gp.trophyCount,
-      ...(gp.isBot ? { isBot: true as const } : {}),
+      score: computePlayerFinalScore(player),
+      hand: player.hand,
+      wonPileCount: player.wonPile.length,
+      trophyCount: player.trophyCount,
+      ...(player.isBot ? { isBot: true as const } : {}),
     }));
+    this.persistence.persistRoomSnapshot(room);
   }
 }

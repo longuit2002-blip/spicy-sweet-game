@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActionLog } from "@/features/game/components/ActionLog/ActionLog";
 import { SocialMediaSection } from "@/features/social/media/components/SocialMediaSection";
 import type { ChatMessage } from "@/shared/types/socket";
-import { useChatStore } from "@/stores/chatStore";
+import { useRoomSessionStore } from "@/stores/room-session-store";
 import { useUserStore } from "@/stores/userStore";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export function SidePanelSocial({
   className,
 }: SidePanelSocialProps) {
   const { t } = useTranslation("game");
-  const { messages: storeMessages } = useChatStore();
+  const storeMessages = useRoomSessionStore((state) => state.messages);
   const user = useUserStore((state) => state.user);
   const hasUserHydrated = useUserStore((state) => state.hasHydrated);
   const messages = messagesProp ?? storeMessages;

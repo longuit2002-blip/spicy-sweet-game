@@ -24,7 +24,7 @@ import type {
 import { SOCKET_ERROR_CODE } from "@sweet-spicy/shared-types";
 import { getSocket, type GameSocket } from "@/lib/socket-client";
 import { toast } from "@/hooks/use-toast";
-import { useRoomStore } from "@/stores/roomStore";
+import { useRoomSessionStore } from "@/stores/room-session-store";
 
 type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting";
 
@@ -246,8 +246,8 @@ export function RoomMediaSessionProvider({
     (key: string, defaultValue: string) => t(key, { defaultValue }),
     [t],
   );
-  const roomPlayers = useRoomStore((state) => state.players);
-  const isRoomSocketConnected = useRoomStore((state) => state.isConnected);
+  const roomPlayers = useRoomSessionStore((state) => state.players);
+  const isRoomSocketConnected = useRoomSessionStore((state) => state.isConnected);
   const errorRef = useRef<string | null>(null);
   const mediaSessionStoreRef = useRef<StoreApi<MediaSessionViewState> | null>(null);
   if (!mediaSessionStoreRef.current) {

@@ -47,6 +47,10 @@ import {
   REVEAL_REMAIN_AFTER_LOCK_THRESHOLD,
   ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H,
 } from "@/lib/game-room.constants";
+import {
+  SHORT_VIEWPORT_COMPACT_OPPONENTS_CLASS,
+  SHORT_VIEWPORT_COMPACT_PLAYFIELD_CLASS,
+} from "@/lib/viewport-layout.constants";
 import { PlayfieldRevealActionStrip } from "@/features/game/components/PlayfieldRevealActionStrip";
 import { useIsLandscapeMobile } from "@/hooks/use-mobile";
 import {
@@ -522,6 +526,7 @@ function BoardViewImpl({
         (stretchPlayfieldBlock || revealPlayedInScroll) && "min-h-0 flex-1",
         "items-stretch overflow-visible",
         isLandscapeMobile && "landscape-compact-playfield",
+        SHORT_VIEWPORT_COMPACT_PLAYFIELD_CLASS,
       )}
     >
       <div
@@ -620,7 +625,13 @@ function BoardViewImpl({
       <div className="relative mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col px-2 py-1.5 sm:px-4 sm:py-2">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 sm:gap-2.5">
           {sortedOpponentSlots.length > 0 ? (
-            <div className={cn("w-full min-w-0 shrink-0", isLandscapeMobile && "landscape-compact-opponents")}>
+            <div
+              className={cn(
+                "w-full min-w-0 shrink-0",
+                isLandscapeMobile && "landscape-compact-opponents",
+                SHORT_VIEWPORT_COMPACT_OPPONENTS_CLASS,
+              )}
+            >
               <OpponentsTurnCarousel
                 slots={sortedOpponentSlots.map(({ player, turnRelative }) => ({ player, turnRelative }))}
                 currentPlayer={currentPlayer}

@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/shared/types/socket';
-import { useChatStore } from '@/stores/chatStore';
+import { useRoomSessionStore } from '@/stores/room-session-store';
 import { useUserStore } from '@/stores/userStore';
 
 const SYSTEM_MESSAGE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
@@ -18,7 +18,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({ messages: messagesProp, onSendMessage }: ChatPanelProps) {
   const { t } = useTranslation(['game', 'common']);
-  const { messages: storeMessages } = useChatStore();
+  const storeMessages = useRoomSessionStore((state) => state.messages);
   const user = useUserStore((state) => state.user);
   const hasUserHydrated = useUserStore((state) => state.hasHydrated);
   const messages = messagesProp ?? storeMessages;

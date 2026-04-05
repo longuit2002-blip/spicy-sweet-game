@@ -24,18 +24,28 @@ import {
 import { useDeclareDragPreviewHand } from "@/features/game/dnd/declare-drag-preview-hand-context";
 import { cn } from "@/lib/utils";
 import { useIsLandscapeMobile } from "@/hooks/use-mobile";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
   PLAYER_HAND_FAN_LOOSE_OVERLAP_PX,
   PLAYER_HAND_FAN_MAX_OVERLAP_PX,
   PLAYER_HAND_FAN_MIN_VISIBLE_PX,
   PLAYER_HAND_FAN_ROTATION_MAX_DEG,
   PLAYER_HAND_FAN_ROTATION_NUMERATOR,
+  PLAYER_HAND_CARD_WIDTH_MIN_PX,
   PLAYER_HAND_DRAGGING_Z_INDEX,
   PLAYER_HAND_HOVER_Z_INDEX_BOOST,
   PLAYER_HAND_SELECTED_Z_INDEX,
   PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
   handCardWidthFromStripPx,
 } from "@/lib/game-room.constants";
+import {
+  SHORT_VIEWPORT_COMPACT_HAND_CLASS,
+  TABLETOP_LAPTOP_HAND_MEASURED_WIDTH_SCALE_RATIO,
+  TABLETOP_LAPTOP_WIDTH_BAND_MAX_PX,
+  TABLETOP_LAPTOP_WIDTH_BAND_MIN_PX,
+} from "@/lib/viewport-layout.constants";
+
+const TABLETOP_LAPTOP_BAND_MEDIA_QUERY = `(min-width: ${TABLETOP_LAPTOP_WIDTH_BAND_MIN_PX}px) and (max-width: ${TABLETOP_LAPTOP_WIDTH_BAND_MAX_PX}px)`;
 
 export type PlayerHandDrawPassDropConfig = {
   active: boolean;
@@ -242,6 +252,7 @@ export const PlayerHand = memo(function PlayerHand({
   const { t } = useTranslation("game");
   const reduced = useReducedMotion();
   const isLandscapeMobile = useIsLandscapeMobile();
+  const isTabletopLaptopBand = useMediaQuery(TABLETOP_LAPTOP_BAND_MEDIA_QUERY);
   const skipNextClickRef = useRef(false);
   const prevHandKeyRef = useRef<string | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -290,7 +301,14 @@ export const PlayerHand = memo(function PlayerHand({
     return () => ro.disconnect();
   }, []);
 
-  const cardWidthPx = useMemo(() => handCardWidthFromStripPx(stripWidth), [stripWidth]);
+  const cardWidthPx = useMemo(() => {
+    const base = handCardWidthFromStripPx(stripWidth);
+    if (!isTabletopLaptopBand) return base;
+    return Math.max(
+      PLAYER_HAND_CARD_WIDTH_MIN_PX,
+      Math.round(base * TABLETOP_LAPTOP_HAND_MEASURED_WIDTH_SCALE_RATIO),
+    );
+  }, [stripWidth, isTabletopLaptopBand]);
   const overlapPx = useMemo(
     () => computeFanOverlapPx(cards.length, cardWidthPx, stripWidth),
     [cards.length, cardWidthPx, stripWidth],
@@ -347,6 +365,7 @@ export const PlayerHand = memo(function PlayerHand({
             "relative z-[1] flex w-full min-w-0 items-end justify-center overflow-x-auto overscroll-x-contain px-4 pb-4 pt-6 sm:px-8 sm:pb-5 sm:pt-7",
             PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS,
             isLandscapeMobile && "landscape-compact-hand pt-2 pb-2 sm:pt-2 sm:pb-2",
+            SHORT_VIEWPORT_COMPACT_HAND_CLASS,
             "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             "snap-x snap-mandatory md:snap-none",
             isLandscapeMobile && "!snap-x !snap-mandatory",

@@ -13,3 +13,30 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model RoomSessionSnapshot {
+  roomCode    String   @id
+  hostId      String
+  status      String
+  maxPlayers  Int
+  roomState   Json
+  gameState   Json?
+  createdAt   DateTime
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  updatedAt   DateTime @updatedAt
+}
+
+model MatchSummary {
+  id              String   @id
+  roomCode        String
+  startedAt       DateTime
+  finishedAt      DateTime
+  playerCount     Int
+  durationSeconds Int
+  winnerIds       String[]
+  summary         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([roomCode, finishedAt])
+}

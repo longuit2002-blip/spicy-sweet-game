@@ -2,16 +2,18 @@ import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { applyBotChallengePhaseStep, applyBotPlayerTurnIfCurrentIsBot } from "@sweet-spicy/game-logic";
 import { GAME_PHASE } from "@sweet-spicy/shared-types";
-import { RoomService } from "../room/room.service";
 import { BOT_DRIVER_TICK_MS } from "./game-loop.constants";
 import { GameBroadcastService } from "./game-broadcast.service";
 import type { RealtimeServer } from "../realtime/realtime-socket.types";
+import { RoomRepository } from "../room/room.repository";
+import { RoomService } from "../room/room.service";
 
 @Injectable()
 export class GameBotDriverService {
   private server: RealtimeServer | null = null;
 
   constructor(
+    private readonly roomRepository: RoomRepository,
     private readonly roomService: RoomService,
     private readonly broadcast: GameBroadcastService,
   ) {}
@@ -24,7 +26,7 @@ export class GameBotDriverService {
   tick() {
     if (!this.server) return;
 
-    for (const [roomCode, room] of this.roomService.rooms) {
+    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
       if (room.status !== "IN_PROGRESS" || !room.gameState) continue;
       const gs = room.gameState;
 

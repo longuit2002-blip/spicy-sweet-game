@@ -67,6 +67,7 @@ import {
   GAME_TABLE_PLAYFIELD_OUTER_MIN_H_CLASS,
   isRoundResolutionInterstitialPhase,
   PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED_CLASS,
+  PLAYFIELD_DECLARE_DROP_SLOT_WIDTH_CLASS,
   PLAYFIELD_DECLARE_CENTER_STACK_GAP_CLASS,
   PLAYFIELD_DECLARE_CENTER_STACK_MAX_W_CLASS,
   PLAYFIELD_DECLARE_EMPTY_HEADER_PLACEHOLDER_MIN_H_CLASS,
@@ -81,6 +82,12 @@ import {
   TABLEAU_FACE_DOWN_CARD_W_CLASS,
   TABLEAU_FACE_DOWN_LAYER_OFFSET_PX,
 } from "@/lib/game-room.constants";
+import {
+  SHORT_VIEWPORT_COMPACT_GAME_TABLE_OUTER_CLASS,
+  TABLETOP_LAPTOP_DECLARE_CHAIN_EMOJI_CLASS,
+  TABLETOP_LAPTOP_DECLARE_CHAIN_RANK_CLASS,
+  TABLETOP_LAPTOP_DECLARE_CHAIN_SUIT_TEXT_CLASS,
+} from "@/lib/viewport-layout.constants";
 import {
   GAME_DND_DRAG_DRAW_PASS_ID,
   GAME_DND_DROP_PLAY_ZONE,
@@ -168,8 +175,8 @@ const REDUCED_CARD_MOTION_DURATION_SECONDS = 0.16;
 const PILE_STACK_VISIBLE_MAX = 6;
 const TABLEAU_STACK_DEPTH = 4;
 
-/** PLAYER_TURN drag target: same footprint as played claim card. */
-const PLAYFIELD_DROP_SLOT_CARD_BOX = PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED_CLASS;
+/** PLAYER_TURN drag target: same footprint as the played-claim card to avoid center-slot jump. */
+const PLAYFIELD_DROP_SLOT_CARD_BOX = PLAYFIELD_DECLARE_DROP_SLOT_WIDTH_CLASS;
 
 /**
  * Game hint bubble — parent uses `absolute` so this does not consume flex height (toast / chat overlay).
@@ -210,12 +217,15 @@ function PlayerTurnDeclareHintToast({
       initial={reducedMotion ? false : { opacity: 0, y: 4, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={SNAPPY_SPRING}
-      className="pointer-events-none w-full"
+      className="pointer-events-none w-full min-w-0"
       role="status"
       aria-live="polite"
     >
       <motion.div
-        className={cn("flex gap-2.5 px-3 py-2.5 sm:px-3.5 sm:py-3", PLAYFIELD_GAME_CHAT_TOAST_BUBBLE_CLASS)}
+        className={cn(
+          "flex min-w-0 flex-nowrap items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-3.5 sm:py-2.5",
+          PLAYFIELD_GAME_CHAT_TOAST_BUBBLE_CLASS,
+        )}
         animate={
           reducedMotion
             ? undefined
@@ -234,8 +244,8 @@ function PlayerTurnDeclareHintToast({
             : { duration: 2.45, repeat: Infinity, ease: "easeInOut" }
         }
       >
-        <Icon name="chat_bubble" size={20} className="mt-0.5 shrink-0 text-primary" fill={1} />
-        <p className="min-w-0 flex-1 text-left text-ui-tiny font-medium leading-snug text-foreground sm:text-ui-micro">
+        <Icon name="chat_bubble" size={20} className="shrink-0 text-primary" fill={1} />
+        <p className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap text-left text-ui-caption font-medium leading-none text-foreground kawaii-scrollbar sm:text-ui-tiny md:text-ui-micro">
           {body}
         </p>
       </motion.div>
@@ -274,23 +284,30 @@ function PlayerTurnDeclareChainStrip({
       initial={reducedMotion ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={SNAPPY_SPRING}
-      className={cn(
-        "flex min-w-0 max-w-full flex-col items-center gap-2 px-2.5 py-1.5 sm:gap-3 sm:px-4 sm:py-2.5",
-        trackClass,
-      )}
+      className={cn("mx-auto w-fit max-w-full min-w-0", trackClass, "kawaii-scrollbar")}
       role="region"
       aria-label={chainAria}
     >
-      <div className="flex flex-wrap items-center justify-center gap-2 min-[400px]:gap-3 sm:gap-4">
-        <motion.div
+      <div
+        className={cn(
+          "declare-context-track__row whitespace-nowrap gap-x-1.5 py-0.5 sm:gap-x-2 sm:py-1 md:gap-x-2.5",
+          "px-2.5 sm:px-3 md:px-4",
+        )}
+      >
+        <motion.span
           key={lockedSuit}
-          className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-2.5"
+          className={cn(
+            "declare-context-track__suit gap-x-1 sm:gap-x-1.5 md:gap-x-2",
+          )}
           initial={reducedMotion ? false : { scale: 0.94, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ ...SNAPPY_SPRING, delay: reducedMotion ? 0 : 0.04 }}
         >
           <motion.span
-            className="select-none text-2xl min-[400px]:text-3xl sm:text-4xl"
+            className={cn(
+              "inline-flex shrink-0 select-none leading-none text-xl min-[400px]:text-2xl sm:text-3xl md:text-4xl",
+              TABLETOP_LAPTOP_DECLARE_CHAIN_EMOJI_CLASS,
+            )}
             aria-hidden
             animate={
               reducedMotion
@@ -309,29 +326,36 @@ function PlayerTurnDeclareChainStrip({
           </motion.span>
           <span
             className={cn(
-              "font-headline text-base font-semibold tracking-tight min-[400px]:text-lg sm:text-xl",
+              "shrink-0 whitespace-nowrap font-headline text-sm font-semibold leading-none tracking-tight min-[400px]:text-base sm:text-lg md:text-xl",
               suitTextClass,
+              TABLETOP_LAPTOP_DECLARE_CHAIN_SUIT_TEXT_CLASS,
             )}
           >
             {SPICE_LABEL[lockedSuit]}
           </span>
-        </motion.div>
+        </motion.span>
 
         {lastNum != null ? (
           <>
-            <span className="hidden h-9 w-px shrink-0 bg-border/55 sm:block" aria-hidden />
-            <motion.div
+            <span
+              className="shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-muted-foreground/70 sm:text-base"
+              aria-hidden
+            >
+              |
+            </span>
+            <motion.span
               key={lastNum}
               className={cn(
-                "flex items-center justify-center text-xl min-[400px]:text-2xl sm:text-3xl",
+                "declare-context-track__rank whitespace-nowrap leading-none text-lg min-[400px]:text-xl sm:text-2xl md:text-3xl",
                 rankChipClass,
+                TABLETOP_LAPTOP_DECLARE_CHAIN_RANK_CLASS,
               )}
               initial={reducedMotion ? false : { scale: 0.72, opacity: 0, rotate: -6 }}
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 440, damping: 24 }}
             >
               {lastNum}
-            </motion.div>
+            </motion.span>
           </>
         ) : null}
       </div>
@@ -1393,10 +1417,12 @@ export function GameTableDeclarationSection({
                           />
                         ) : null}
 
-                        <PlayerTurnDeclareChainStrip
-                          lockedSuit={lockedSuit}
-                          lastResolvedDeclaration={lastResolvedDeclaration}
-                        />
+                        <div className="w-full min-w-0 self-stretch text-left">
+                          <PlayerTurnDeclareChainStrip
+                            lockedSuit={lockedSuit}
+                            lastResolvedDeclaration={lastResolvedDeclaration}
+                          />
+                        </div>
 
                         <div
                           ref={setPlayDropSlotRef}
@@ -1441,9 +1467,9 @@ export function GameTableDeclarationSection({
                             <>
                               <Icon
                                 name="move_down"
-                                size={44}
+                                size={36}
                                 className={cn(
-                                  "text-primary/60",
+                                  "text-primary/60 sm:text-[2.75rem]",
                                   !drawPassDragActive &&
                                     !reducedMotion &&
                                     "motion-safe:animate-bounce",
@@ -1589,6 +1615,7 @@ export function GameTable({
         className={cn(
           "relative z-0 flex w-full flex-col items-center justify-center gap-4 px-2 py-4 sm:px-3 sm:py-6",
           GAME_TABLE_PLAYFIELD_OUTER_MIN_H_CLASS,
+          SHORT_VIEWPORT_COMPACT_GAME_TABLE_OUTER_CLASS,
         )}
       >
         <GameTablePlayfield

@@ -3,7 +3,8 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@/components/ui/icon";
-import { useRoomStore } from "@/stores/roomStore";
+import { useRoomSessionStore } from "@/stores/room-session-store";
+import { cn } from "@/lib/utils";
 import {
   getMediaSessionStatusPresentation,
   MediaSessionControls,
@@ -56,7 +57,7 @@ const SocialMediaHeader = memo(function SocialMediaHeader() {
 
 const SocialMediaParticipantGrid = memo(function SocialMediaParticipantGrid() {
   const { t } = useTranslation("game");
-  const maxPlayers = useRoomStore((state) => state.maxPlayers);
+  const maxPlayers = useRoomSessionStore((state) => state.maxPlayers);
   const { localStream, localAudioEnabled, localVideoEnabled } = useRoomMediaSessionLocalState();
   const remoteParticipants = useRoomMediaSessionRemoteParticipants();
   const remoteEmptySlotCount = Math.max(0, maxPlayers - 1 - remoteParticipants.length);
@@ -130,7 +131,11 @@ const SocialMediaControlsSection = memo(function SocialMediaControlsSection() {
 
 export const SocialMediaSection = memo(function SocialMediaSection() {
   return (
-    <div className="max-xl:max-h-[min(42vh,260px)] max-xl:shrink-0 max-xl:overflow-y-auto max-xl:kawaii-scrollbar space-y-2 p-3 sm:space-y-3 sm:p-4 xl:max-h-none xl:overflow-visible">
+    <div
+      className={cn(
+        "social-media-section-xl-short max-xl:max-h-[min(42vh,260px)] max-xl:shrink-0 max-xl:overflow-y-auto max-xl:kawaii-scrollbar space-y-2 p-3 sm:space-y-3 sm:p-4 xl:max-h-none xl:overflow-visible kawaii-scrollbar",
+      )}
+    >
       <SocialMediaHeader />
       <SocialMediaParticipantGrid />
       <SocialMediaControlsSection />

@@ -5,6 +5,9 @@ const MOBILE_BREAKPOINT = 768;
 /**
  * Max viewport height (px) that still counts as "mobile" even when width exceeds
  * {@link MOBILE_BREAKPOINT}. Covers landscape phones (e.g. iPhone 12 Pro landscape = 844×390).
+ *
+ * **Not** the same as short laptop/tablet tiers — see `SHORT_VIEWPORT_*` in
+ * `apps/web/src/lib/viewport-layout.constants.ts` and `globals.css` (800 / 700px).
  */
 const LANDSCAPE_MOBILE_MAX_HEIGHT = 500;
 

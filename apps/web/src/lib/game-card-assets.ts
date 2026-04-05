@@ -1,5 +1,7 @@
 import type { GameCard, SpiceType } from "@sweet-spicy/shared-types";
 
+import { TABLETOP_LAPTOP_DECLARE_RANK_CHIP_DENSE_CLASS } from "./viewport-layout.constants";
+
 /** Display-only card for tableau trophy pile — maps to {@link TROPHY_FRONT_SRC} via {@link getGameCardFrontSrc}. */
 export const TABLEAU_TROPHY_DISPLAY_CARD = {
   id: "tableau-trophy-display",
@@ -53,11 +55,11 @@ export const SPICE_DECLARE_CONTEXT_TRACK_CLASS: Record<SpiceType, string> = {
 /** Rank chip inside the strip — border / fill / glow per {@link SpiceType} (Tailwind spice tokens). */
 export const SPICE_DECLARE_CONTEXT_RANK_CHIP_CLASS: Record<SpiceType, string> = {
   chili:
-    "min-w-[2.75rem] rounded-md border-2 border-chili/55 bg-chili/[0.16] px-2.5 py-1 font-bold tabular-nums text-chili shadow-[0_0_22px_-6px_hsl(var(--chili)/0.55),inset_0_1px_0_hsl(var(--chili-glow)/0.35)]",
+    `min-w-[2.75rem] rounded-md border-2 border-chili/55 bg-chili/[0.16] px-2.5 py-1 font-bold tabular-nums text-chili shadow-[0_0_22px_-6px_hsl(var(--chili)/0.55),inset_0_1px_0_hsl(var(--chili-glow)/0.35)] ${TABLETOP_LAPTOP_DECLARE_RANK_CHIP_DENSE_CLASS}`,
   lemon:
-    "min-w-[2.75rem] rounded-md border-2 border-lemon-glow/60 bg-lemon/[0.12] px-2.5 py-1 font-bold tabular-nums text-lemon shadow-[0_0_22px_-6px_hsl(var(--lemon-glow)/0.4),inset_0_1px_0_hsl(var(--lemon-glow)/0.28)]",
+    `min-w-[2.75rem] rounded-md border-2 border-lemon-glow/60 bg-lemon/[0.12] px-2.5 py-1 font-bold tabular-nums text-lemon shadow-[0_0_22px_-6px_hsl(var(--lemon-glow)/0.4),inset_0_1px_0_hsl(var(--lemon-glow)/0.28)] ${TABLETOP_LAPTOP_DECLARE_RANK_CHIP_DENSE_CLASS}`,
   avocado:
-    "min-w-[2.75rem] rounded-md border-2 border-avocado/55 bg-avocado/[0.15] px-2.5 py-1 font-bold tabular-nums text-avocado shadow-[0_0_22px_-6px_hsl(var(--avocado)/0.45),inset_0_1px_0_hsl(var(--avocado-glow)/0.32)]",
+    `min-w-[2.75rem] rounded-md border-2 border-avocado/55 bg-avocado/[0.15] px-2.5 py-1 font-bold tabular-nums text-avocado shadow-[0_0_22px_-6px_hsl(var(--avocado)/0.45),inset_0_1px_0_hsl(var(--avocado-glow)/0.32)] ${TABLETOP_LAPTOP_DECLARE_RANK_CHIP_DENSE_CLASS}`,
 };
 
 /** Suit label emphasis in the same strip (pairs with {@link SPICE_DECLARE_CONTEXT_TRACK_CLASS}). */

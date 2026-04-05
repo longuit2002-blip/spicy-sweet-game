@@ -4,17 +4,12 @@ import { useEffect, useCallback, useMemo, useRef } from "react";
 import { createSocket, getSocket, disconnectSocket } from "@/lib/socket-client";
 import { useToast } from "@/hooks/use-toast";
 import { refreshAccessToken, useUserStore } from "@/stores/userStore";
-import { useRoomStore } from "@/stores/roomStore";
-import { useGameStore } from "@/stores/gameStore";
-import { useChatStore } from "@/stores/chatStore";
 import type {
   AddLobbyBotResult,
   ChallengeType,
-  ClientGameState,
   ClientToServerEvents,
   CreateRoomResult,
   JoinResult,
-  RoomState,
   SocketActionResult,
 } from "@sweet-spicy/shared-types";
 import {
@@ -24,6 +19,7 @@ import {
   SOCKET_ERROR_CODE,
   SOCKET_ERROR_DETAIL_MESSAGE,
 } from "@sweet-spicy/shared-types";
+import { useRoomSessionStore } from "@/stores/room-session-store";
 
 const SOCKET_ERROR_TOAST_DEDUPE_MS = 1500;
 
@@ -51,42 +47,26 @@ function trimTrailingUndefined<TArgs extends readonly unknown[]>(args: TArgs): u
   return trimmedArgs;
 }
 
-function toRoomPlayersFromGameState(gameState: ClientGameState) {
-  return gameState.players.map((player) => ({
-    id: player.id,
-    nickname: player.nickname,
-    isReady: player.isReady,
-    isHost: player.isHost,
-    score: player.score,
-    trophyCount: player.trophyCount,
-    ...(player.isBot ? { isBot: true } : {}),
-  }));
-}
-
 export function useGameSocket() {
   const { toast } = useToast();
   const accessToken = useUserStore((state) => state.accessToken);
   const isAuthenticated = useUserStore((state) => state.isAuthenticated);
-  const setPlayers = useRoomStore((state) => state.setPlayers);
-  const addPlayer = useRoomStore((state) => state.addPlayer);
-  const removePlayer = useRoomStore((state) => state.removePlayer);
-  const setPlayerReady = useRoomStore((state) => state.setPlayerReady);
-  const setHost = useRoomStore((state) => state.setHost);
-  const setConnected = useRoomStore((state) => state.setConnected);
-  const setRoomCode = useRoomStore((state) => state.setRoomCode);
-  const setMaxPlayers = useRoomStore((state) => state.setMaxPlayers);
-  const resetRoomStore = useRoomStore((state) => state.reset);
-  const setGameState = useGameStore((state) => state.setGameState);
-  const resetGameState = useGameStore((state) => state.resetGameState);
-  const addMessage = useChatStore((state) => state.addMessage);
-  const clearMessages = useChatStore((state) => state.clearMessages);
+  const applyRoomJoined = useRoomSessionStore((state) => state.applyRoomJoined);
+  const applyPlayerJoined = useRoomSessionStore((state) => state.applyPlayerJoined);
+  const applyPlayerLeft = useRoomSessionStore((state) => state.applyPlayerLeft);
+  const applyPlayerReady = useRoomSessionStore((state) => state.applyPlayerReady);
+  const applyHostChanged = useRoomSessionStore((state) => state.applyHostChanged);
+  const applyGameState = useRoomSessionStore((state) => state.applyGameState);
+  const setConnected = useRoomSessionStore((state) => state.setConnected);
+  const resetSessionState = useRoomSessionStore((state) => state.reset);
+  const addMessage = useRoomSessionStore((state) => state.addMessage);
+  const clearMessages = useRoomSessionStore((state) => state.clearMessages);
   const lastToastRef = useRef<{ key: string; at: number } | null>(null);
 
   const resetClientState = useCallback(() => {
-    resetRoomStore();
-    resetGameState();
+    resetSessionState();
     clearMessages();
-  }, [clearMessages, resetGameState, resetRoomStore]);
+  }, [clearMessages, resetSessionState]);
 
   const showSocketToast = useCallback(
     (title: string, message: string) => {
@@ -124,7 +104,7 @@ export function useGameSocket() {
 
     const handleConnect = () => {
       setConnected(true);
-      const cachedRoomCode = normalizeJoinRoomCode(useRoomStore.getState().code);
+      const cachedRoomCode = normalizeJoinRoomCode(useRoomSessionStore.getState().code);
       if (!cachedRoomCode) {
         return;
       }
@@ -165,51 +145,14 @@ export function useGameSocket() {
         });
     };
 
-    const handleRoomJoined = (room: RoomState) => {
-      setPlayers(room.players.map((p) => ({ ...p, isReady: p.isReady ?? false })));
-      setRoomCode(room.roomCode);
-      setMaxPlayers(room.maxPlayers);
-    };
-
-    const handlePlayerJoined = (player: {
-      id: string;
-      nickname: string;
-      isReady?: boolean;
-      isHost?: boolean;
-      isBot?: boolean;
-    }) => {
-      addPlayer({
-        id: player.id,
-        nickname: player.nickname,
-        isReady: player.isReady ?? false,
-        isHost: player.isHost,
-        ...(player.isBot ? { isBot: true } : {}),
-      });
-    };
-
-    const handlePlayerLeft = ({ playerId }: { playerId: string }) => {
-      removePlayer(playerId);
-    };
-
-    const handlePlayerReady = ({ playerId, ready }: { playerId: string; ready: boolean }) => {
-      setPlayerReady(playerId, ready);
-    };
-
-    const handleHostChanged = ({ newHostId }: { newHostId: string }) => {
-      setHost(newHostId);
-    };
-
-    const handleGameStart = (gameState: ClientGameState) => {
-      setPlayers(toRoomPlayersFromGameState(gameState));
-      setRoomCode(gameState.roomCode);
-      setGameState(gameState);
-    };
-
-    const handleStateUpdate = (gameState: ClientGameState) => {
-      setPlayers(toRoomPlayersFromGameState(gameState));
-      setRoomCode(gameState.roomCode);
-      setGameState(gameState);
-    };
+    const handleRoomJoined = applyRoomJoined;
+    const handlePlayerJoined = applyPlayerJoined;
+    const handlePlayerLeft = ({ playerId }: { playerId: string }) => applyPlayerLeft(playerId);
+    const handlePlayerReady = ({ playerId, ready }: { playerId: string; ready: boolean }) =>
+      applyPlayerReady(playerId, ready);
+    const handleHostChanged = ({ newHostId }: { newHostId: string }) => applyHostChanged(newHostId);
+    const handleGameStart = applyGameState;
+    const handleStateUpdate = applyGameState;
 
     const handleChatMessage = (message: Parameters<typeof addMessage>[0]) => {
       addMessage(message);
@@ -251,18 +194,16 @@ export function useGameSocket() {
   }, [
     accessToken,
     addMessage,
-    addPlayer,
+    applyGameState,
+    applyHostChanged,
+    applyPlayerJoined,
+    applyPlayerLeft,
+    applyPlayerReady,
+    applyRoomJoined,
     clearMessages,
     isAuthenticated,
-    removePlayer,
     resetClientState,
     setConnected,
-    setGameState,
-    setHost,
-    setMaxPlayers,
-    setPlayerReady,
-    setPlayers,
-    setRoomCode,
     showSocketToast,
   ]);
 

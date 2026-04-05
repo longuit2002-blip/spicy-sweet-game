@@ -14,6 +14,27 @@ import {
   type GamePhase,
 } from "@sweet-spicy/shared-types";
 
+import {
+  SHORT_VIEWPORT_DECLARATION_PLAYFIELD_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_GAME_TABLE_OUTER_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_HAND_STRIP_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_ROUND_PILE_RAIL_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_ROUND_RESOLUTION_SHELL_MIN_H_OVERRIDE_CLASS,
+  SHORT_VIEWPORT_TABLEAU_PILE_STACK_MIN_H_OVERRIDE_CLASS,
+  TABLETOP_LAPTOP_CLAIM_CARD_W_CLASS,
+  TABLETOP_LAPTOP_DUEL_CARD_H_CLASS,
+  TABLETOP_LAPTOP_DUEL_CARD_W_CLASS,
+  TABLETOP_LAPTOP_HAND_FALLBACK_W_CLASS,
+  TABLETOP_LAPTOP_OPPONENT_CELL_MIN_W_CLASS,
+  TABLETOP_LAPTOP_ROUND_CARD_BOX_W_CLASS,
+  TABLETOP_LAPTOP_ROUND_STACK_VIEWPORT_H_CLASS,
+  TABLETOP_LAPTOP_ROUND_STACK_VIEWPORT_W_CLASS,
+  TABLETOP_LAPTOP_SIDE_RAIL_GAP_X_CLASS,
+  TABLETOP_LAPTOP_TABLEAU_FACE_DOWN_H_CLASS,
+  TABLETOP_LAPTOP_TABLEAU_FACE_DOWN_W_CLASS,
+} from "./viewport-layout.constants";
+
 export {
   CHALLENGE_PHASE_COUNTDOWN_SECONDS,
   DEFAULT_ROOM_MAX_PLAYERS,
@@ -84,7 +105,8 @@ export const ROUND_RESOLUTION_FX_MAX_PILE_CARDS = 6;
  * Minimum height for the BoardView bottom phase strip when interstitial `phaseContent` can appear
  * (e.g. `TROPHY_AWARDED`) so the column does not collapse between beats.
  */
-export const ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H = "min-h-[min(10rem,24dvh)]";
+export const ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H =
+  `min-h-[min(10rem,24dvh)] ${SHORT_VIEWPORT_ROUND_RESOLUTION_BOTTOM_STRIP_MIN_H_OVERRIDE_CLASS}` as const;
 
 /**
  * BoardView duel rails: `top-1/2 -translate-y-1/2` on the **tall** `relative flex-1` playfield wrapper (declaration + scroll).
@@ -194,7 +216,8 @@ export const PLAYER_HAND_DRAGGING_Z_INDEX = 100;
  * Min height for the horizontal-scroll hand strip (card height + top slack for rotate/ring/badges + hover + shadow).
  * Hand card height is `aspect-[2/3]` from {@link handCardWidthFromStripPx} / {@link SPICE_CARD_HAND_FALLBACK_WIDTH_CLASS}; extra space avoids clipping above `items-end`.
  */
-export const PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS = "min-h-[12.5rem] sm:min-h-[15rem] md:min-h-[18rem]" as const;
+export const PLAYER_HAND_STRIP_MIN_HEIGHT_CLASS =
+  `min-h-[12.5rem] sm:min-h-[15rem] md:min-h-[18rem] ${SHORT_VIEWPORT_HAND_STRIP_MIN_H_OVERRIDE_CLASS}` as const;
 
 /** Framer Motion scale — center seat (hero) vs wings; strong TCG “duel field” read. */
 export const OPPONENT_CAROUSEL_SCALE_CENTER = 1;
@@ -202,7 +225,7 @@ export const OPPONENT_CAROUSEL_SCALE_SIDE = 0.82;
 export const OPPONENT_CAROUSEL_SCALE_FAR = 0.68;
 /** Snap column — wide enough for portrait + ornate frame. */
 export const OPPONENT_CAROUSEL_CELL_MIN_WIDTH_CLASS =
-  "min-w-[9rem] sm:min-w-[10.75rem] lg:min-w-[12rem]" as const;
+  `min-w-[9rem] sm:min-w-[10.75rem] lg:min-w-[12rem] ${TABLETOP_LAPTOP_OPPONENT_CELL_MIN_W_CLASS}` as const;
 /** `rotateY` per index step from focused seat (subtle arc, Yu-Gi-Oh–style duel row). */
 export const OPPONENT_CAROUSEL_ARC_ROTATE_DEG_PER_STEP = 8;
 /** `translateZ` (px) when seat is carousel focus — pops hero toward camera. */
@@ -222,7 +245,7 @@ export const DRAW_PASS_COACH_HINT_REVEAL_DELAY_MS = 1400;
  * so chain + drop slot do not sit in an oversized vertical frame on laptop viewports.
  */
 export const DECLARATION_PLAYFIELD_MIN_H_EMPTY_PLAYER_TURN_CLASS =
-  "min-h-[min(34dvh,19rem)] sm:min-h-[min(46dvh,30rem)] lg:min-h-[min(52dvh,36rem)]" as const;
+  `min-h-[min(34dvh,19rem)] sm:min-h-[min(46dvh,30rem)] lg:min-h-[min(52dvh,36rem)] ${SHORT_VIEWPORT_DECLARATION_PLAYFIELD_MIN_H_OVERRIDE_CLASS}` as const;
 
 /** Offline-only: delay before a bot plays a card. */
 export const OFFLINE_BOT_ACTION_DELAY_MS = 1500;
@@ -260,7 +283,7 @@ export const OFFLINE_BOT_DISPLAY_NAMES = [
 
 /** When a claim is on the table: min-height by breakpoint so the column does not jump across phases. */
 export const DECLARATION_PLAYFIELD_MIN_H_PLAYED_CLAIM_CLASS =
-  "min-h-[min(40dvh,22rem)] sm:min-h-[min(52vh,34rem)] lg:min-h-[min(58vh,40rem)]" as const;
+  `min-h-[min(40dvh,22rem)] sm:min-h-[min(52vh,34rem)] lg:min-h-[min(58vh,40rem)] ${SHORT_VIEWPORT_DECLARATION_PLAYFIELD_MIN_H_OVERRIDE_CLASS}` as const;
 
 /**
  * Shared shell body for declare / played-claim playfield (max-w, gap, py, perspective).
@@ -301,59 +324,66 @@ export const PLAYFIELD_DECLARE_EMPTY_HEADER_PLACEHOLDER_MIN_H_CLASS =
 
 /** Wider shell for in-flow round-resolution panel (`TROPHY_AWARDED`; merged `phaseContent`). */
 export const DECLARATION_PLAYFIELD_SHELL_ROUND_RESOLUTION_LAYOUT_CLASS =
-  "relative z-10 mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 min-h-[min(45dvh,26rem)] sm:min-h-[min(56vh,38rem)] sm:py-4 lg:max-w-6xl lg:min-h-[min(62vh,44rem)] xl:max-w-7xl" as const;
+  `relative z-10 mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col justify-center gap-3 [perspective:1200px] py-2 min-h-[min(45dvh,26rem)] sm:min-h-[min(56vh,38rem)] sm:py-4 lg:max-w-6xl lg:min-h-[min(62vh,44rem)] xl:max-w-7xl ${SHORT_VIEWPORT_ROUND_RESOLUTION_SHELL_MIN_H_OVERRIDE_CLASS}` as const;
 
 /** Side rails: fixed rem tracks on small screens so center column stays stable. */
 export const PLAYFIELD_SIDE_RAIL_GRID_CLASS =
-  "grid w-full min-w-0 flex-1 grid-cols-[7.25rem_minmax(0,1fr)] items-start gap-x-2 gap-y-2 sm:grid-cols-[8.25rem_minmax(0,1fr)_8.25rem] md:grid-cols-[9rem_minmax(0,1fr)_9rem] sm:gap-x-2 sm:gap-y-0 lg:gap-x-4" as const;
+  `grid w-full min-w-0 flex-1 grid-cols-[7.25rem_minmax(0,1fr)] items-start gap-x-2 gap-y-2 sm:grid-cols-[8.25rem_minmax(0,1fr)_8.25rem] md:grid-cols-[9rem_minmax(0,1fr)_9rem] sm:gap-x-2 sm:gap-y-0 lg:gap-x-4 ${TABLETOP_LAPTOP_SIDE_RAIL_GAP_X_CLASS}` as const;
 
 /** Round pile anchor cell — height for stack + chip. */
 export const PLAYFIELD_ROUND_PILE_ANCHOR_CELL_CLASS =
-  "col-start-1 row-start-1 flex w-full min-w-0 shrink-0 items-start justify-end self-start pr-0.5 sm:pr-2 min-h-[8rem] min-[420px]:min-h-[8.75rem] sm:min-h-[10.5rem] md:min-h-[11.75rem] lg:min-h-[12rem]" as const;
+  `col-start-1 row-start-1 flex w-full min-w-0 shrink-0 items-start justify-end self-start pr-0.5 sm:pr-2 min-h-[8rem] min-[420px]:min-h-[8.75rem] sm:min-h-[10.5rem] md:min-h-[11.75rem] lg:min-h-[12rem] ${SHORT_VIEWPORT_ROUND_PILE_RAIL_MIN_H_OVERRIDE_CLASS}` as const;
 
 /**
  * Claim card / empty drop slot width (declare → challenge → reveal).
  * Laptop widths (lg without xl) stay closer to side rails — avoid a single `lg:` jump to an oversized hero card.
  */
 export const PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED_CLASS =
-  "w-[8.5rem] min-[420px]:w-[9rem] sm:w-[9.75rem] md:w-[10.25rem] lg:w-[10.75rem] xl:w-[11.5rem] 2xl:w-[12.75rem]" as const;
+  `w-[8.5rem] min-[420px]:w-[9rem] sm:w-[9.75rem] md:w-[10.25rem] lg:w-[10.75rem] xl:w-[11.5rem] 2xl:w-[12.75rem] ${TABLETOP_LAPTOP_CLAIM_CARD_W_CLASS}` as const;
 
 /** Contested pile decorative stack viewport (face-down layers). */
 export const PLAYFIELD_ROUND_STACK_VIEWPORT_CLASS =
-  "relative h-[7.25rem] w-[4.875rem] shrink-0 overflow-visible rounded-lg bg-transparent min-[420px]:h-[8.25rem] min-[420px]:w-[5.5rem] sm:h-[8.75rem] sm:w-[6.25rem] md:h-[9.75rem] md:w-[6.875rem] lg:h-[10rem] lg:w-[7rem]" as const;
+  `relative h-[7.25rem] w-[4.875rem] shrink-0 overflow-visible rounded-lg bg-transparent min-[420px]:h-[8.25rem] min-[420px]:w-[5.5rem] sm:h-[8.75rem] sm:w-[6.25rem] md:h-[9.75rem] md:w-[6.875rem] lg:h-[10rem] lg:w-[7rem] ${TABLETOP_LAPTOP_ROUND_STACK_VIEWPORT_W_CLASS} ${TABLETOP_LAPTOP_ROUND_STACK_VIEWPORT_H_CLASS}` as const;
 
 /** Width classes for round-pile card backs inside {@link PLAYFIELD_ROUND_STACK_VIEWPORT_CLASS} (pairs with aspect 2/3). */
 export const PLAYFIELD_ROUND_CARD_BOX_WIDTH_CLASS =
-  "w-[3.875rem] min-[420px]:w-[4.625rem] sm:w-[5.25rem] md:w-[6rem] lg:w-[6.25rem]" as const;
+  `w-[3.875rem] min-[420px]:w-[4.625rem] sm:w-[5.25rem] md:w-[6rem] lg:w-[6.25rem] ${TABLETOP_LAPTOP_ROUND_CARD_BOX_W_CLASS}` as const;
 
 /** Tableau pile column: label + stack vertical space. */
 export const PLAYFIELD_TABLEAU_PILE_STACK_AREA_CLASS =
-  "flex min-h-[7.5rem] flex-col items-center justify-end min-[420px]:min-h-[8.25rem] sm:min-h-[9.5rem] md:min-h-[10.5rem]" as const;
+  `flex min-h-[7.5rem] flex-col items-center justify-end min-[420px]:min-h-[8.25rem] sm:min-h-[9.5rem] md:min-h-[10.5rem] ${SHORT_VIEWPORT_TABLEAU_PILE_STACK_MIN_H_OVERRIDE_CLASS}` as const;
 
 /** Face-down stack footprint in supply rails (matches {@link SPICE_CARD_TABLEAU_WIDTH_CLASS}). */
 export const TABLEAU_FACE_DOWN_CARD_W_CLASS =
-  "w-[5.5rem] min-[420px]:w-[6.25rem] sm:w-[7.25rem] md:w-[8rem]" as const;
+  `w-[5.5rem] min-[420px]:w-[6.25rem] sm:w-[7.25rem] md:w-[8rem] ${TABLETOP_LAPTOP_TABLEAU_FACE_DOWN_W_CLASS}` as const;
 export const TABLEAU_FACE_DOWN_CARD_H_CLASS =
-  "h-[8.25rem] min-[420px]:h-[9.375rem] sm:h-[10.875rem] md:h-[12rem]" as const;
+  `h-[8.25rem] min-[420px]:h-[9.375rem] sm:h-[10.875rem] md:h-[12rem] ${TABLETOP_LAPTOP_TABLEAU_FACE_DOWN_H_CLASS}` as const;
 /** Inset between decorative face-down layers in supply rails (px). */
 export const TABLEAU_FACE_DOWN_LAYER_OFFSET_PX = 3.5;
 
 /** Duel supply columns (matches {@link SPICE_CARD_DUEL_WIDTH_CLASS}); decorative stack layers reuse these same w/h classes as the top card-back surface. */
 export const DUEL_TABLEAU_CARD_W_CLASS =
-  "w-[4.25rem] min-[420px]:w-[5.25rem] sm:w-[5.75rem] md:w-[6.75rem] lg:w-[7.5rem] xl:w-[8rem] 2xl:w-[8.75rem]" as const;
+  `w-[4.25rem] min-[420px]:w-[5.25rem] sm:w-[5.75rem] md:w-[6.75rem] lg:w-[7.5rem] xl:w-[8rem] 2xl:w-[8.75rem] ${TABLETOP_LAPTOP_DUEL_CARD_W_CLASS}` as const;
 export const DUEL_TABLEAU_CARD_H_CLASS =
-  "h-[6.375rem] min-[420px]:h-[7.875rem] sm:h-[8.625rem] md:h-[10.125rem] lg:h-[11.25rem] xl:h-[12rem] 2xl:h-[13.125rem]" as const;
+  `h-[6.375rem] min-[420px]:h-[7.875rem] sm:h-[8.625rem] md:h-[10.125rem] lg:h-[11.25rem] xl:h-[12rem] 2xl:h-[13.125rem] ${TABLETOP_LAPTOP_DUEL_CARD_H_CLASS}` as const;
 export const DUEL_TABLEAU_LAYER_OFFSET_PX = 4;
+
+/**
+ * Empty `PLAYER_TURN` declare drop slot — same footprint as the played-claim card so the center slot
+ * does not jump between “current claim” and “drag a card here” states.
+ */
+export const PLAYFIELD_DECLARE_DROP_SLOT_WIDTH_CLASS =
+  PLAYFIELD_CLAIM_CARD_WIDTH_PLAYED_CLASS;
 
 export const GAME_TABLE_LOBBY_SHELL_MIN_H_CLASS =
   "min-h-[min(28dvh,11rem)] sm:min-h-[200px] md:min-h-[220px]" as const;
 
 export const GAME_TABLE_PLAYFIELD_OUTER_MIN_H_CLASS =
-  "min-h-[min(32dvh,12rem)] sm:min-h-[200px] md:min-h-[240px]" as const;
+  `min-h-[min(32dvh,12rem)] sm:min-h-[200px] md:min-h-[240px] ${SHORT_VIEWPORT_GAME_TABLE_OUTER_MIN_H_OVERRIDE_CLASS}` as const;
 
 /** SpiceCard `hand` fallback when strip width is unknown — keep aligned with {@link handCardWidthFromStripPx} end states. */
 export const SPICE_CARD_HAND_FALLBACK_WIDTH_CLASS =
-  "w-[5.25rem] min-[420px]:w-[5.75rem] sm:w-[7.5rem] md:w-[8.5rem]" as const;
+  `w-[5.25rem] min-[420px]:w-[5.75rem] sm:w-[7.5rem] md:w-[8.5rem] ${TABLETOP_LAPTOP_HAND_FALLBACK_W_CLASS}` as const;
 
 /** SpiceCard `tableau` — same footprint as {@link TABLEAU_FACE_DOWN_CARD_W_CLASS}. */
 export const SPICE_CARD_TABLEAU_WIDTH_CLASS = TABLEAU_FACE_DOWN_CARD_W_CLASS;

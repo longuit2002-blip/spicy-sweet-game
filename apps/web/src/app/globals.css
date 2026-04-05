@@ -408,6 +408,69 @@
     }
   }
 
+  /**
+   * Short viewports (tablet landscape, small laptops) — not phone-landscape (see LANDSCAPE_MOBILE_MAX_HEIGHT in use-mobile.tsx).
+   * Sync px with apps/web/src/lib/viewport-layout.constants.ts (SHORT_VIEWPORT_COMPACT_MAX_HEIGHT_PX / TIGHT).
+   */
+  @media (max-height: 800px) {
+    .short-viewport-compact-hand {
+      min-height: 11rem !important;
+      padding-top: 1rem !important;
+      padding-bottom: 0.75rem !important;
+    }
+    .short-viewport-compact-playfield {
+      min-height: min(34dvh, 13rem) !important;
+    }
+    .short-viewport-compact-game-table-outer {
+      min-height: min(26dvh, 9rem) !important;
+    }
+    .short-viewport-compact-opponents {
+      padding-top: 0.375rem !important;
+      padding-bottom: 0.375rem !important;
+    }
+    .short-viewport-compact-opponents > [role="list"] {
+      padding-top: 0.375rem !important;
+      padding-bottom: 0.375rem !important;
+      gap: 0.625rem !important;
+    }
+  }
+
+  @media (max-height: 700px) {
+    .short-viewport-compact-hand {
+      min-height: 10rem !important;
+      padding-top: 0.75rem !important;
+      padding-bottom: 0.5rem !important;
+    }
+    .short-viewport-compact-playfield {
+      min-height: min(30dvh, 11rem) !important;
+    }
+    .short-viewport-compact-game-table-outer {
+      min-height: min(22dvh, 5.25rem) !important;
+    }
+    .short-viewport-compact-opponents > [role="list"] {
+      gap: 0.5rem !important;
+    }
+  }
+
+  /**
+   * xl side panel: cap video grid height when the viewport is still wide but short.
+   * Beats Tailwind `xl:max-h-none` / `xl:overflow-visible` via `!important`.
+   * Sync px + min-width with viewport-layout.constants.ts.
+   */
+  @media (min-width: 1280px) and (max-height: 800px) {
+    .social-media-section-xl-short {
+      max-height: min(38dvh, 220px) !important;
+      flex-shrink: 0 !important;
+      overflow-y: auto !important;
+    }
+  }
+
+  @media (min-width: 1280px) and (max-height: 700px) {
+    .social-media-section-xl-short {
+      max-height: min(34dvh, 200px) !important;
+    }
+  }
+
   .font-display {
     font-family: var(--font-display);
   }
@@ -486,13 +549,17 @@
   }
 
   /**
-   * Playfield: empty declare slot — chain context strip (tighter corners than `rounded-xl` cards).
+   * Playfield: declare chain strip (emoji + suit + rank). Horizontal scroll if narrow — do not use
+   * `overflow: hidden` here or it blocks scrolling and can force awkward wrapping in nested flex.
    */
   .declare-context-track {
     position: relative;
-    overflow: hidden;
+    min-width: 0;
     border-radius: 0.375rem;
     border: 1px solid hsl(var(--border) / 0.55);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   .declare-context-track--chili {
@@ -532,6 +599,39 @@
     box-shadow:
       inset 0 1px 0 hsl(var(--avocado-glow) / 0.22),
       0 10px 32px -14px hsl(var(--avocado) / 0.32);
+  }
+
+  /**
+   * Single horizontal band: emoji + suit + rank. `!important` wins over any stray utilities / motion defaults
+   * that were collapsing nested flex to two rows in some viewports.
+   */
+  .declare-context-track__row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: center;
+    width: max-content;
+    max-width: none;
+    margin-inline: auto;
+    min-height: 0;
+  }
+
+  .declare-context-track__suit {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    flex-shrink: 0;
+  }
+
+  .declare-context-track__rank {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: center;
+    flex-shrink: 0;
   }
 
   .game-table-surface {

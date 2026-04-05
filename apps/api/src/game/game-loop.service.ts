@@ -3,15 +3,17 @@ import { Interval } from "@nestjs/schedule";
 import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
 import { nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
-import { RoomService } from "../room/room.service";
 import { GameBroadcastService } from "./game-broadcast.service";
 import type { RealtimeServer } from "../realtime/realtime-socket.types";
+import { RoomRepository } from "../room/room.repository";
+import { RoomService } from "../room/room.service";
 
 @Injectable()
 export class GameLoopService {
   private server: RealtimeServer | null = null;
 
   constructor(
+    private readonly roomRepository: RoomRepository,
     private readonly roomService: RoomService,
     private readonly broadcast: GameBroadcastService,
   ) {}
@@ -24,7 +26,7 @@ export class GameLoopService {
   tick() {
     if (!this.server) return;
 
-    for (const [roomCode, room] of this.roomService.rooms) {
+    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
       if (!room.gameState) continue;
       const prevPhase = room.gameState.phase;
       let gs: GameState = room.gameState;
