@@ -50,6 +50,16 @@ printf '%s\n' "${CONTENT}" | sudo tee /etc/nginx/sites-available/sweetspicy >/de
 sudo ln -sf /etc/nginx/sites-available/sweetspicy /etc/nginx/sites-enabled/sweetspicy
 sudo rm -f /etc/nginx/sites-enabled/sweet-spicy
 
+# Fail CI / deploy if the live file does not actually contain API + Socket.IO (catches skipped sync or wrong path).
+if ! sudo grep -qE 'location[[:space:]]+/socket\.io' /etc/nginx/sites-available/sweetspicy; then
+  echo "sync-nginx: ERROR: /etc/nginx/sites-available/sweetspicy missing location /socket.io after write"
+  exit 1
+fi
+if ! sudo grep -qE 'location[[:space:]]+/api/' /etc/nginx/sites-available/sweetspicy; then
+  echo "sync-nginx: ERROR: /etc/nginx/sites-available/sweetspicy missing location /api/"
+  exit 1
+fi
+
 sudo nginx -t
 sudo systemctl reload nginx
 echo "sync-nginx: applied template for ${DOMAIN} and reloaded nginx"
