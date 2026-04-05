@@ -10,6 +10,32 @@ const SOCKET_URL =
     ? (process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3001")
     : "http://localhost:3001";
 
+/** Structured log for production debugging (browser console). */
+function logSocketConnectError(error: unknown): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const pageOrigin = window.location.origin;
+  const base = { socketUrl: SOCKET_URL, pageOrigin };
+  if (error instanceof Error) {
+    const ext = error as Error & {
+      description?: string;
+      context?: unknown;
+      type?: string;
+    };
+    console.error("[sweet-spicy][socket] connect_error", {
+      ...base,
+      message: ext.message,
+      name: ext.name,
+      description: ext.description,
+      type: ext.type,
+      cause: ext.cause,
+    });
+    return;
+  }
+  console.error("[sweet-spicy][socket] connect_error", { ...base, error });
+}
+
 let socketInstance: GameSocket | null = null;
 let socketToken: string | null = null;
 let pendingDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,6 +80,8 @@ export function createSocket(token?: string): GameSocket {
     reconnectionDelayMax: RECONNECTION_DELAY_MAX_MS,
     timeout: REQUEST_TIMEOUT_MS,
   }) as GameSocket;
+
+  socketInstance.on("connect_error", logSocketConnectError);
 
   return socketInstance;
 }

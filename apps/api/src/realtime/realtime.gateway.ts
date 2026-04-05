@@ -20,6 +20,7 @@ import { RealtimeChatService } from "./realtime-chat.service";
 import { RealtimeGameplayService } from "./realtime-gameplay.service";
 import { RealtimeRoomService } from "./realtime-room.service";
 import { RealtimeSessionService } from "./realtime-session.service";
+import { getClientCorsOrigin } from "../config/client-origins";
 
 const SOCKET_VALIDATION_PIPE = new ValidationPipe({
   transform: true,
@@ -28,7 +29,7 @@ const SOCKET_VALIDATION_PIPE = new ValidationPipe({
 });
 
 @WebSocketGateway({
-  cors: { origin: process.env.CLIENT_URL ?? "http://localhost:3000", credentials: true },
+  cors: { origin: getClientCorsOrigin(), credentials: true },
   transports: ["websocket", "polling"],
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {

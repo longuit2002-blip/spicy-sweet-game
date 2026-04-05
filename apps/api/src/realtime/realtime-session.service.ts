@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {
   SOCKET_ERROR_CODE,
@@ -13,6 +13,7 @@ const DISCONNECT_GRACE_PERIOD_MS = 5_000;
 
 @Injectable()
 export class RealtimeSessionService {
+  private readonly logger = new Logger(RealtimeSessionService.name);
   private server: RealtimeServer | null = null;
   private readonly activeSocketIdsByUser = new Map<string, Set<string>>();
   private readonly disconnectTimersByUser = new Map<string, ReturnType<typeof setTimeout>>();
@@ -33,16 +34,20 @@ export class RealtimeSessionService {
     }
 
     this.server.use((socket, next) => {
+      const origin = socket.handshake.headers.origin ?? "(no Origin)";
       try {
         const token = socket.handshake.auth?.token as string | undefined;
         if (!token) {
+          this.logger.warn(`Socket rejected: missing auth token (origin=${origin})`);
           return next(new Error("Unauthorized"));
         }
         const payload = this.jwt.verify<{ sub: string; nickname: string }>(token);
         socket.data.userId = payload.sub;
         socket.data.nickname = payload.nickname;
         next();
-      } catch {
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : "verify failed";
+        this.logger.warn(`Socket rejected: ${reason} (origin=${origin})`);
         next(new Error("Unauthorized"));
       }
     });
