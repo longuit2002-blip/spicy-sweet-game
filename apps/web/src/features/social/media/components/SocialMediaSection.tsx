@@ -16,6 +16,7 @@ import {
   useRoomMediaSessionPendingState,
   useRoomMediaSessionRemoteParticipants,
   useRoomMediaSessionStatusState,
+  useRoomMediaUiVisible,
 } from "../room-media-session";
 
 const SocialMediaHeader = memo(function SocialMediaHeader() {
@@ -131,6 +132,11 @@ const SocialMediaControlsSection = memo(function SocialMediaControlsSection() {
 });
 
 export const SocialMediaSection = memo(function SocialMediaSection() {
+  const showMediaUi = useRoomMediaUiVisible();
+  if (!showMediaUi) {
+    return null;
+  }
+
   return (
     <div
       className={cn(

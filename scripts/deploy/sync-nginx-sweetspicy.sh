@@ -23,7 +23,8 @@ if [[ -z "${DOMAIN}" ]]; then
 fi
 
 CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
-if [[ ! -f "${CERT}" ]]; then
+# Let's Encrypt live/ is often mode 0700: unprivileged [[ -f ]] fails even when cert exists — use sudo.
+if ! sudo test -f "${CERT}"; then
   echo "sync-nginx: TLS cert not found at ${CERT} — skip nginx sync (run: sudo certbot --nginx -d ${DOMAIN})"
   exit 0
 fi

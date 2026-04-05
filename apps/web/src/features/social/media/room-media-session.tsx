@@ -906,6 +906,12 @@ export function useRoomMediaSessionStatusState() {
   return { status, isJoined };
 }
 
+/** When false, hide voice/video UI (`NEXT_PUBLIC_LIVEKIT_ENABLED=false` or server reported LiveKit unavailable). */
+export function useRoomMediaUiVisible(): boolean {
+  const store = useRoomMediaSessionStoreApi();
+  return useStore(store, (state) => state.isMediaEnabled);
+}
+
 export function useRoomMediaSessionLocalState() {
   const store = useRoomMediaSessionStoreApi();
   const localStream = useStore(store, (state) => state.localStream);

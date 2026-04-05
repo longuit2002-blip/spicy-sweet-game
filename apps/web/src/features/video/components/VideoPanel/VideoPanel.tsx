@@ -1,3 +1,5 @@
+"use client";
+
 import { useTranslation } from "react-i18next";
 import {
   getMediaSessionStatusPresentation,
@@ -10,9 +12,11 @@ import {
   useRoomMediaSessionPendingState,
   useRoomMediaSessionRemoteParticipants,
   useRoomMediaSessionStatusState,
+  useRoomMediaUiVisible,
 } from "@/features/social/media/room-media-session";
 
 export function VideoPanel() {
+  const showMediaUi = useRoomMediaUiVisible();
   const { t } = useTranslation("game");
   const { status, isJoined } = useRoomMediaSessionStatusState();
   const { localStream, localAudioEnabled, localVideoEnabled } = useRoomMediaSessionLocalState();
@@ -23,6 +27,10 @@ export function VideoPanel() {
     isJoined,
     status,
   });
+
+  if (!showMediaUi) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-border/20 bg-muted/10 p-3 backdrop-blur-sm">
