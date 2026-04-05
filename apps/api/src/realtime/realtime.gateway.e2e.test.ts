@@ -16,11 +16,8 @@ import type {
   SocketActionResult,
 } from "@sweet-spicy/shared-types";
 import { RealtimeGateway } from "./realtime.gateway";
-import { MediaConfigService } from "./media-config.service";
-import { MediaPresenceService } from "./media-presence.service";
 import { RealtimeChatService } from "./realtime-chat.service";
 import { RealtimeGameplayService } from "./realtime-gameplay.service";
-import { RealtimeMediaService } from "./realtime-media.service";
 import { RealtimeRoomService } from "./realtime-room.service";
 import { RealtimeSessionService } from "./realtime-session.service";
 import { SocketRateLimiterService } from "./socket-rate-limiter.service";
@@ -33,6 +30,7 @@ import { RoomRepository } from "../room/room.repository";
 import { RoomSessionPersistenceService } from "../room/room-session-persistence.service";
 import { RoomService } from "../room/room.service";
 import { io, type Socket } from "socket.io-client";
+import { RedisService } from "../redis/redis.service";
 
 type TestSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -48,6 +46,22 @@ const fakePrisma = {
   },
 };
 
+const fakeRedis: Pick<
+  RedisService,
+  "isAvailable" | "set" | "setWithExpiry" | "get" | "del" | "sAdd" | "sRem" | "sMembers" | "sCard" | "mGet"
+> = {
+  isAvailable: () => false,
+  set: async () => undefined,
+  setWithExpiry: async () => undefined,
+  get: async () => null,
+  del: async () => undefined,
+  sAdd: async () => undefined,
+  sRem: async () => undefined,
+  sMembers: async () => [],
+  sCard: async () => 0,
+  mGet: async () => [],
+};
+
 @Module({
   imports: [
     JwtModule.register({
@@ -58,6 +72,7 @@ const fakePrisma = {
   ],
   providers: [
     { provide: PrismaService, useValue: fakePrisma },
+    { provide: RedisService, useValue: fakeRedis },
     RoomRepository,
     RoomObservabilityService,
     RoomSessionPersistenceService,
@@ -67,13 +82,10 @@ const fakePrisma = {
     GameBotDriverService,
     RealtimeGateway,
     SocketRateLimiterService,
-    MediaConfigService,
-    MediaPresenceService,
     RealtimeSessionService,
     RealtimeRoomService,
     RealtimeGameplayService,
     RealtimeChatService,
-    RealtimeMediaService,
   ],
 })
 class RealtimeGatewayTestModule {}

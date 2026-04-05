@@ -1,16 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type {
-  MediaParticipant,
-  SocketErrorCode,
-  ServerToClientEvents,
-} from "@sweet-spicy/shared-types";
 import {
   SOCKET_ERROR_CODE,
   SOCKET_ERROR_MESSAGE,
 } from "@sweet-spicy/shared-types";
 import { GameBroadcastService } from "../game/game-broadcast.service";
-import { MediaPresenceService } from "./media-presence.service";
 import type { RealtimeServer, RealtimeSocket } from "./realtime-socket.types";
 import { RoomService, type LeaveRoomResult } from "../room/room.service";
 import { emitSocketError } from "./realtime-action-result";
@@ -22,13 +16,11 @@ export class RealtimeSessionService {
   private server: RealtimeServer | null = null;
   private readonly activeSocketIdsByUser = new Map<string, Set<string>>();
   private readonly disconnectTimersByUser = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly mediaDisconnectTimersBySocket = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly jwt: JwtService,
     private readonly roomService: RoomService,
     private readonly broadcast: GameBroadcastService,
-    private readonly mediaPresence: MediaPresenceService,
   ) {}
 
   attachServer(server: RealtimeServer): void {
@@ -81,8 +73,6 @@ export class RealtimeSessionService {
       return;
     }
 
-    this.scheduleMediaDisconnect(client.id);
-
     const activeSocketIds = this.activeSocketIdsByUser.get(userId);
     if (activeSocketIds) {
       activeSocketIds.delete(client.id);
@@ -102,7 +92,7 @@ export class RealtimeSessionService {
 
     const disconnectTimer = setTimeout(() => {
       this.disconnectTimersByUser.delete(userId);
-      this.leaveUserFromCurrentRoom(userId);
+      void this.leaveUserFromCurrentRoom(userId);
     }, DISCONNECT_GRACE_PERIOD_MS);
     this.disconnectTimersByUser.set(userId, disconnectTimer);
   }
@@ -125,43 +115,9 @@ export class RealtimeSessionService {
     return nickname;
   }
 
-  getResolvedRoomCode(client: RealtimeSocket, requestedRoomCode?: string): string | null {
-    if (requestedRoomCode && requestedRoomCode.trim().length > 0) {
-      return requestedRoomCode.trim().toUpperCase();
-    }
-
-    const userId = client.data.userId;
-    if (!userId) {
-      return null;
-    }
-
-    const roomForUser = this.roomService.getRoomForUser(userId);
-    if (roomForUser) {
-      return roomForUser.roomCode;
-    }
-
-    return client.data.roomId?.toUpperCase() ?? null;
-  }
-
-  getRoomForMediaAction(client: RealtimeSocket, requestedRoomCode?: string) {
-    const roomCode = this.getResolvedRoomCode(client, requestedRoomCode);
-    if (!roomCode) {
-      return null;
-    }
-
-    return this.roomService.getRoomByCode(roomCode) ?? null;
-  }
-
-  finalizeRoomExit(userId: string, leaveResult: LeaveRoomResult): void {
+  async finalizeRoomExit(userId: string, leaveResult: LeaveRoomResult): Promise<void> {
     if (!this.server || !leaveResult.roomCode) {
       return;
-    }
-
-    const mediaParticipant = this.mediaPresence.leaveRoom(leaveResult.roomCode, userId);
-    if (mediaParticipant) {
-      this.server.to(leaveResult.roomCode).emit("webrtc:peer-left", {
-        peerId: mediaParticipant.peerId,
-      });
     }
 
     this.clearRoomMembershipFromActiveSockets(userId, leaveResult.roomCode);
@@ -181,48 +137,6 @@ export class RealtimeSessionService {
         newHostId: leaveResult.newHostId,
       });
     }
-  }
-
-  getActiveSocketIdsForUser(userId: string): ReadonlySet<string> {
-    return this.activeSocketIdsByUser.get(userId) ?? new Set<string>();
-  }
-
-  emitToMediaPeer<K extends "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate">(
-    roomCode: string,
-    peerId: string,
-    event: K,
-    ...payload: Parameters<ServerToClientEvents[K]>
-  ): boolean {
-    const targetSocketId = this.mediaPresence.getParticipantSocketId(roomCode, peerId);
-    if (!targetSocketId) {
-      return false;
-    }
-
-    const targetSocket = this.getActiveSocketsForUser(peerId).find((socket) => socket.id === targetSocketId);
-    if (!targetSocket) {
-      return false;
-    }
-
-    targetSocket.emit(event, ...payload);
-    return true;
-  }
-
-  emitMediaState(roomCode: string, participant: MediaParticipant): void {
-    this.server?.to(roomCode).emit("webrtc:peer-media-state", {
-      peerId: participant.peerId,
-      audioEnabled: participant.audioEnabled,
-      videoEnabled: participant.videoEnabled,
-    });
-  }
-
-  clearMediaDisconnectTimer(socketId: string): void {
-    const disconnectTimer = this.mediaDisconnectTimersBySocket.get(socketId);
-    if (!disconnectTimer) {
-      return;
-    }
-
-    clearTimeout(disconnectTimer);
-    this.mediaDisconnectTimersBySocket.delete(socketId);
   }
 
   getMetricsSnapshot(): { activeSockets: number; activeUsers: number } {
@@ -280,36 +194,12 @@ export class RealtimeSessionService {
     }
   }
 
-  private leaveUserFromCurrentRoom(userId: string): void {
-    const room = this.roomService.getRoomForUser(userId);
+  private async leaveUserFromCurrentRoom(userId: string): Promise<void> {
+    const room = await this.roomService.getRoomForUser(userId);
     const leaveResult = room?.gameState
-      ? this.roomService.handoffUserToBot(userId)
-      : this.roomService.leaveRoom(userId);
+      ? await this.roomService.handoffUserToBot(userId)
+      : await this.roomService.leaveRoom(userId);
 
-    this.finalizeRoomExit(userId, leaveResult);
-  }
-
-  private scheduleMediaDisconnect(socketId: string): void {
-    const roomCode = this.mediaPresence.getRoomCodeForSocket(socketId);
-    if (!roomCode || !this.server) {
-      return;
-    }
-
-    const existingDisconnectTimer = this.mediaDisconnectTimersBySocket.get(socketId);
-    if (existingDisconnectTimer) {
-      clearTimeout(existingDisconnectTimer);
-    }
-
-    const disconnectTimer = setTimeout(() => {
-      this.mediaDisconnectTimersBySocket.delete(socketId);
-      const participant = this.mediaPresence.leaveBySocket(socketId);
-      if (!participant) {
-        return;
-      }
-
-      this.server?.to(roomCode).emit("webrtc:peer-left", { peerId: participant.peerId });
-    }, DISCONNECT_GRACE_PERIOD_MS);
-
-    this.mediaDisconnectTimersBySocket.set(socketId, disconnectTimer);
+    await this.finalizeRoomExit(userId, leaveResult);
   }
 }

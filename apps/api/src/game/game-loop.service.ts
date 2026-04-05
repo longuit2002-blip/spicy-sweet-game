@@ -1,7 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { GAME_LOOP_TICK_INTERVAL_MS } from "./game-loop.constants";
-import { nextTurn, tickChallengePhase, tickRevealPhase } from "@sweet-spicy/game-logic";
+import {
+  nextTurn,
+  tickChallengePhase,
+  tickRevealPhase,
+  tickSupremeResolvePhase,
+} from "@sweet-spicy/game-logic";
 import type { GameState } from "@sweet-spicy/shared-types";
 import { GameBroadcastService } from "./game-broadcast.service";
 import type { RealtimeServer } from "../realtime/realtime-socket.types";
@@ -23,16 +28,38 @@ export class GameLoopService {
   }
 
   @Interval(GAME_LOOP_TICK_INTERVAL_MS)
-  tick() {
+  async tick() {
     if (!this.server) return;
 
-    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
+    for (const [roomCode, room] of await this.roomRepository.getRoomEntries()) {
       if (!room.gameState) continue;
       const prevPhase = room.gameState.phase;
       let gs: GameState = room.gameState;
 
-      if (gs.phase === "CHALLENGE_PHASE") {
-        gs = tickChallengePhase(gs);
+        if (gs.phase === "CHALLENGE_PHASE") {
+          gs = tickChallengePhase(gs);
+          room.gameState = gs;
+          await this.roomService.syncRoomPlayersFromGame(room);
+          this.broadcast.emitStateUpdate(this.server, roomCode, gs);
+        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
+          this.broadcast.emitWinner(this.server, roomCode, gs);
+        }
+        continue;
+      }
+
+        if (gs.phase === "REVEAL") {
+          gs = tickRevealPhase(gs);
+          room.gameState = gs;
+          await this.roomService.syncRoomPlayersFromGame(room);
+          this.broadcast.emitStateUpdate(this.server, roomCode, gs);
+        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
+          this.broadcast.emitWinner(this.server, roomCode, gs);
+        }
+        continue;
+      }
+
+      if (gs.phase === "SUPREME_RESOLVE") {
+        gs = tickSupremeResolvePhase(gs);
         room.gameState = gs;
         this.roomService.syncRoomPlayersFromGame(room);
         this.broadcast.emitStateUpdate(this.server, roomCode, gs);
@@ -42,25 +69,14 @@ export class GameLoopService {
         continue;
       }
 
-      if (gs.phase === "REVEAL") {
-        gs = tickRevealPhase(gs);
-        room.gameState = gs;
-        this.roomService.syncRoomPlayersFromGame(room);
-        this.broadcast.emitStateUpdate(this.server, roomCode, gs);
-        if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
-          this.broadcast.emitWinner(this.server, roomCode, gs);
-        }
-        continue;
-      }
-
-      if (gs.phase === "PENALTY" || gs.phase === "NEXT_TURN" || gs.phase === "TROPHY_AWARDED") {
+        if (gs.phase === "PENALTY" || gs.phase === "NEXT_TURN" || gs.phase === "TROPHY_AWARDED") {
         const nextTimer = Math.max(0, gs.challengeTimer - 1);
         gs = { ...gs, challengeTimer: nextTimer };
         if (nextTimer <= 0) {
           gs = nextTurn(gs);
         }
-        room.gameState = gs;
-        this.roomService.syncRoomPlayersFromGame(room);
+          room.gameState = gs;
+          await this.roomService.syncRoomPlayersFromGame(room);
         this.broadcast.emitStateUpdate(this.server, roomCode, gs);
         if (prevPhase !== "END_GAME" && gs.phase === "END_GAME") {
           this.broadcast.emitWinner(this.server, roomCode, gs);

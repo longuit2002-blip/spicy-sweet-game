@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
-type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting";
+type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting" | "disabled";
 type MediaTileAspect = "square" | "video";
 type MediaTilePlaceholderMode = "presence" | "video-off";
 type MediaControlsSize = "sm" | "md";
@@ -24,6 +24,7 @@ interface MediaControlsProps {
   isUpdatingAudio: boolean;
   isUpdatingVideo: boolean;
   isUpdatingSession: boolean;
+  controlsDisabled?: boolean;
   onToggleAudio: () => Promise<void>;
   onToggleVideo: () => Promise<void>;
   onLeave: () => Promise<void>;
@@ -64,6 +65,13 @@ export function getMediaSessionStatusPresentation(
     status: MediaSessionStatus;
   },
 ): MediaStatusPresentation {
+  if (status === "disabled") {
+    return {
+      label: t("game.video.unavailable", { defaultValue: "Unavailable" }),
+      toneClassName: "bg-muted text-muted-foreground",
+    };
+  }
+
   if (isJoined) {
     return {
       label: t("game.video.connected"),
@@ -91,6 +99,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
   isUpdatingAudio,
   isUpdatingVideo,
   isUpdatingSession,
+  controlsDisabled = false,
   onToggleAudio,
   onToggleVideo,
   onLeave,
@@ -111,7 +120,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
         onClick={() => {
           void onToggleAudio();
         }}
-        disabled={isUpdatingAudio}
+        disabled={controlsDisabled || isUpdatingAudio}
         className={buttonClassName}
         aria-label={
           localAudioEnabled
@@ -128,7 +137,7 @@ export const MediaSessionControls = memo(function MediaSessionControls({
         onClick={() => {
           void onToggleVideo();
         }}
-        disabled={isUpdatingVideo}
+        disabled={controlsDisabled || isUpdatingVideo}
         className={buttonClassName}
         aria-label={
           localVideoEnabled

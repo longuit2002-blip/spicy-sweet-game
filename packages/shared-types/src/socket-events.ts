@@ -1,19 +1,5 @@
 import type { ChallengeType, ClientGameState, Declaration, ChallengeResult } from "./game.js";
 import type {
-  MediaIncomingAnswer,
-  MediaIncomingIceCandidate,
-  MediaIncomingOffer,
-  MediaJoinRoomData,
-  MediaJoinRoomResult,
-  MediaPeerJoinedEvent,
-  MediaPeerLeftEvent,
-  MediaPeerStateEvent,
-  MediaSignalAnswer,
-  MediaSignalIceCandidate,
-  MediaSignalOffer,
-  MediaTrackState,
-} from "./media.js";
-import type {
   RoomPlayer,
   RoomState,
   JoinResult,
@@ -56,13 +42,6 @@ export interface ServerToClientEvents {
 
   "chat:message": (message: ChatMessage) => void;
 
-  "webrtc:peer-joined": (data: MediaPeerJoinedEvent) => void;
-  "webrtc:peer-left": (data: MediaPeerLeftEvent) => void;
-  "webrtc:peer-media-state": (data: MediaPeerStateEvent) => void;
-  "webrtc:offer": (data: MediaIncomingOffer) => void;
-  "webrtc:answer": (data: MediaIncomingAnswer) => void;
-  "webrtc:ice-candidate": (data: MediaIncomingIceCandidate) => void;
-
   error: (error: SocketError) => void;
 }
 
@@ -91,20 +70,4 @@ export interface ClientToServerEvents {
   "game:challenge-pass": (callback?: (result: SocketActionResult) => void) => void;
 
   "chat:send": (data: { content: string }) => void;
-
-  "webrtc:join-room": (
-    data: MediaJoinRoomData,
-    callback?: (result: MediaJoinRoomResult) => void,
-  ) => void;
-  "webrtc:leave-room": (callback?: (result: SocketActionResult) => void) => void;
-  "webrtc:update-media-state": (
-    data: MediaTrackState,
-    callback?: (result: SocketActionResult) => void,
-  ) => void;
-  "webrtc:offer": (data: MediaSignalOffer, callback?: (result: SocketActionResult) => void) => void;
-  "webrtc:answer": (data: MediaSignalAnswer, callback?: (result: SocketActionResult) => void) => void;
-  "webrtc:ice-candidate": (
-    data: MediaSignalIceCandidate,
-    callback?: (result: SocketActionResult) => void,
-  ) => void;
 }

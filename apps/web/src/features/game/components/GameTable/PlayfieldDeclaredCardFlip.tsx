@@ -21,15 +21,20 @@ export type PlayfieldDeclaredCardFlipProps = {
   faceCard: GameCard | null;
   /** True in `REVEAL` when `faceCard` is known — runs back → face flip. Until then, only card back is shown. */
   showFaceUp: boolean;
+  /** Total Wild resolve: faster flip + trophy glow pulse (everyone sees the real card). */
+  supremeImpact?: boolean;
   ariaLabel: string;
   className?: string;
   /** Seconds to wait before the 3D flip begins (ignored when reduced motion is on). */
   flipDelaySeconds?: number;
 };
 
+const SUPREME_FLIP_DURATION_SECONDS = 0.55;
+
 export function PlayfieldDeclaredCardFlip({
   faceCard,
   showFaceUp,
+  supremeImpact = false,
   ariaLabel,
   className,
   flipDelaySeconds = PLAYFIELD_REVEAL_FLIP_DELAY_SECONDS,
@@ -39,7 +44,13 @@ export function PlayfieldDeclaredCardFlip({
   const soundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const faceReady = !!(showFaceUp && faceCard != null);
-  const effectiveDelay = reducedMotion ? 0 : flipDelaySeconds;
+  const effectiveDelay = reducedMotion || supremeImpact ? 0 : flipDelaySeconds;
+  const flipDurationSeconds =
+    reducedMotion || !faceReady
+      ? 0
+      : supremeImpact
+        ? SUPREME_FLIP_DURATION_SECONDS
+        : PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS;
 
   useEffect(() => {
     if (reducedMotion) {
@@ -80,6 +91,7 @@ export function PlayfieldDeclaredCardFlip({
     <div
       className={cn(
         "relative h-full min-h-0 w-full min-w-0 [perspective:1400px]",
+        supremeImpact && "rounded-md",
         className,
       )}
       role="img"
@@ -98,8 +110,8 @@ export function PlayfieldDeclaredCardFlip({
             : showFaceUp && faceCard != null
               ? {
                   delay: effectiveDelay,
-                  duration: PLAYFIELD_REVEAL_FLIP_DURATION_SECONDS,
-                  ease: PLAYFIELD_FLIP_EASE,
+                  duration: flipDurationSeconds,
+                  ease: supremeImpact ? ([0.2, 0.85, 0.24, 1] as const) : PLAYFIELD_FLIP_EASE,
                 }
               : { duration: 0 }
         }
@@ -112,27 +124,39 @@ export function PlayfieldDeclaredCardFlip({
             reducedMotion
               ? { scale: 1, filter: "brightness(1)" }
               : showFaceUp && faceCard != null
-                ? {
-                    scale: [1, 1.03, 1, 1.015, 1],
-                    filter: [
-                      "brightness(1)",
-                      "brightness(1.12)",
-                      "brightness(1.04)",
-                      "brightness(1.08)",
-                      "brightness(1)",
-                    ],
-                  }
+                ? supremeImpact
+                  ? {
+                      scale: [1, 1.06, 1.02, 1],
+                      filter: [
+                        "brightness(1)",
+                        "brightness(1.18)",
+                        "brightness(1.08)",
+                        "brightness(1)",
+                      ],
+                    }
+                  : {
+                      scale: [1, 1.03, 1, 1.015, 1],
+                      filter: [
+                        "brightness(1)",
+                        "brightness(1.12)",
+                        "brightness(1.04)",
+                        "brightness(1.08)",
+                        "brightness(1)",
+                      ],
+                    }
                 : { scale: 1, filter: "brightness(1)" }
           }
           transition={
             reducedMotion
               ? { duration: 0 }
               : showFaceUp && faceCard != null
-                ? {
-                    duration: Math.min(0.9, flipDelaySeconds + 0.35),
-                    times: [0, 0.25, 0.5, 0.78, 1],
-                    ease: "easeInOut",
-                  }
+                ? supremeImpact
+                  ? { duration: Math.min(0.65, flipDurationSeconds + 0.12), ease: "easeOut" }
+                  : {
+                      duration: Math.min(0.9, flipDelaySeconds + 0.35),
+                      times: [0, 0.25, 0.5, 0.78, 1],
+                      ease: "easeInOut",
+                    }
                 : { duration: 0.2 }
           }
         >
@@ -149,6 +173,21 @@ export function PlayfieldDeclaredCardFlip({
           )}
         </div>
       </motion.div>
+      {supremeImpact && faceCard != null && !reducedMotion ? (
+        <motion.div
+          className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-trophy-gold/55"
+          aria-hidden
+          animate={{
+            boxShadow: [
+              "0 0 0 0px hsl(var(--trophy-glow) / 0)",
+              "0 0 28px 4px hsl(var(--trophy-glow) / 0.45)",
+              "0 0 0 0px hsl(var(--trophy-glow) / 0)",
+            ],
+            opacity: [0.75, 1, 0.75],
+          }}
+          transition={{ duration: 1.35, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ) : null}
     </div>
   );
 }

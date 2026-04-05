@@ -21,6 +21,7 @@ import {
   resolveChallenge,
   minDeclarationRankForState,
   maxDeclarationRankForState,
+  MAX_DECLARATION_RANK,
   CHALLENGE_CLAIM_RACE_SECONDS,
   CHALLENGE_PICK_TYPE_SECONDS,
 } from "@sweet-spicy/game-logic";
@@ -125,6 +126,11 @@ export function GameRoomClient() {
   const currentPlayer = currentGameState.players[currentGameState.currentPlayerIndex];
   const localPlayer = currentGameState.players.find((p) => p.id === localPlayerId);
   const isMyTurn = currentPlayer?.id === localPlayerId;
+  const declareTargetCard = useMemo(
+    () => localPlayer?.hand.find((c) => c.id === selectedCard) ?? null,
+    [localPlayer?.hand, selectedCard],
+  );
+  const isSupremeDeclaration = declareTargetCard?.kind === "total-wild";
   const isMobileCompact = useMediaQuery("(max-width: 767px)");
   const tablePileCount = useMemo(
     () =>
@@ -153,6 +159,7 @@ export function GameRoomClient() {
   const isMainGamePhase =
     currentGameState.phase === GAME_PHASE.PLAYER_TURN ||
     currentGameState.phase === GAME_PHASE.CHALLENGE_PHASE ||
+    currentGameState.phase === GAME_PHASE.SUPREME_RESOLVE ||
     currentGameState.phase === GAME_PHASE.REVEAL ||
     currentGameState.phase === GAME_PHASE.PENALTY ||
     currentGameState.phase === GAME_PHASE.NEXT_TURN ||
@@ -723,17 +730,26 @@ export function GameRoomClient() {
           <DeclareDialog
             open={showDeclare}
             onOpenChange={setShowDeclare}
-            card={localPlayer?.hand.find((c) => c.id === selectedCard) ?? null}
+            card={declareTargetCard}
             onDeclare={handleDeclare}
             lockedSuit={currentGameState.lockedSuit}
-            minDeclarationNumber={minDeclarationRankForState({
-              lockedSuit: currentGameState.lockedSuit,
-              lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-            })}
-            maxDeclarationNumber={maxDeclarationRankForState({
-              lockedSuit: currentGameState.lockedSuit,
-              lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
-            })}
+            isSupremeDeclaration={isSupremeDeclaration}
+            minDeclarationNumber={
+              isSupremeDeclaration
+                ? 1
+                : minDeclarationRankForState({
+                    lockedSuit: currentGameState.lockedSuit,
+                    lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+                  })
+            }
+            maxDeclarationNumber={
+              isSupremeDeclaration
+                ? MAX_DECLARATION_RANK
+                : maxDeclarationRankForState({
+                    lockedSuit: currentGameState.lockedSuit,
+                    lastResolvedDeclaration: currentGameState.lastResolvedDeclaration,
+                  })
+            }
           />
         </div>
       </RoomMediaSessionProvider>

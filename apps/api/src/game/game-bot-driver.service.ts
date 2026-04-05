@@ -23,10 +23,10 @@ export class GameBotDriverService {
   }
 
   @Interval(BOT_DRIVER_TICK_MS)
-  tick() {
+  async tick() {
     if (!this.server) return;
 
-    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
+    for (const [roomCode, room] of await this.roomRepository.getRoomEntries()) {
       if (room.status !== "IN_PROGRESS" || !room.gameState) continue;
       const gs = room.gameState;
 
@@ -36,7 +36,7 @@ export class GameBotDriverService {
         const next = applyBotPlayerTurnIfCurrentIsBot(gs);
         if (next) {
           room.gameState = next;
-          this.roomService.syncRoomPlayersFromGame(room);
+          await this.roomService.syncRoomPlayersFromGame(room);
           this.broadcast.emitStateUpdate(this.server, roomCode, next);
         }
         continue;
@@ -46,7 +46,7 @@ export class GameBotDriverService {
         const next = applyBotChallengePhaseStep(gs);
         if (next) {
           room.gameState = next;
-          this.roomService.syncRoomPlayersFromGame(room);
+          await this.roomService.syncRoomPlayersFromGame(room);
           this.broadcast.emitStateUpdate(this.server, roomCode, next);
           if (next.challengeResult) {
             this.server.to(roomCode).emit("game:challenge-result", next.challengeResult);

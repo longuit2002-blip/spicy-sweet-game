@@ -21,6 +21,8 @@ interface DeclareDialogProps {
   onDeclare: (declaration: Declaration) => void;
   /** When set, suit is locked for this round — UI fixes declaration to this spice. */
   lockedSuit?: SpiceType | null;
+  /** Total Wild: ignore round lock; player picks any spice and rank 1..max. */
+  isSupremeDeclaration?: boolean;
   /** Minimum rank allowed this turn (from last resolved play). */
   minDeclarationNumber?: number;
   /** Maximum rank allowed this turn (10 normally; 3 right after a resolved 10). */
@@ -50,6 +52,7 @@ function normalizeMaxDeclaration(raw: number | undefined, fallback: number): num
 interface DeclareDialogContentProps {
   card: GameCard | null;
   lockedSuit: SpiceType | null;
+  isSupremeDeclaration: boolean;
   selectedType: SpiceType | null;
   setSelectedType: (t: SpiceType) => void;
   selectedNumber: number | null;
@@ -65,6 +68,7 @@ interface DeclareDialogContentProps {
 function DeclareDialogContent({
   card,
   lockedSuit,
+  isSupremeDeclaration,
   selectedType,
   setSelectedType,
   selectedNumber,
@@ -87,22 +91,32 @@ function DeclareDialogContent({
 
       {card && (
         <div className="mb-4 flex items-center gap-3 rounded-2xl bg-muted/80 p-3">
-          <div className="flex h-14 w-10 items-center justify-center rounded-xl bg-primary/15">
-            <span className="text-xl">
-              {SPICE_EMOJI[card.type]}
-            </span>
+          <div
+            className={cn(
+              "flex h-14 w-10 items-center justify-center rounded-xl",
+              isSupremeDeclaration ? "bg-trophy-gold/20 ring-2 ring-trophy-gold/40" : "bg-primary/15",
+            )}
+          >
+            <span className="text-xl">{isSupremeDeclaration ? "✦" : SPICE_EMOJI[card.type]}</span>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">{t('declare.selectedCard')}</p>
-            <p className="text-sm font-medium">
-              {SPICE_EMOJI[card.type]} {card.number}
-            </p>
+            {isSupremeDeclaration ? (
+              <>
+                <p className="text-sm font-semibold text-trophy-gold">{t("declare.supremeCardLabel")}</p>
+                <p className="text-xs text-muted-foreground leading-snug">{t("declare.supremeCardHint")}</p>
+              </>
+            ) : (
+              <p className="text-sm font-medium">
+                {SPICE_EMOJI[card.type]} {card.number}
+              </p>
+            )}
           </div>
         </div>
       )}
 
       <p className="text-muted-foreground text-sm mb-2">{t("declare.chooseType")}</p>
-      {lockedSuit != null ? (
+      {lockedSuit != null && !isSupremeDeclaration ? (
         <div className="mb-4 rounded-2xl border-2 border-primary/40 bg-primary/10 p-3 text-center">
           <span className="text-2xl">{SPICE_EMOJI[lockedSuit]}</span>
           <p className="text-sm font-medium mt-1">{t(`spice.${lockedSuit}`)}</p>
@@ -193,6 +207,7 @@ export function DeclareDialog({
   card,
   onDeclare,
   lockedSuit = null,
+  isSupremeDeclaration = false,
   minDeclarationNumber = 1,
   maxDeclarationNumber = MAX_DECLARATION_RANK,
 }: DeclareDialogProps) {
@@ -208,10 +223,10 @@ export function DeclareDialog({
 
   useEffect(() => {
     if (open) {
-      setSelectedType(lockedSuit ?? null);
+      setSelectedType(isSupremeDeclaration ? null : lockedSuit ?? null);
       setSelectedNumber(null);
     }
-  }, [open, minDecl, effectiveMax, lockedSuit]);
+  }, [open, minDecl, effectiveMax, lockedSuit, isSupremeDeclaration]);
 
   const handleDeclare = () => {
     if (selectedType && selectedNumber) {
@@ -233,6 +248,7 @@ export function DeclareDialog({
   const contentProps: DeclareDialogContentProps = {
     card,
     lockedSuit,
+    isSupremeDeclaration,
     selectedType,
     setSelectedType,
     selectedNumber,

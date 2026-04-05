@@ -5,8 +5,12 @@ import {
   acceptDeclaration,
   applyPenalty,
   computePlayerFinalScore,
+  isDeclarationValidForPlay,
+  playCard,
   tickChallengePhase,
+  tickSupremeResolvePhase,
 } from "./engine.js";
+import { PENALTY_DRAW_COUNT, REFILL_HAND_SIZE } from "./game-timing.js";
 
 function createCard(id: string, type: GameCard["type"], number: number, kind: GameCard["kind"] = "normal"): GameCard {
   return { id, type, number, kind };
@@ -78,6 +82,61 @@ describe("engine challenge and scoring flows", () => {
       playerId: "p1",
       challengeCorrect: false,
     });
+  });
+
+  it("awards a trophy when declarer wins a failed challenge on their last non-Total-Wild card", () => {
+    const declaration: Declaration = { type: "chili", number: 5 };
+    const playedCard = createCard("played", "chili", 5);
+    const drawCount = PENALTY_DRAW_COUNT + REFILL_HAND_SIZE + 2;
+    const drawPile: GameCard[] = Array.from({ length: drawCount }, (_, i) =>
+      createCard(`draw-${i}`, "avocado", (i % 10) + 1),
+    );
+    const state = createBaseState({
+      phase: GAME_PHASE.REVEAL,
+      drawPile,
+      trophiesRemaining: 3,
+      players: [
+        {
+          id: "p1",
+          nickname: "Alpha",
+          hand: [],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+          isHost: true,
+        },
+        {
+          id: "p2",
+          nickname: "Beta",
+          hand: [createCard("p2-hand", "lemon", 4)],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+        },
+      ],
+      playedCard: {
+        playerId: "p1",
+        declaration,
+        card: playedCard,
+      },
+      challengeResult: {
+        challengeCorrect: false,
+        challengeType: "suit",
+        challengerId: "p2",
+        playerId: "p1",
+        realCard: playedCard,
+        declaredCard: declaration,
+      },
+    });
+
+    const next = applyPenalty(state);
+
+    expect(next.phase).toBe(GAME_PHASE.PENALTY);
+    expect(next.trophiesRemaining).toBe(2);
+    expect(next.players[0]?.trophyCount).toBe(1);
+    expect(next.players[0]?.wonPile.some((c) => c.kind === "trophy")).toBe(true);
+    expect(next.players[0]?.hand).toHaveLength(REFILL_HAND_SIZE);
+    expect(next.players[1]?.hand.length).toBe(1 + PENALTY_DRAW_COUNT);
   });
 
   it("applies a correct challenge by giving the pile to the challenger and drawing penalty cards for declarer", () => {
@@ -173,5 +232,97 @@ describe("engine challenge and scoring flows", () => {
     });
 
     expect(alphaScore).toBeGreaterThan(betaScore);
+  });
+
+  it("plays Total Wild into SUPREME_RESOLVE and resets locked suit from the supreme declaration", () => {
+    const tw = createCard("tw-1", "chili", 1, "total-wild");
+    const state = createBaseState({
+      lockedSuit: "chili",
+      lastResolvedDeclaration: { type: "chili", number: 8 },
+      players: [
+        {
+          id: "p1",
+          nickname: "Alpha",
+          hand: [tw],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+          isHost: true,
+        },
+        {
+          id: "p2",
+          nickname: "Beta",
+          hand: [createCard("p2-hand", "lemon", 4)],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+        },
+      ],
+    });
+
+    const declaration: Declaration = { type: "avocado", number: 10 };
+    expect(isDeclarationValidForPlay(state, declaration, tw)).toBe(true);
+
+    const next = playCard(state, "p1", "tw-1", declaration);
+    expect(next).not.toBeNull();
+    expect(next!.phase).toBe(GAME_PHASE.SUPREME_RESOLVE);
+    expect(next!.lockedSuit).toBe("avocado");
+    expect(next!.playedCard?.card.kind).toBe("total-wild");
+  });
+
+  it("rejects Total Wild declaration outside rank 1..10", () => {
+    const tw = createCard("tw-1", "chili", 1, "total-wild");
+    const state = createBaseState();
+    expect(isDeclarationValidForPlay(state, { type: "chili", number: 11 }, tw)).toBe(false);
+  });
+
+  it("tickSupremeResolvePhase at end runs acceptDeclaration (table pile + NEXT_TURN)", () => {
+    const tw = createCard("tw-1", "chili", 1, "total-wild");
+    const declaration: Declaration = { type: "avocado", number: 10 };
+    const state = createBaseState({
+      phase: GAME_PHASE.SUPREME_RESOLVE,
+      challengeTimer: 1,
+      drawPile: [
+        createCard("draw-a", "avocado", 1),
+        createCard("draw-b", "avocado", 2),
+        createCard("draw-c", "avocado", 3),
+        createCard("draw-d", "avocado", 4),
+        createCard("draw-e", "avocado", 5),
+        createCard("draw-f", "avocado", 6),
+      ],
+      players: [
+        {
+          id: "p1",
+          nickname: "Alpha",
+          hand: [],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+          isHost: true,
+        },
+        {
+          id: "p2",
+          nickname: "Beta",
+          hand: [createCard("p2-hand", "lemon", 4)],
+          wonPile: [],
+          trophyCount: 0,
+          isReady: true,
+        },
+      ],
+      playedCard: {
+        playerId: "p1",
+        declaration,
+        card: tw,
+      },
+      lockedSuit: "avocado",
+    });
+
+    const next = tickSupremeResolvePhase(state);
+
+    expect(next.phase).toBe(GAME_PHASE.NEXT_TURN);
+    expect(next.tablePile).toHaveLength(1);
+    expect(next.tablePile[0]?.kind).toBe("total-wild");
+    expect(next.lastResolvedDeclaration).toEqual(declaration);
+    expect(next.currentPlayerIndex).toBe(1);
   });
 });

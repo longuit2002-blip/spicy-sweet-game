@@ -62,6 +62,8 @@ const enGame = {
     dropSlotHint: 'Drag a card',
     lobbyHint: 'Once the game starts, the current claim and face-down card show here in the center.',
     currentClaim: 'Current claim',
+    supremeResolveEyebrow: 'Supreme play',
+    supremeResolveSub: 'Total Wild — cannot be challenged. New suit & rank lock from this claim.',
     claimIs: 'Declared as',
     claimedBy: 'Card from {{player}}',
     lastResolvedLabel: 'Last resolved',
@@ -121,6 +123,8 @@ const enGame = {
     cannotDeclareAboveTen:
       'Last resolved number was 10. The next declaration must be higher, but ranks only go 1–10 — no legal choice.',
     lockedSuitHint: 'Suit is locked for this round.',
+    supremeCardLabel: 'Total Wild (supreme)',
+    supremeCardHint: 'Pick any spice and any rank 1–10. This resets the locked suit chain — no one can challenge this play.',
   },
   challenge: {
     title: 'declared',
@@ -217,6 +221,8 @@ const enGame = {
     penaltyWin: '{{winner}} takes {{count}} cards',
     penaltyBluffCaught: '{{challenger}} takes {{count}} cards; {{declarer}} draws 2.',
     trophy: '{{player}} earned a Trophy',
+    supremePlayed:
+      '{{player}} played Total Wild — supreme claim {{type}} {{number}} (not challengeable)',
   },
   scoreboard: {
     normalCards: 'Normal in pile: {{count}} × {{points}} pts',
@@ -352,6 +358,7 @@ const enGame = {
     gameStart: 'Starting',
     playerTurn: 'Play card',
     challengePhase: 'Challenge',
+    supremeResolve: 'Supreme',
     reveal: 'Reveal',
     penalty: 'Round end',
     trophyAwarded: 'Trophy',
@@ -424,6 +431,8 @@ const viGame = {
     dropSlotHint: 'Kéo bài vào',
     lobbyHint: 'Khi vào ván, tuyên bố và lá úp sẽ hiện ở giữa bàn.',
     currentClaim: 'Tuyên bố trên bàn',
+    supremeResolveEyebrow: 'Lá tối thượng',
+    supremeResolveSub: 'Total Wild — không thể bị thách. Khóa vị & bậc số mới từ tuyên bố này.',
     claimIs: 'Đang tuyên bố là',
     claimedBy: 'Lá của {{player}}',
     lastResolvedLabel: 'Lượt xử lý gần nhất',
@@ -483,6 +492,8 @@ const viGame = {
     cannotDeclareAboveTen:
       'Số vừa được công nhận là 10; lượt sau phải khai số lớn hơn nhưng bài chỉ có 1–10 — không còn tuyên bố hợp lệ.',
     lockedSuitHint: 'Vị đã khóa cho vòng này.',
+    supremeCardLabel: 'Lá tối thượng (Total Wild)',
+    supremeCardHint: 'Chọn bất kỳ vị và số 1–10. Reset chuỗi vị đã khóa — không ai được thách lượt này.',
   },
   challenge: {
     title: 'đã tuyên bố',
@@ -578,6 +589,8 @@ const viGame = {
     penaltyWin: '{{winner}} lấy {{count}} lá',
     penaltyBluffCaught: '{{challenger}} lấy {{count}} lá; {{declarer}} rút 2 lá.',
     trophy: '{{player}} nhận Chiến tích',
+    supremePlayed:
+      '{{player}} đánh Total Wild — tuyên bố tối thượng {{type}} {{number}} (không thể thách)',
   },
   scoreboard: {
     normalCards: 'Lá thường trong xấp: {{count}} × {{points}} điểm',
@@ -708,6 +721,7 @@ const viGame = {
     gameStart: 'Đang bắt đầu',
     playerTurn: 'Đánh bài',
     challengePhase: 'Thách / chấp nhận',
+    supremeResolve: 'Tối thượng',
     reveal: 'Lật bài',
     penalty: 'Kết vòng',
     trophyAwarded: 'Chiến tích',

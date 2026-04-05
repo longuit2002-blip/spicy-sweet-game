@@ -1,8 +1,9 @@
-import type { ChallengeType, Declaration, GameState, SpiceType } from "@sweet-spicy/shared-types";
+import type { ChallengeType, Declaration, GameCard, GameState, SpiceType } from "@sweet-spicy/shared-types";
 import {
   claimChallenge,
   drawAndPassTurn,
   maxDeclarationRankForState,
+  MAX_DECLARATION_RANK,
   minDeclarationRankForState,
   playCard,
   recordChallengePass,
@@ -41,12 +42,20 @@ function shuffleInPlace<T>(arr: T[]): T[] {
 
 function buildDeclarationForCard(
   state: GameState,
-  randomCard: { number: number; type: SpiceType },
+  randomCard: GameCard,
   locked: SpiceType | null,
 ): Declaration {
+  const allTypes: SpiceType[] = ["chili", "lemon", "avocado"];
+
+  if (randomCard.kind === "total-wild") {
+    return {
+      type: allTypes[Math.floor(Math.random() * allTypes.length)]!,
+      number: 1 + Math.floor(Math.random() * MAX_DECLARATION_RANK),
+    };
+  }
+
   const minDecl = minDeclarationRankForState(state);
   const maxDecl = maxDeclarationRankForState(state);
-  const allTypes: SpiceType[] = ["chili", "lemon", "avocado"];
 
   const pickRankInBand = () => minDecl + Math.floor(Math.random() * (maxDecl - minDecl + 1));
 

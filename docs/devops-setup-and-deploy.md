@@ -313,11 +313,14 @@ Production **`docker-compose.prod.yml`** in this repo includes a **`postgres`** 
 
 Set `DATABASE_URL`, `POSTGRES_PASSWORD`, etc. in `/opt/sweet-spicy/.env` (see `deploy/vm/.env.example`).
 
-**Apply schema after containers are up** — on the VM from `/opt/sweet-spicy` (uses the running `api` container and the same `.env`):
+**Standard flow:** run `/opt/sweet-spicy/deploy-vm.sh`.  
+It automatically runs `npx prisma migrate deploy` before bringing up `api` and `web`.
+
+Equivalent migration command (manual fallback):
 
 ```bash
 cd /opt/sweet-spicy
-docker compose -f docker-compose.prod.yml exec api \
+docker compose -f docker-compose.prod.yml run --rm --no-deps api \
   sh -c "cd /app/apps/api && npx prisma migrate deploy"
 ```
 
@@ -329,6 +332,14 @@ docker run --rm --env-file /opt/sweet-spicy/.env ghcr.io/YOUR_ORG/sweet-spicy-ap
 ```
 
 Use **`migrate deploy`** in production, not `db push`, once you rely on migration history. Rollback of **application** images does not undo DB schema; plan migrations and backups separately.
+
+If the DB was created previously with `db push` and tables already exist, mark the baseline migration once:
+
+```bash
+cd /opt/sweet-spicy
+docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+  sh -c "cd /app/apps/api && npx prisma migrate resolve --applied 20260405000000_init"
+```
 
 ---
 
@@ -346,7 +357,7 @@ export API_IMAGE=ghcr.io/YOUR_ORG/sweet-spicy-api:TAG
 ./deploy-vm.sh
 ```
 
-`deploy-vm.sh` runs `docker compose -f docker-compose.prod.yml pull` and `up -d`.
+`deploy-vm.sh` runs `pull`, starts `postgres`/`redis`, applies Prisma migrations, then starts `api`/`web`.
 
 ---
 

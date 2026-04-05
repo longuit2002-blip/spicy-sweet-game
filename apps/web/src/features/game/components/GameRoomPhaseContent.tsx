@@ -25,6 +25,7 @@ export function GameRoomPhaseContent({
 }: GameRoomPhaseContentProps) {
   switch (currentGameState.phase) {
     case GAME_PHASE.REVEAL:
+    case GAME_PHASE.SUPREME_RESOLVE:
     case GAME_PHASE.PENALTY:
     case GAME_PHASE.NEXT_TURN:
       return null;

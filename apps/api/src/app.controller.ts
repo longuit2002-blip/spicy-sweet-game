@@ -12,12 +12,13 @@ export class AppController {
   ) {}
 
   @Get("health")
-  health() {
+  async health() {
+    const activeRooms = await this.roomRepository.getRoomCount();
     return {
       status: "ok",
       timestamp: new Date().toISOString(),
       realtime: {
-        activeRooms: this.roomRepository.getRoomCount(),
+        activeRooms,
         ...this.realtimeSession.getMetricsSnapshot(),
         ...this.roomObservability.snapshot(),
       },

@@ -35,6 +35,11 @@ export const REVEAL_REMAIN_AFTER_LOCK_THRESHOLD =
 export const PHASE_STEP_PAUSE_SECONDS = 2;
 
 /**
+ * Server ticks (1 Hz) while `phase === SUPREME_RESOLVE` — public Total Wild moment before {@link acceptDeclaration}.
+ */
+export const SUPREME_PLAY_FX_SECONDS = 3;
+
+/**
  * Server `challengeTimer` during `PENALTY` (1 Hz tick). Longer than {@link PHASE_STEP_PAUSE_SECONDS} so clients can show
  * the round-result overlay and pile/draw flights without the phase flipping too early.
  */

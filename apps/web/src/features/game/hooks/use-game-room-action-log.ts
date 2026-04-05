@@ -39,6 +39,22 @@ export function useGameRoomActionLog({
     const previousPhase = prevPhaseRef.current;
     const currentPhase = currentGameState.phase;
     if (previousPhase !== currentPhase) {
+      if (currentPhase === GAME_PHASE.SUPREME_RESOLVE && currentGameState.playedCard) {
+        const playedCard = currentGameState.playedCard;
+        const declarer = currentGameState.players.find((player) => player.id === playedCard.playerId);
+        addLog(
+          t("log.supremePlayed", {
+            player: declarer?.nickname ?? t("common.unknownPlayer", { ns: "common" }),
+            type: t(`spice.${playedCard.declaration.type}`),
+            number: playedCard.declaration.number,
+          }),
+        );
+        setLastActionByPlayerId((previousActions) => ({
+          ...previousActions,
+          [playedCard.playerId]: t("seat.actionDeclared"),
+        }));
+      }
+
       if (currentPhase === GAME_PHASE.CHALLENGE_PHASE && currentGameState.playedCard) {
         const playedCard = currentGameState.playedCard;
         const declarer = currentGameState.players.find((player) => player.id === playedCard.playerId);

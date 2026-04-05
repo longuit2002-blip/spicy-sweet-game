@@ -21,6 +21,7 @@ import {
   PHASE_STEP_PAUSE_SECONDS,
   REFILL_HAND_SIZE,
   REVEAL_PHASE_COUNTDOWN_SECONDS,
+  SUPREME_PLAY_FX_SECONDS,
   TOTAL_TROPHIES,
   TOTAL_WILD_CARDS,
   TROPHY_CARD_POINTS,
@@ -112,6 +113,70 @@ function drawFromDrawPile(
     drawn.push(draw.shift()!);
   }
   return { drawPile: draw, drawn };
+}
+
+/**
+ * Declarer has no cards left after their play: optional trophy (when pool allows and the play was not Total Wild),
+ * then refill {@link REFILL_HAND_SIZE} from the draw pile. Shared by {@link acceptDeclaration} and {@link applyPenalty}
+ * when the declarer wins a failed challenge.
+ */
+function applyEmptyHandDeclarerTrophyAndRefill(
+  players: GamePlayer[],
+  drawPile: GameCard[],
+  trophiesRemaining: number,
+  declarerIdx: number,
+  playedCard: GameCard,
+): {
+  players: GamePlayer[];
+  drawPile: GameCard[];
+  trophiesRemaining: number;
+  awardedTrophy: boolean;
+} {
+  const declarer = players[declarerIdx];
+  if (!declarer || declarer.hand.length > 0) {
+    return { players, drawPile, trophiesRemaining, awardedTrophy: false };
+  }
+
+  const lastIsTotalWild = playedCard.kind === "total-wild";
+  let nextDraw = drawPile;
+  let nextTrophies = trophiesRemaining;
+  let awardedTrophy = false;
+
+  if (!lastIsTotalWild && nextTrophies > 0) {
+    nextTrophies -= 1;
+    const trophyCard = createTrophyCard();
+    const refill = drawFromDrawPile(nextDraw, REFILL_HAND_SIZE);
+    nextDraw = refill.drawPile;
+    const nextPlayers = players.map((p, i) =>
+      i === declarerIdx
+        ? {
+            ...p,
+            wonPile: [...p.wonPile, trophyCard],
+            trophyCount: p.trophyCount + 1,
+            hand: [...p.hand, ...refill.drawn],
+          }
+        : p,
+    );
+    return {
+      players: nextPlayers,
+      drawPile: nextDraw,
+      trophiesRemaining: nextTrophies,
+      awardedTrophy: true,
+    };
+  }
+
+  const refill = drawFromDrawPile(nextDraw, REFILL_HAND_SIZE);
+  nextDraw = refill.drawPile;
+  const nextPlayers = players.map((p, i) =>
+    i === declarerIdx ? { ...p, hand: [...p.hand, ...refill.drawn] } : p,
+  );
+
+  return {
+    players: nextPlayers,
+    drawPile: nextDraw,
+    trophiesRemaining: nextTrophies,
+    awardedTrophy: false,
+  };
 }
 
 /** Whether the physical card matches the declared suit (for challenge resolution). */
@@ -269,6 +334,24 @@ function isDeclarationValidForRound(state: GameState, declaration: Declaration):
   return declNum > lastNum;
 }
 
+/**
+ * Validates declaration for the concrete card being played.
+ * Total Wild ignores round lock and rank escalation: any spice, rank 1..MAX (supreme reset).
+ */
+export function isDeclarationValidForPlay(
+  state: GameState,
+  declaration: Declaration,
+  card: GameCard,
+): boolean {
+  if (card.kind === "total-wild") {
+    const declNum = Math.floor(Number(declaration.number));
+    if (!Number.isFinite(declNum)) return false;
+    if (declNum < 1 || declNum > MAX_DECLARATION_RANK) return false;
+    return SPICES.includes(declaration.type);
+  }
+  return isDeclarationValidForRound(state, declaration);
+}
+
 export function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -403,31 +486,49 @@ export function playCard(
     return null;
   }
   if (state.phase !== "PLAYER_TURN") return null;
-  if (!isDeclarationValidForRound(state, declaration)) {
-    return null;
-  }
   const cardIndex = currentPlayer.hand.findIndex((c) => c.id === cardId);
   if (cardIndex === -1) return null;
 
   const card = currentPlayer.hand[cardIndex];
+  if (!isDeclarationValidForPlay(state, declaration, card)) {
+    return null;
+  }
+
   const newHand = currentPlayer.hand.filter((_, i) => i !== cardIndex);
 
   const updatedPlayers = state.players.map((p, i) =>
     i === state.currentPlayerIndex ? { ...p, hand: newHand } : p,
   );
 
-  const lockedSuit = state.lockedSuit ?? declaration.type;
+  const lockedSuit =
+    card.kind === "total-wild" ? declaration.type : (state.lockedSuit ?? declaration.type);
+
+  const playedCard = {
+    card,
+    declaration,
+    playerId: currentPlayer.id,
+  };
+
+  if (card.kind === "total-wild") {
+    return {
+      ...state,
+      phase: "SUPREME_RESOLVE",
+      players: updatedPlayers,
+      lockedSuit,
+      playedCard,
+      challengeTimer: SUPREME_PLAY_FX_SECONDS,
+      challengeStep: null,
+      challengeClaimHolderId: null,
+      challengePassIds: [],
+    };
+  }
 
   return {
     ...state,
     phase: "CHALLENGE_PHASE",
     players: updatedPlayers,
     lockedSuit,
-    playedCard: {
-      card,
-      declaration,
-      playerId: currentPlayer.id,
-    },
+    playedCard,
     challengeTimer: CHALLENGE_CLAIM_RACE_SECONDS,
     challengeStep: "CLAIM_RACE",
     challengeClaimHolderId: null,
@@ -479,29 +580,47 @@ export function playCardLocal(
   const cardIndex = currentPlayer.hand.findIndex((c) => c.id === cardId);
   if (cardIndex === -1) return state;
   if (state.phase !== "PLAYER_TURN") return state;
-  if (!isDeclarationValidForRound(state, declaration)) {
+
+  const card = currentPlayer.hand[cardIndex];
+  if (!isDeclarationValidForPlay(state, declaration, card)) {
     return state;
   }
 
-  const card = currentPlayer.hand[cardIndex];
   const newHand = currentPlayer.hand.filter((_, i) => i !== cardIndex);
 
   const updatedPlayers = state.players.map((p, i) =>
     i === state.currentPlayerIndex ? { ...p, hand: newHand } : p,
   );
 
-  const lockedSuit = state.lockedSuit ?? declaration.type;
+  const lockedSuit =
+    card.kind === "total-wild" ? declaration.type : (state.lockedSuit ?? declaration.type);
+
+  const playedCard = {
+    card,
+    declaration,
+    playerId: currentPlayer.id,
+  };
+
+  if (card.kind === "total-wild") {
+    return {
+      ...state,
+      phase: "SUPREME_RESOLVE",
+      players: updatedPlayers,
+      lockedSuit,
+      playedCard,
+      challengeTimer: SUPREME_PLAY_FX_SECONDS,
+      challengeStep: null,
+      challengeClaimHolderId: null,
+      challengePassIds: [],
+    };
+  }
 
   return {
     ...state,
     phase: "CHALLENGE_PHASE",
     players: updatedPlayers,
     lockedSuit,
-    playedCard: {
-      card,
-      declaration,
-      playerId: currentPlayer.id,
-    },
+    playedCard,
     challengeTimer: CHALLENGE_CLAIM_RACE_SECONDS,
     challengeStep: "CLAIM_RACE",
     challengeClaimHolderId: null,
@@ -641,6 +760,16 @@ export function tickChallengePhase(state: GameState): GameState {
   return acceptDeclaration(state);
 }
 
+/** Total Wild public beat: countdown then same accept path as uncontested declaration. */
+export function tickSupremeResolvePhase(state: GameState): GameState {
+  if (state.phase !== "SUPREME_RESOLVE") return state;
+  const nextTimer = Math.max(0, state.challengeTimer - 1);
+  if (nextTimer > 0) {
+    return { ...state, challengeTimer: nextTimer };
+  }
+  return acceptDeclaration(state);
+}
+
 /** Server + offline: one REVEAL countdown tick; applies penalty when timer reaches 0. */
 export function tickRevealPhase(state: GameState): GameState {
   if (state.phase !== "REVEAL") return state;
@@ -660,6 +789,7 @@ export function applyPenalty(state: GameState): GameState {
 
   let drawPile = [...state.drawPile];
   let supremeReserve = state.supremeReserve;
+  let trophiesRemaining = state.trophiesRemaining;
   let players = state.players.map((p) => ({ ...p }));
 
   const winnerPileId = challengeCorrect ? challengerId : playerId;
@@ -692,6 +822,19 @@ export function applyPenalty(state: GameState): GameState {
     grantPenaltyDraw(playerId);
   } else {
     grantPenaltyDraw(challengerId);
+    const declarerIdx = players.findIndex((p) => p.id === playerId);
+    if (declarerIdx !== -1) {
+      const trophyFx = applyEmptyHandDeclarerTrophyAndRefill(
+        players,
+        drawPile,
+        trophiesRemaining,
+        declarerIdx,
+        played.card,
+      );
+      players = trophyFx.players;
+      drawPile = trophyFx.drawPile;
+      trophiesRemaining = trophyFx.trophiesRemaining;
+    }
   }
 
   const loserIdx = players.findIndex((p) => p.id === loserId);
@@ -702,6 +845,7 @@ export function applyPenalty(state: GameState): GameState {
     players,
     drawPile,
     supremeReserve,
+    trophiesRemaining,
     tablePile: [],
     playedCard: null,
     challengeResult: null,
@@ -754,33 +898,18 @@ export function acceptDeclaration(state: GameState): GameState {
   const declarerIdx = players.findIndex((p) => p.id === played.playerId);
   if (declarerIdx === -1) return state;
 
-  const handEmpty = players[declarerIdx]!.hand.length === 0;
-  const lastIsTotalWild = played.card.kind === "total-wild";
-
-  if (handEmpty) {
-    if (!lastIsTotalWild && trophiesRemaining > 0) {
-      trophiesRemaining -= 1;
-      const trophyCard = createTrophyCard();
-      players[declarerIdx] = {
-        ...players[declarerIdx]!,
-        wonPile: [...players[declarerIdx]!.wonPile, trophyCard],
-        trophyCount: players[declarerIdx]!.trophyCount + 1,
-      };
-      const refill = drawFromDrawPile(drawPile, REFILL_HAND_SIZE);
-      drawPile = refill.drawPile;
-      players[declarerIdx] = {
-        ...players[declarerIdx]!,
-        hand: [...players[declarerIdx]!.hand, ...refill.drawn],
-      };
-      phase = "TROPHY_AWARDED";
-    } else {
-      const refill = drawFromDrawPile(drawPile, REFILL_HAND_SIZE);
-      drawPile = refill.drawPile;
-      players[declarerIdx] = {
-        ...players[declarerIdx]!,
-        hand: [...players[declarerIdx]!.hand, ...refill.drawn],
-      };
-    }
+  const emptyHandFx = applyEmptyHandDeclarerTrophyAndRefill(
+    players,
+    drawPile,
+    trophiesRemaining,
+    declarerIdx,
+    played.card,
+  );
+  players = emptyHandFx.players;
+  drawPile = emptyHandFx.drawPile;
+  trophiesRemaining = emptyHandFx.trophiesRemaining;
+  if (emptyHandFx.awardedTrophy) {
+    phase = "TROPHY_AWARDED";
   }
 
   const nextIndex = (declarerIdx + 1) % players.length;

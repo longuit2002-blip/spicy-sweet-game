@@ -12,25 +12,31 @@ import {
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand/react";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type {
-  MediaIncomingAnswer,
-  MediaIncomingIceCandidate,
-  MediaIncomingOffer,
-  MediaJoinRoomResult,
-  MediaParticipant,
-  SocketActionResult,
-  SocketErrorCode,
-} from "@sweet-spicy/shared-types";
-import { SOCKET_ERROR_CODE } from "@sweet-spicy/shared-types";
-import { getSocket, type GameSocket } from "@/lib/socket-client";
+import type { MediaTokenResponse } from "@sweet-spicy/shared-types";
+import {
+  ConnectionState,
+  Room,
+  RoomEvent,
+  Track,
+  type Participant,
+  type RemoteParticipant,
+  type TrackPublication,
+} from "livekit-client";
 import { toast } from "@/hooks/use-toast";
+import { refreshAccessToken, useUserStore } from "@/stores/userStore";
 import { useRoomSessionStore } from "@/stores/room-session-store";
 
-type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting";
+type MediaSessionStatus = "idle" | "joining" | "joined" | "reconnecting" | "disabled";
+type RemoteConnectionState = RTCPeerConnectionState | "new";
 
-interface RemoteParticipantView extends MediaParticipant {
+interface RemoteParticipantView {
+  peerId: string;
+  nickname: string;
+  isHost: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
   stream: MediaStream | null;
-  connectionState: RTCPeerConnectionState | "new";
+  connectionState: RemoteConnectionState;
 }
 
 interface MediaSessionViewState {
@@ -43,6 +49,7 @@ interface MediaSessionViewState {
   isUpdatingSession: boolean;
   remoteParticipants: RemoteParticipantView[];
   isJoined: boolean;
+  isMediaEnabled: boolean;
 }
 
 interface RoomMediaSessionContextValue extends MediaSessionViewState {
@@ -51,23 +58,10 @@ interface RoomMediaSessionContextValue extends MediaSessionViewState {
   leaveMedia: () => Promise<void>;
 }
 
-interface PeerRuntime {
-  peerId: string;
-  connection: RTCPeerConnection;
-  polite: boolean;
-  makingOffer: boolean;
-  ignoreOffer: boolean;
-  isSettingRemoteAnswerPending: boolean;
-  pendingIceCandidates: RTCIceCandidateInit[];
-  /** Present when this peer was created with recvonly audio+video placeholders (no local tracks yet). */
-  recvOnlyTransceivers?: Partial<Record<"audio" | "video", RTCRtpTransceiver>>;
-}
-
-type LocalMediaKind = "audio" | "video";
-
-interface MediaDeviceAvailability {
-  audioInput: boolean;
-  videoInput: boolean;
+interface RoomMediaSessionActions {
+  toggleAudio: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
+  leaveMedia: () => Promise<void>;
 }
 
 interface MediaPendingState {
@@ -76,41 +70,36 @@ interface MediaPendingState {
   session: boolean;
 }
 
-interface RoomMediaSessionActions {
-  toggleAudio: () => Promise<void>;
-  toggleVideo: () => Promise<void>;
-  leaveMedia: () => Promise<void>;
+interface RequestedSessionState {
+  shouldBeJoined: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
 }
 
-const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-};
-
-const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
-  facingMode: "user",
-};
-
-const DEFAULT_VIEW_STATE: MediaSessionViewState = {
-  status: "idle",
-  localStream: null,
-  localAudioEnabled: false,
-  localVideoEnabled: false,
-  isUpdatingAudio: false,
-  isUpdatingVideo: false,
-  isUpdatingSession: false,
-  remoteParticipants: [],
-  isJoined: false,
-};
+const API_URL =
+  typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001")
+    : "http://localhost:3001";
+const LIVEKIT_UI_ENABLED = (process.env.NEXT_PUBLIC_LIVEKIT_ENABLED ?? "true").toLowerCase() !== "false";
+const MEDIA_UNAVAILABLE_STATUS_CODES = new Set<number>([503]);
 
 const RoomMediaSessionStoreContext = createContext<StoreApi<MediaSessionViewState> | null>(null);
 const RoomMediaSessionActionsContext = createContext<RoomMediaSessionActions | null>(null);
 
 function createMediaSessionStore() {
-  return createStore<MediaSessionViewState>(() => DEFAULT_VIEW_STATE);
+  const defaultStatus: MediaSessionStatus = LIVEKIT_UI_ENABLED ? "idle" : "disabled";
+  return createStore<MediaSessionViewState>(() => ({
+    status: defaultStatus,
+    localStream: null,
+    localAudioEnabled: false,
+    localVideoEnabled: false,
+    isUpdatingAudio: false,
+    isUpdatingVideo: false,
+    isUpdatingSession: false,
+    remoteParticipants: [],
+    isJoined: false,
+    isMediaEnabled: LIVEKIT_UI_ENABLED,
+  }));
 }
 
 function sortParticipantsByRoomOrder(
@@ -124,46 +113,39 @@ function sortParticipantsByRoomOrder(
     if (leftIndex === -1 && rightIndex === -1) {
       return left.nickname.localeCompare(right.nickname);
     }
-
     if (leftIndex === -1) {
       return 1;
     }
-
     if (rightIndex === -1) {
       return -1;
     }
-
     return leftIndex - rightIndex;
   });
 }
 
-function toActionFailureMessage(
-  code: SocketErrorCode,
-  fallback: string,
-  t: (key: string, defaultValue: string) => string,
-): string {
-  switch (code) {
-    case SOCKET_ERROR_CODE.MEDIA_ALREADY_ACTIVE_IN_ANOTHER_TAB:
-      return t(
-        "game.video.errors.alreadyActiveElsewhere",
-        "Voice or video is already active in another tab for this room.",
-      );
-    case SOCKET_ERROR_CODE.MEDIA_BOTS_NOT_SUPPORTED:
-      return t("game.video.errors.botsNotSupported", "Bots cannot join voice or video.");
-    case SOCKET_ERROR_CODE.NOT_IN_ROOM:
-      return t("game.video.errors.notInRoom", "Join the room before enabling voice or video.");
-    case SOCKET_ERROR_CODE.MEDIA_NOT_JOINED:
-      return t("game.video.errors.notJoined", "Enable voice or video before sending media updates.");
-    case SOCKET_ERROR_CODE.MEDIA_PEER_NOT_FOUND:
-      return t("game.video.errors.peerUnavailable", "That player is no longer available for voice or video.");
-    default:
-      return fallback;
+function parseResponseMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") {
+    return fallback;
   }
+
+  const message = (payload as { message?: unknown }).message;
+  if (typeof message === "string") {
+    return message;
+  }
+
+  if (Array.isArray(message)) {
+    const firstMessage = message.find((entry) => typeof entry === "string");
+    if (firstMessage) {
+      return firstMessage;
+    }
+  }
+
+  return fallback;
 }
 
 function toDeviceErrorMessage(
   error: unknown,
-  kind: LocalMediaKind,
+  kind: "audio" | "video",
   t: (key: string, defaultValue: string) => string,
 ): string {
   if (error instanceof DOMException) {
@@ -183,12 +165,6 @@ function toDeviceErrorMessage(
         return kind === "audio"
           ? t("game.video.errors.microphoneBusy", "Your microphone is busy in another app.")
           : t("game.video.errors.cameraBusy", "Your camera is busy in another app.");
-      case "OverconstrainedError":
-      case "ConstraintNotSatisfiedError":
-        return t(
-          "game.video.errors.unsupportedConstraints",
-          "This device cannot satisfy the requested media quality.",
-        );
       default:
         return kind === "audio"
           ? t("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
@@ -201,37 +177,36 @@ function toDeviceErrorMessage(
     : t("game.video.errors.cameraUnavailable", "Camera is unavailable right now.");
 }
 
-function toMissingDeviceMessage(
-  kind: LocalMediaKind,
-  t: (key: string, defaultValue: string) => string,
-): string {
-  return kind === "audio"
-    ? t("game.video.errors.noMicrophone", "No microphone was found.")
-    : t("game.video.errors.noCamera", "No camera was found.");
+class MediaTokenRequestError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+  }
 }
 
-async function emitJoinAck(
-  socket: GameSocket,
-  payload: { roomCode?: string; audioEnabled: boolean; videoEnabled: boolean },
-): Promise<MediaJoinRoomResult> {
-  return new Promise((resolve) => {
-    socket.emit("webrtc:join-room", payload, resolve);
+async function fetchMediaToken(roomCode: string, accessToken: string): Promise<MediaTokenResponse> {
+  const response = await fetch(`${API_URL}/media/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ roomCode }),
   });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const message = parseResponseMessage(payload, "Could not start media session.");
+    throw new MediaTokenRequestError(message, response.status);
+  }
+
+  return (await response.json()) as MediaTokenResponse;
 }
 
-async function emitActionAck(
-  socket: GameSocket,
-  event: "webrtc:leave-room" | "webrtc:update-media-state",
-  payload?: { audioEnabled: boolean; videoEnabled: boolean },
-): Promise<SocketActionResult> {
-  return new Promise((resolve) => {
-    if (payload) {
-      socket.emit(event, payload, resolve);
-      return;
-    }
-
-    socket.emit(event, resolve);
-  });
+function getPublicationEnabled(publication: TrackPublication | undefined): boolean {
+  return Boolean(publication && !publication.isMuted);
 }
 
 export function RoomMediaSessionProvider({
@@ -248,34 +223,29 @@ export function RoomMediaSessionProvider({
   );
   const roomPlayers = useRoomSessionStore((state) => state.players);
   const isRoomSocketConnected = useRoomSessionStore((state) => state.isConnected);
-  const errorRef = useRef<string | null>(null);
   const mediaSessionStoreRef = useRef<StoreApi<MediaSessionViewState> | null>(null);
   if (!mediaSessionStoreRef.current) {
     mediaSessionStoreRef.current = createMediaSessionStore();
   }
   const mediaSessionStore = mediaSessionStoreRef.current;
 
+  const roomCodeRef = useRef(roomCode);
+  const roomPlayersRef = useRef(roomPlayers);
   const roomPlayerIdsRef = useRef<readonly string[]>(roomPlayers.map((player) => player.id));
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const selfPeerIdRef = useRef<string | null>(null);
-  const iceServersRef = useRef<RTCIceServer[]>([]);
-  const peerConnectionsRef = useRef<Map<string, PeerRuntime>>(new Map());
-  const pendingIceCandidatesByPeerRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const livekitRoomRef = useRef<Room | null>(null);
+  const livekitCleanupRef = useRef<(() => void) | null>(null);
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const pendingMediaRef = useRef<MediaPendingState>({
     audio: false,
     video: false,
     session: false,
   });
-  const deviceAvailabilityRef = useRef<MediaDeviceAvailability>({
-    audioInput: true,
-    videoInput: true,
-  });
-  const desiredSessionRef = useRef({
+  const desiredSessionRef = useRef<RequestedSessionState>({
     shouldBeJoined: false,
     audioEnabled: false,
     videoEnabled: false,
   });
-  const roomCodeRef = useRef(roomCode);
+  const mediaAvailableRef = useRef(LIVEKIT_UI_ENABLED);
 
   const setViewState = useCallback(
     (
@@ -283,10 +253,10 @@ export function RoomMediaSessionProvider({
         | Partial<MediaSessionViewState>
         | ((current: MediaSessionViewState) => Partial<MediaSessionViewState>),
     ) => {
-      const current = mediaSessionStore.getState();
-      const partial = typeof update === "function" ? update(current) : update;
+      const currentState = mediaSessionStore.getState();
+      const partial = typeof update === "function" ? update(currentState) : update;
       mediaSessionStore.setState({
-        ...current,
+        ...currentState,
         ...partial,
       });
     },
@@ -295,7 +265,6 @@ export function RoomMediaSessionProvider({
 
   const showError = useCallback(
     (message: string) => {
-      errorRef.current = message;
       toast({
         variant: "destructive",
         title: translate("game.video.title", "Video Call"),
@@ -305,12 +274,565 @@ export function RoomMediaSessionProvider({
     [translate],
   );
 
+  const setPendingMediaFlag = useCallback(
+    (kind: keyof MediaPendingState, active: boolean) => {
+      pendingMediaRef.current = {
+        ...pendingMediaRef.current,
+        [kind]: active,
+      };
+      setViewState({
+        isUpdatingAudio: pendingMediaRef.current.audio,
+        isUpdatingVideo: pendingMediaRef.current.video,
+        isUpdatingSession: pendingMediaRef.current.session,
+      });
+    },
+    [setViewState],
+  );
+
+  const setMediaEnabled = useCallback(
+    (isEnabled: boolean) => {
+      mediaAvailableRef.current = isEnabled;
+      setViewState((currentState) => {
+        const nextStatus: MediaSessionStatus = isEnabled
+          ? currentState.status === "disabled"
+            ? "idle"
+            : currentState.status
+          : "disabled";
+        return {
+          isMediaEnabled: isEnabled,
+          status: nextStatus,
+        };
+      });
+    },
+    [setViewState],
+  );
+
+  const getRemoteParticipantView = useCallback(
+    (participant: RemoteParticipant): RemoteParticipantView => {
+      const roomPlayer = roomPlayersRef.current.find((player) => player.id === participant.identity);
+      const stream = remoteStreamsRef.current.get(participant.identity) ?? null;
+      const audioPublication = participant.getTrackPublication(Track.Source.Microphone);
+      const videoPublication = participant.getTrackPublication(Track.Source.Camera);
+
+      return {
+        peerId: participant.identity,
+        nickname: roomPlayer?.nickname ?? participant.name ?? participant.identity,
+        isHost: roomPlayer?.isHost ?? false,
+        audioEnabled: getPublicationEnabled(audioPublication),
+        videoEnabled: getPublicationEnabled(videoPublication),
+        stream,
+        connectionState: "connected",
+      };
+    },
+    [],
+  );
+
+  const updateLocalStateFromRoom = useCallback(
+    (room: Room | null) => {
+      if (!room) {
+        setViewState({
+          localStream: null,
+          localAudioEnabled: false,
+          localVideoEnabled: false,
+        });
+        return;
+      }
+
+      const audioPublication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      const videoPublication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      const localTracks: MediaStreamTrack[] = [];
+
+      if (audioPublication?.track?.mediaStreamTrack) {
+        localTracks.push(audioPublication.track.mediaStreamTrack);
+      }
+      if (videoPublication?.track?.mediaStreamTrack) {
+        localTracks.push(videoPublication.track.mediaStreamTrack);
+      }
+
+      setViewState({
+        localStream: localTracks.length > 0 ? new MediaStream(localTracks) : null,
+        localAudioEnabled: getPublicationEnabled(audioPublication),
+        localVideoEnabled: getPublicationEnabled(videoPublication),
+      });
+    },
+    [setViewState],
+  );
+
+  const upsertRemoteParticipant = useCallback(
+    (participant: RemoteParticipant) => {
+      const nextParticipant = getRemoteParticipantView(participant);
+      setViewState((currentState) => {
+        const withoutCurrent = currentState.remoteParticipants.filter(
+          (remoteParticipant) => remoteParticipant.peerId !== participant.identity,
+        );
+        return {
+          remoteParticipants: sortParticipantsByRoomOrder(
+            [...withoutCurrent, nextParticipant],
+            roomPlayerIdsRef.current,
+          ),
+        };
+      });
+    },
+    [getRemoteParticipantView, setViewState],
+  );
+
+  const removeRemoteParticipant = useCallback(
+    (peerId: string) => {
+      remoteStreamsRef.current.delete(peerId);
+      setViewState((currentState) => ({
+        remoteParticipants: currentState.remoteParticipants.filter(
+          (participant) => participant.peerId !== peerId,
+        ),
+      }));
+    },
+    [setViewState],
+  );
+
+  const syncRemoteParticipantsFromRoom = useCallback(
+    (room: Room) => {
+      const nextParticipants = Array.from(room.remoteParticipants.values()).map(getRemoteParticipantView);
+      setViewState({
+        remoteParticipants: sortParticipantsByRoomOrder(nextParticipants, roomPlayerIdsRef.current),
+      });
+    },
+    [getRemoteParticipantView, setViewState],
+  );
+
+  const disconnectLivekitRoom = useCallback(async () => {
+    const livekitRoom = livekitRoomRef.current;
+    if (!livekitRoom) {
+      return;
+    }
+
+    livekitCleanupRef.current?.();
+    livekitCleanupRef.current = null;
+    livekitRoomRef.current = null;
+    remoteStreamsRef.current.clear();
+
+    await livekitRoom.disconnect().catch(() => undefined);
+  }, []);
+
+  const attachLivekitRoomListeners = useCallback(
+    (room: Room) => {
+      const handleConnectionStateChanged = (nextState: ConnectionState) => {
+        if (nextState === ConnectionState.Connected) {
+          setViewState({ status: "joined", isJoined: true });
+          syncRemoteParticipantsFromRoom(room);
+          updateLocalStateFromRoom(room);
+          return;
+        }
+
+        if (
+          nextState === ConnectionState.Reconnecting ||
+          nextState === ConnectionState.SignalReconnecting ||
+          nextState === ConnectionState.Connecting
+        ) {
+          setViewState((currentState) => ({
+            status: "reconnecting",
+            isJoined: false,
+            remoteParticipants: currentState.remoteParticipants.map((participant) => ({
+              ...participant,
+              connectionState: "new",
+            })),
+          }));
+          return;
+        }
+
+        if (nextState === ConnectionState.Disconnected) {
+          const isDesiredJoined = desiredSessionRef.current.shouldBeJoined;
+          setViewState({
+            status: isDesiredJoined ? "reconnecting" : mediaAvailableRef.current ? "idle" : "disabled",
+            isJoined: false,
+          });
+        }
+      };
+
+      const handleParticipantConnected = (participant: RemoteParticipant) => {
+        upsertRemoteParticipant(participant);
+      };
+
+      const handleParticipantDisconnected = (participant: RemoteParticipant) => {
+        removeRemoteParticipant(participant.identity);
+      };
+
+      const handleTrackSubscribed = (
+        track: import("livekit-client").RemoteTrack,
+        _publication: import("livekit-client").RemoteTrackPublication,
+        participant: RemoteParticipant,
+      ) => {
+        const mediaTrack = track.mediaStreamTrack;
+        const existingStream = remoteStreamsRef.current.get(participant.identity) ?? new MediaStream();
+        const alreadyAttached = existingStream.getTracks().some((candidate) => candidate.id === mediaTrack.id);
+        if (!alreadyAttached) {
+          existingStream.addTrack(mediaTrack);
+        }
+        remoteStreamsRef.current.set(participant.identity, existingStream);
+        upsertRemoteParticipant(participant);
+      };
+
+      const handleTrackUnsubscribed = (
+        track: import("livekit-client").RemoteTrack,
+        _publication: import("livekit-client").RemoteTrackPublication,
+        participant: RemoteParticipant,
+      ) => {
+        const existingStream = remoteStreamsRef.current.get(participant.identity);
+        if (existingStream) {
+          const trackToRemove = existingStream
+            .getTracks()
+            .find((candidate) => candidate.id === track.mediaStreamTrack.id);
+          if (trackToRemove) {
+            existingStream.removeTrack(trackToRemove);
+          }
+        }
+        upsertRemoteParticipant(participant);
+      };
+
+      const handleTrackMuted = (_publication: TrackPublication, participant: Participant) => {
+        if (participant.identity === room.localParticipant.identity) {
+          updateLocalStateFromRoom(room);
+          return;
+        }
+
+        const remoteParticipant = room.remoteParticipants.get(participant.identity);
+        if (remoteParticipant) {
+          upsertRemoteParticipant(remoteParticipant);
+        }
+      };
+
+      const handleTrackUnmuted = (_publication: TrackPublication, participant: Participant) => {
+        if (participant.identity === room.localParticipant.identity) {
+          updateLocalStateFromRoom(room);
+          return;
+        }
+
+        const remoteParticipant = room.remoteParticipants.get(participant.identity);
+        if (remoteParticipant) {
+          upsertRemoteParticipant(remoteParticipant);
+        }
+      };
+
+      const handleLocalTrackPublished = () => {
+        updateLocalStateFromRoom(room);
+      };
+
+      const handleLocalTrackUnpublished = () => {
+        updateLocalStateFromRoom(room);
+      };
+
+      room.on(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
+      room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
+      room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+      room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+      room.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
+      room.on(RoomEvent.TrackMuted, handleTrackMuted);
+      room.on(RoomEvent.TrackUnmuted, handleTrackUnmuted);
+      room.on(RoomEvent.LocalTrackPublished, handleLocalTrackPublished);
+      room.on(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
+
+      return () => {
+        room.off(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
+        room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
+        room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+        room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+        room.off(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
+        room.off(RoomEvent.TrackMuted, handleTrackMuted);
+        room.off(RoomEvent.TrackUnmuted, handleTrackUnmuted);
+        room.off(RoomEvent.LocalTrackPublished, handleLocalTrackPublished);
+        room.off(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
+      };
+    },
+    [removeRemoteParticipant, setViewState, syncRemoteParticipantsFromRoom, updateLocalStateFromRoom, upsertRemoteParticipant],
+  );
+
+  const requestMediaToken = useCallback(async (): Promise<MediaTokenResponse> => {
+    const normalizedRoomCode = roomCodeRef.current.trim().toUpperCase();
+    if (!normalizedRoomCode) {
+      throw new Error(
+        translate("game.video.errors.notInRoom", "Join the room before enabling voice or video."),
+      );
+    }
+
+    const token = useUserStore.getState().accessToken;
+    if (!token) {
+      throw new MediaTokenRequestError(
+        translate("game.video.errors.notAuthenticated", "Please sign in again to use voice or video."),
+        401,
+      );
+    }
+
+    try {
+      return await fetchMediaToken(normalizedRoomCode, token);
+    } catch (error) {
+      if (!(error instanceof MediaTokenRequestError) || error.statusCode !== 401) {
+        throw error;
+      }
+
+      const refreshedToken = await refreshAccessToken();
+      return fetchMediaToken(normalizedRoomCode, refreshedToken);
+    }
+  }, [translate]);
+
+  const joinMedia = useCallback(
+    async (
+      nextState: { audioEnabled: boolean; videoEnabled: boolean },
+      {
+        reconnecting = false,
+      }: {
+        reconnecting?: boolean;
+      } = {},
+    ) => {
+      if (!mediaAvailableRef.current) {
+        setViewState({ status: "disabled" });
+        showError(
+          translate(
+            "game.video.errors.mediaUnavailable",
+            "Voice and video are unavailable because LiveKit is not configured for this environment.",
+          ),
+        );
+        return;
+      }
+
+      if (!isRoomSocketConnected) {
+        showError(
+          translate(
+            "game.video.errors.socketNotReady",
+            "The room connection is still starting. Try again in a moment.",
+          ),
+        );
+        return;
+      }
+
+      setViewState({
+        status: reconnecting ? "reconnecting" : "joining",
+        isJoined: false,
+        remoteParticipants: [],
+      });
+      desiredSessionRef.current = {
+        shouldBeJoined: true,
+        audioEnabled: nextState.audioEnabled,
+        videoEnabled: nextState.videoEnabled,
+      };
+
+      try {
+        const mediaToken = await requestMediaToken();
+        await disconnectLivekitRoom();
+
+        const room = new Room({
+          adaptiveStream: true,
+          dynacast: true,
+        });
+        const cleanup = attachLivekitRoomListeners(room);
+        livekitCleanupRef.current = cleanup;
+        livekitRoomRef.current = room;
+
+        await room.connect(mediaToken.livekitUrl, mediaToken.token);
+        syncRemoteParticipantsFromRoom(room);
+
+        if (nextState.audioEnabled) {
+          try {
+            await room.localParticipant.setMicrophoneEnabled(true);
+          } catch (error) {
+            desiredSessionRef.current.audioEnabled = false;
+            showError(toDeviceErrorMessage(error, "audio", translate));
+          }
+        }
+
+        if (nextState.videoEnabled) {
+          try {
+            await room.localParticipant.setCameraEnabled(true);
+          } catch (error) {
+            desiredSessionRef.current.videoEnabled = false;
+            showError(toDeviceErrorMessage(error, "video", translate));
+          }
+        }
+
+        updateLocalStateFromRoom(room);
+        setViewState({
+          status: "joined",
+          isJoined: true,
+        });
+      } catch (error) {
+        desiredSessionRef.current = {
+          shouldBeJoined: false,
+          audioEnabled: false,
+          videoEnabled: false,
+        };
+        await disconnectLivekitRoom();
+
+        if (error instanceof MediaTokenRequestError && MEDIA_UNAVAILABLE_STATUS_CODES.has(error.statusCode)) {
+          setMediaEnabled(false);
+          setViewState({
+            status: "disabled",
+            isJoined: false,
+            localStream: null,
+            localAudioEnabled: false,
+            localVideoEnabled: false,
+            remoteParticipants: [],
+          });
+          showError(
+            translate(
+              "game.video.errors.mediaUnavailable",
+              "Voice and video are unavailable because LiveKit is not configured for this environment.",
+            ),
+          );
+          return;
+        }
+
+        setViewState({
+          status: mediaAvailableRef.current ? "idle" : "disabled",
+          isJoined: false,
+          localStream: null,
+          localAudioEnabled: false,
+          localVideoEnabled: false,
+          remoteParticipants: [],
+        });
+
+        if (error instanceof MediaTokenRequestError) {
+          showError(error.message);
+          return;
+        }
+
+        if (error instanceof Error) {
+          showError(error.message);
+          return;
+        }
+
+        showError(translate("game.video.errors.deviceUnavailable", "Camera or microphone is unavailable right now."));
+      }
+    },
+    [
+      attachLivekitRoomListeners,
+      disconnectLivekitRoom,
+      isRoomSocketConnected,
+      requestMediaToken,
+      setMediaEnabled,
+      setViewState,
+      showError,
+      syncRemoteParticipantsFromRoom,
+      translate,
+      updateLocalStateFromRoom,
+    ],
+  );
+
+  const runMediaOperation = useCallback(
+    async (
+      kind: keyof MediaPendingState,
+      operation: () => Promise<void>,
+      blockedKinds: ReadonlyArray<keyof MediaPendingState> = [kind, "session"],
+    ) => {
+      if (blockedKinds.some((blockedKind) => pendingMediaRef.current[blockedKind])) {
+        return;
+      }
+
+      setPendingMediaFlag(kind, true);
+      try {
+        await operation();
+      } finally {
+        setPendingMediaFlag(kind, false);
+      }
+    },
+    [setPendingMediaFlag],
+  );
+
+  const leaveMedia = useCallback(async () => {
+    await runMediaOperation(
+      "session",
+      async () => {
+        desiredSessionRef.current = {
+          shouldBeJoined: false,
+          audioEnabled: false,
+          videoEnabled: false,
+        };
+        await disconnectLivekitRoom();
+        setViewState({
+          status: mediaAvailableRef.current ? "idle" : "disabled",
+          isJoined: false,
+          localStream: null,
+          localAudioEnabled: false,
+          localVideoEnabled: false,
+          remoteParticipants: [],
+        });
+      },
+      ["session", "audio", "video"],
+    );
+  }, [disconnectLivekitRoom, runMediaOperation, setViewState]);
+
+  const toggleAudio = useCallback(async () => {
+    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
+    await runMediaOperation(
+      needsJoin ? "session" : "audio",
+      async () => {
+        if (!desiredSessionRef.current.shouldBeJoined) {
+          await joinMedia({ audioEnabled: true, videoEnabled: false });
+          return;
+        }
+
+        const room = livekitRoomRef.current;
+        if (!room) {
+          await joinMedia({
+            audioEnabled: true,
+            videoEnabled: desiredSessionRef.current.videoEnabled,
+          }, { reconnecting: true });
+          return;
+        }
+
+        const nextEnabled = !desiredSessionRef.current.audioEnabled;
+        try {
+          await room.localParticipant.setMicrophoneEnabled(nextEnabled);
+        } catch (error) {
+          showError(toDeviceErrorMessage(error, "audio", translate));
+          return;
+        }
+
+        desiredSessionRef.current.audioEnabled = nextEnabled;
+        updateLocalStateFromRoom(room);
+      },
+      needsJoin ? ["session", "audio", "video"] : ["audio", "session"],
+    );
+  }, [joinMedia, runMediaOperation, showError, translate, updateLocalStateFromRoom]);
+
+  const toggleVideo = useCallback(async () => {
+    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
+    await runMediaOperation(
+      needsJoin ? "session" : "video",
+      async () => {
+        if (!desiredSessionRef.current.shouldBeJoined) {
+          await joinMedia({ audioEnabled: false, videoEnabled: true });
+          return;
+        }
+
+        const room = livekitRoomRef.current;
+        if (!room) {
+          await joinMedia({
+            audioEnabled: desiredSessionRef.current.audioEnabled,
+            videoEnabled: true,
+          }, { reconnecting: true });
+          return;
+        }
+
+        const nextEnabled = !desiredSessionRef.current.videoEnabled;
+        try {
+          await room.localParticipant.setCameraEnabled(nextEnabled);
+        } catch (error) {
+          showError(toDeviceErrorMessage(error, "video", translate));
+          return;
+        }
+
+        desiredSessionRef.current.videoEnabled = nextEnabled;
+        updateLocalStateFromRoom(room);
+      },
+      needsJoin ? ["session", "audio", "video"] : ["video", "session"],
+    );
+  }, [joinMedia, runMediaOperation, showError, translate, updateLocalStateFromRoom]);
+
   useEffect(() => {
     roomCodeRef.current = roomCode;
   }, [roomCode]);
 
   useEffect(() => {
+    roomPlayersRef.current = roomPlayers;
     roomPlayerIdsRef.current = roomPlayers.map((player) => player.id);
+
     setViewState((currentState) => ({
       remoteParticipants: sortParticipantsByRoomOrder(
         currentState.remoteParticipants.map((participant) => {
@@ -330,842 +852,6 @@ export function RoomMediaSessionProvider({
     }));
   }, [roomPlayers, setViewState]);
 
-  const setPendingMediaFlag = useCallback((kind: keyof MediaPendingState, active: boolean) => {
-    pendingMediaRef.current = {
-      ...pendingMediaRef.current,
-      [kind]: active,
-    };
-    setViewState({
-      isUpdatingAudio: pendingMediaRef.current.audio,
-      isUpdatingVideo: pendingMediaRef.current.video,
-      isUpdatingSession: pendingMediaRef.current.session,
-    });
-  }, [setViewState]);
-
-  const syncLocalStreamState = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (!stream || stream.getTracks().length === 0) {
-      setViewState({ localStream: null });
-      return;
-    }
-
-    setViewState({ localStream: stream });
-  }, [setViewState]);
-
-  const refreshDeviceAvailability = useCallback(async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) {
-      return null;
-    }
-
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const nextAvailability: MediaDeviceAvailability = {
-        audioInput: devices.some((device) => device.kind === "audioinput"),
-        videoInput: devices.some((device) => device.kind === "videoinput"),
-      };
-      deviceAvailabilityRef.current = nextAvailability;
-      return nextAvailability;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const upsertRemoteParticipant = useCallback((participant: MediaParticipant, stream?: MediaStream | null) => {
-    setViewState((currentState) => {
-      const currentParticipants = currentState.remoteParticipants;
-      const roomPlayer = roomPlayers.find((player) => player.id === participant.peerId);
-      const existingParticipant = currentParticipants.find((item) => item.peerId === participant.peerId);
-      const nextParticipant: RemoteParticipantView = {
-        ...participant,
-        nickname: roomPlayer?.nickname ?? participant.nickname,
-        isHost: roomPlayer?.isHost ?? participant.isHost,
-        stream: stream !== undefined ? stream : existingParticipant?.stream ?? null,
-        connectionState: existingParticipant?.connectionState ?? "new",
-      };
-
-      const withoutParticipant = currentParticipants.filter((item) => item.peerId !== participant.peerId);
-      return {
-        remoteParticipants: sortParticipantsByRoomOrder(
-          [...withoutParticipant, nextParticipant],
-          roomPlayerIdsRef.current,
-        ),
-      };
-    });
-  }, [roomPlayers, setViewState]);
-
-  const updateRemoteConnectionState = useCallback(
-    (peerId: string, connectionState: RTCPeerConnectionState | "new") => {
-      setViewState((currentState) => ({
-        remoteParticipants: currentState.remoteParticipants.map((participant) =>
-          participant.peerId === peerId ? { ...participant, connectionState } : participant,
-        ),
-      }));
-    },
-    [setViewState],
-  );
-
-  const removeRemoteParticipant = useCallback((peerId: string) => {
-    setViewState((currentState) => ({
-      remoteParticipants: currentState.remoteParticipants.filter((participant) => participant.peerId !== peerId),
-    }));
-  }, [setViewState]);
-
-  const closePeerConnection = useCallback(
-    (peerId: string) => {
-      const runtime = peerConnectionsRef.current.get(peerId);
-      if (!runtime) {
-        return;
-      }
-
-      peerConnectionsRef.current.delete(peerId);
-      runtime.connection.onicecandidate = null;
-      runtime.connection.ontrack = null;
-      runtime.connection.onnegotiationneeded = null;
-      runtime.connection.onconnectionstatechange = null;
-      runtime.connection.close();
-      updateRemoteConnectionState(peerId, "closed");
-    },
-    [updateRemoteConnectionState],
-  );
-
-  const closeAllPeerConnections = useCallback(
-    ({ preserveParticipants }: { preserveParticipants: boolean }) => {
-      for (const peerId of peerConnectionsRef.current.keys()) {
-        closePeerConnection(peerId);
-      }
-
-      if (preserveParticipants) {
-        setViewState((currentState) => ({
-          remoteParticipants: currentState.remoteParticipants.map((participant) => ({
-            ...participant,
-            stream: null,
-            connectionState: "new",
-          })),
-        }));
-        return;
-      }
-
-      setViewState({ remoteParticipants: [] });
-    },
-    [closePeerConnection, setViewState],
-  );
-
-  const stopLocalTracks = useCallback(() => {
-    localStreamRef.current?.getTracks().forEach((track) => {
-      track.onended = null;
-      track.stop();
-    });
-    localStreamRef.current = null;
-    setViewState({
-      localAudioEnabled: false,
-      localVideoEnabled: false,
-    });
-    syncLocalStreamState();
-  }, [setViewState, syncLocalStreamState]);
-
-  const ensureLocalStreamContainer = useCallback(() => {
-    if (!localStreamRef.current) {
-      localStreamRef.current = new MediaStream();
-    }
-
-    return localStreamRef.current;
-  }, []);
-
-  const getLiveTrack = useCallback((kind: "audio" | "video") => {
-    const stream = localStreamRef.current;
-    if (!stream) {
-      return null;
-    }
-
-    const tracks = kind === "audio" ? stream.getAudioTracks() : stream.getVideoTracks();
-    return tracks.find((track) => track.readyState === "live") ?? null;
-  }, []);
-
-  const addTrackToPeers = useCallback((track: MediaStreamTrack) => {
-    const stream = ensureLocalStreamContainer();
-    const kind = track.kind === "audio" || track.kind === "video" ? track.kind : null;
-    if (!kind) {
-      return;
-    }
-
-    for (const runtime of peerConnectionsRef.current.values()) {
-      const existingSender = runtime.connection.getSenders().find((sender) => sender.track?.kind === track.kind);
-      if (existingSender) {
-        void existingSender.replaceTrack(track);
-        continue;
-      }
-
-      const recvSlot = runtime.recvOnlyTransceivers?.[kind];
-      if (recvSlot?.sender && !recvSlot.sender.track) {
-        void recvSlot.sender.replaceTrack(track);
-        const current = runtime.recvOnlyTransceivers;
-        if (current) {
-          const next = { ...current };
-          delete next[kind];
-          runtime.recvOnlyTransceivers = Object.keys(next).length > 0 ? next : undefined;
-        }
-        continue;
-      }
-
-      runtime.connection.addTrack(track, stream);
-    }
-  }, [ensureLocalStreamContainer]);
-
-  const removeTrackFromPeers = useCallback((kind: "audio" | "video") => {
-    for (const runtime of peerConnectionsRef.current.values()) {
-      const sender = runtime.connection.getSenders().find((candidate) => candidate.track?.kind === kind);
-      if (sender) {
-        runtime.connection.removeTrack(sender);
-      }
-    }
-  }, []);
-
-  const emitMediaStateUpdate = useCallback(async () => {
-    const socket = getSocket();
-    if (!socket?.connected || !desiredSessionRef.current.shouldBeJoined) {
-      return;
-    }
-
-    const result = await emitActionAck(socket, "webrtc:update-media-state", {
-      audioEnabled: desiredSessionRef.current.audioEnabled,
-      videoEnabled: desiredSessionRef.current.videoEnabled,
-    });
-
-    if (!result.success) {
-      showError(toActionFailureMessage(result.code, result.message, translate));
-    }
-  }, [showError, translate]);
-
-  const handleTrackEnded = useCallback(
-    async (kind: LocalMediaKind, trackId: string) => {
-      const stream = localStreamRef.current;
-      const track =
-        kind === "audio"
-          ? stream?.getAudioTracks().find((candidate) => candidate.id === trackId) ?? null
-          : stream?.getVideoTracks().find((candidate) => candidate.id === trackId) ?? null;
-
-      if (!track) {
-        return;
-      }
-
-      track.onended = null;
-      stream?.removeTrack(track);
-      removeTrackFromPeers(kind);
-      syncLocalStreamState();
-
-      if (kind === "audio") {
-        desiredSessionRef.current.audioEnabled = false;
-        setViewState({ localAudioEnabled: false });
-        showError(translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now."));
-      } else {
-        desiredSessionRef.current.videoEnabled = false;
-        setViewState({ localVideoEnabled: false });
-        showError(translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."));
-      }
-
-      await emitMediaStateUpdate();
-    },
-    [emitMediaStateUpdate, removeTrackFromPeers, setViewState, showError, syncLocalStreamState, translate],
-  );
-
-  const acquireTrack = useCallback(
-    async (kind: LocalMediaKind) => {
-      const existingTrack = getLiveTrack(kind);
-      if (existingTrack) {
-        return existingTrack;
-      }
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        showError(
-          kind === "audio"
-            ? translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
-            : translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."),
-        );
-        return null;
-      }
-
-      const deviceAvailability = await refreshDeviceAvailability();
-      if (deviceAvailability) {
-        const hasRequestedDevice = kind === "audio" ? deviceAvailability.audioInput : deviceAvailability.videoInput;
-        if (!hasRequestedDevice) {
-          showError(toMissingDeviceMessage(kind, translate));
-          return null;
-        }
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(
-          kind === "audio"
-            ? { audio: AUDIO_CONSTRAINTS, video: false }
-            : { audio: false, video: VIDEO_CONSTRAINTS },
-        );
-        const track =
-          kind === "audio" ? stream.getAudioTracks()[0] ?? null : stream.getVideoTracks()[0] ?? null;
-        if (!track) {
-          showError(
-            kind === "audio"
-              ? translate("game.video.errors.microphoneUnavailable", "Microphone is unavailable right now.")
-              : translate("game.video.errors.cameraUnavailable", "Camera is unavailable right now."),
-          );
-          return null;
-        }
-
-        track.onended = () => {
-          void handleTrackEnded(kind, track.id);
-        };
-        ensureLocalStreamContainer().addTrack(track);
-        syncLocalStreamState();
-        return track;
-      } catch (deviceError) {
-        showError(toDeviceErrorMessage(deviceError, kind, translate));
-        return null;
-      }
-    },
-    [
-      ensureLocalStreamContainer,
-      getLiveTrack,
-      handleTrackEnded,
-      refreshDeviceAvailability,
-      showError,
-      syncLocalStreamState,
-      translate,
-    ],
-  );
-
-  const createPeerConnection = useCallback(
-    (participant: MediaParticipant) => {
-      const existingRuntime = peerConnectionsRef.current.get(participant.peerId);
-      if (existingRuntime) {
-        return existingRuntime;
-      }
-
-      const connection = new RTCPeerConnection({ iceServers: iceServersRef.current });
-
-      const localAudioTrack = getLiveTrack("audio");
-      const localVideoTrack = getLiveTrack("video");
-      const localStream = localStreamRef.current;
-
-      let recvOnlyTransceivers: PeerRuntime["recvOnlyTransceivers"];
-      if (!localAudioTrack && !localVideoTrack) {
-        recvOnlyTransceivers = {
-          audio: connection.addTransceiver("audio", { direction: "recvonly" }),
-          video: connection.addTransceiver("video", { direction: "recvonly" }),
-        };
-      }
-
-      const runtime: PeerRuntime = {
-        peerId: participant.peerId,
-        connection,
-        polite: (selfPeerIdRef.current ?? "").localeCompare(participant.peerId) > 0,
-        makingOffer: false,
-        ignoreOffer: false,
-        isSettingRemoteAnswerPending: false,
-        pendingIceCandidates:
-          pendingIceCandidatesByPeerRef.current.get(participant.peerId)?.slice() ?? [],
-        recvOnlyTransceivers,
-      };
-      pendingIceCandidatesByPeerRef.current.delete(participant.peerId);
-
-      if (localAudioTrack && localStream) {
-        connection.addTrack(localAudioTrack, localStream);
-      }
-
-      if (localVideoTrack && localStream) {
-        connection.addTrack(localVideoTrack, localStream);
-      }
-
-      connection.onicecandidate = (event) => {
-        if (!event.candidate) {
-          return;
-        }
-
-        const socket = getSocket();
-        socket?.emit("webrtc:ice-candidate", {
-          targetPeerId: participant.peerId,
-          candidate: event.candidate.toJSON(),
-        });
-      };
-
-      connection.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (!remoteStream) {
-          return;
-        }
-
-        upsertRemoteParticipant(participant, remoteStream);
-      };
-
-      connection.onconnectionstatechange = () => {
-        const nextState = connection.connectionState;
-        updateRemoteConnectionState(participant.peerId, nextState === "closed" ? "new" : nextState);
-      };
-
-      connection.onnegotiationneeded = async () => {
-        if (!desiredSessionRef.current.shouldBeJoined) {
-          return;
-        }
-
-        try {
-          runtime.makingOffer = true;
-          await connection.setLocalDescription();
-
-          if (!connection.localDescription) {
-            return;
-          }
-
-          const socket = getSocket();
-          socket?.emit("webrtc:offer", {
-            targetPeerId: participant.peerId,
-            offer: connection.localDescription.toJSON(),
-          });
-        } catch (error) {
-          if (process.env.NODE_ENV !== "production") {
-            console.warn("[room-media-session] WebRTC negotiation failed", error);
-          }
-        } finally {
-          runtime.makingOffer = false;
-        }
-      };
-
-      peerConnectionsRef.current.set(participant.peerId, runtime);
-      upsertRemoteParticipant(participant);
-      updateRemoteConnectionState(participant.peerId, "new");
-      return runtime;
-    },
-    [getLiveTrack, updateRemoteConnectionState, upsertRemoteParticipant],
-  );
-
-  const flushPendingIceCandidates = useCallback(async (runtime: PeerRuntime) => {
-    if (!runtime.connection.remoteDescription) {
-      return;
-    }
-
-    for (const candidate of runtime.pendingIceCandidates.splice(0)) {
-      await runtime.connection.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-  }, []);
-
-  const handleIncomingOffer = useCallback(
-    async ({ fromPeerId, offer }: MediaIncomingOffer) => {
-      if (!desiredSessionRef.current.shouldBeJoined || fromPeerId === selfPeerIdRef.current) {
-        return;
-      }
-
-      const participant =
-        mediaSessionStore.getState().remoteParticipants.find((item) => item.peerId === fromPeerId) ??
-        ({
-          peerId: fromPeerId,
-          nickname: roomPlayers.find((player) => player.id === fromPeerId)?.nickname ?? fromPeerId,
-          isHost: roomPlayers.find((player) => player.id === fromPeerId)?.isHost ?? false,
-          audioEnabled: true,
-          videoEnabled: true,
-        } satisfies MediaParticipant);
-      const runtime = createPeerConnection(participant);
-      const readyForOffer =
-        !runtime.makingOffer &&
-        (runtime.connection.signalingState === "stable" || runtime.isSettingRemoteAnswerPending);
-      const offerCollision = !readyForOffer;
-
-      runtime.ignoreOffer = !runtime.polite && offerCollision;
-      if (runtime.ignoreOffer) {
-        return;
-      }
-
-      runtime.isSettingRemoteAnswerPending = offer.type === "answer";
-      await runtime.connection.setRemoteDescription(new RTCSessionDescription(offer));
-      runtime.isSettingRemoteAnswerPending = false;
-      await flushPendingIceCandidates(runtime);
-
-      await runtime.connection.setLocalDescription();
-      if (!runtime.connection.localDescription) {
-        return;
-      }
-
-      const socket = getSocket();
-      socket?.emit("webrtc:answer", {
-        targetPeerId: fromPeerId,
-        answer: runtime.connection.localDescription.toJSON(),
-      });
-    },
-    [createPeerConnection, flushPendingIceCandidates, mediaSessionStore, roomPlayers],
-  );
-
-  const handleIncomingAnswer = useCallback(
-    async ({ fromPeerId, answer }: MediaIncomingAnswer) => {
-      const runtime = peerConnectionsRef.current.get(fromPeerId);
-      if (!runtime) {
-        return;
-      }
-
-      runtime.isSettingRemoteAnswerPending = true;
-      await runtime.connection.setRemoteDescription(new RTCSessionDescription(answer));
-      runtime.isSettingRemoteAnswerPending = false;
-      await flushPendingIceCandidates(runtime);
-    },
-    [flushPendingIceCandidates],
-  );
-
-  const handleIncomingIceCandidate = useCallback(async ({ fromPeerId, candidate }: MediaIncomingIceCandidate) => {
-    const runtime = peerConnectionsRef.current.get(fromPeerId);
-    if (!runtime) {
-      const queuedCandidates = pendingIceCandidatesByPeerRef.current.get(fromPeerId) ?? [];
-      queuedCandidates.push(candidate);
-      pendingIceCandidatesByPeerRef.current.set(fromPeerId, queuedCandidates);
-      return;
-    }
-
-    if (!runtime.connection.remoteDescription) {
-      runtime.pendingIceCandidates.push(candidate);
-      return;
-    }
-
-    await runtime.connection.addIceCandidate(new RTCIceCandidate(candidate));
-  }, []);
-
-  const joinMedia = useCallback(
-    async (nextState: { audioEnabled: boolean; videoEnabled: boolean }, isReconnect = false) => {
-      const socket = getSocket();
-      if (!socket?.connected) {
-        showError(
-          translate(
-            "game.video.errors.socketNotReady",
-            "The room connection is still starting. Try again in a moment.",
-          ),
-        );
-        return;
-      }
-
-      if (nextState.audioEnabled) {
-        const audioTrack = await acquireTrack("audio");
-        if (!audioTrack) {
-          stopLocalTracks();
-          return;
-        }
-        audioTrack.enabled = true;
-      }
-
-      if (nextState.videoEnabled) {
-        const videoTrack = await acquireTrack("video");
-        if (!videoTrack) {
-          stopLocalTracks();
-          return;
-        }
-        videoTrack.enabled = true;
-      }
-
-      setViewState({ status: isReconnect ? "reconnecting" : "joining" });
-
-      desiredSessionRef.current = {
-        shouldBeJoined: true,
-        audioEnabled: nextState.audioEnabled,
-        videoEnabled: nextState.videoEnabled,
-      };
-
-      const result = await emitJoinAck(socket, {
-        roomCode: roomCodeRef.current,
-        audioEnabled: nextState.audioEnabled,
-        videoEnabled: nextState.videoEnabled,
-      });
-
-      if (!result.success) {
-        desiredSessionRef.current = {
-          shouldBeJoined: false,
-          audioEnabled: false,
-          videoEnabled: false,
-        };
-        stopLocalTracks();
-        closeAllPeerConnections({ preserveParticipants: false });
-        setViewState({
-          isJoined: false,
-          status: "idle",
-        });
-        showError(toActionFailureMessage(result.code, result.message, translate));
-        return;
-      }
-
-      selfPeerIdRef.current = result.selfPeerId;
-      iceServersRef.current = result.iceServers;
-      setViewState({
-        localAudioEnabled: nextState.audioEnabled,
-        localVideoEnabled: nextState.videoEnabled,
-        isJoined: true,
-        status: "joined",
-        remoteParticipants: sortParticipantsByRoomOrder(
-          result.participants.map((participant) => ({
-            ...participant,
-            stream: null,
-            connectionState: "new" as const,
-          })),
-          roomPlayerIdsRef.current,
-        ),
-      });
-    },
-    [acquireTrack, closeAllPeerConnections, setViewState, showError, stopLocalTracks, translate],
-  );
-
-  const runMediaOperation = useCallback(
-    async (
-      kind: keyof MediaPendingState,
-      operation: () => Promise<void>,
-      blockedKinds: ReadonlyArray<keyof MediaPendingState> = [kind, "session"],
-    ) => {
-      if (blockedKinds.some((blockedKind) => pendingMediaRef.current[blockedKind])) {
-        return;
-      }
-
-      setPendingMediaFlag(kind, true);
-
-      try {
-        await operation();
-      } finally {
-        setPendingMediaFlag(kind, false);
-      }
-    },
-    [setPendingMediaFlag],
-  );
-
-  const leaveMedia = useCallback(async () => {
-    await runMediaOperation(
-      "session",
-      async () => {
-        const socket = getSocket();
-        desiredSessionRef.current = {
-          shouldBeJoined: false,
-          audioEnabled: false,
-          videoEnabled: false,
-        };
-
-        if (socket?.connected && mediaSessionStore.getState().isJoined) {
-          await emitActionAck(socket, "webrtc:leave-room");
-        }
-
-        selfPeerIdRef.current = null;
-        setViewState({
-          isJoined: false,
-          status: "idle",
-        });
-        closeAllPeerConnections({ preserveParticipants: false });
-        stopLocalTracks();
-      },
-      ["session", "audio", "video"],
-    );
-  }, [closeAllPeerConnections, mediaSessionStore, runMediaOperation, setViewState, stopLocalTracks]);
-
-  const toggleAudio = useCallback(async () => {
-    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
-    await runMediaOperation(needsJoin ? "session" : "audio", async () => {
-      if (!desiredSessionRef.current.shouldBeJoined) {
-        await joinMedia({ audioEnabled: true, videoEnabled: false });
-        return;
-      }
-
-      const existingTrack = getLiveTrack("audio");
-      if (!existingTrack) {
-        const acquiredTrack = await acquireTrack("audio");
-        if (!acquiredTrack) {
-          return;
-        }
-
-        acquiredTrack.enabled = true;
-        addTrackToPeers(acquiredTrack);
-        desiredSessionRef.current.audioEnabled = true;
-        setViewState({ localAudioEnabled: true });
-        await emitMediaStateUpdate();
-        return;
-      }
-
-      existingTrack.enabled = !desiredSessionRef.current.audioEnabled;
-      desiredSessionRef.current.audioEnabled = existingTrack.enabled;
-      setViewState({ localAudioEnabled: existingTrack.enabled });
-      await emitMediaStateUpdate();
-    }, needsJoin ? ["session", "audio", "video"] : ["audio", "session"]);
-  }, [acquireTrack, addTrackToPeers, emitMediaStateUpdate, getLiveTrack, joinMedia, runMediaOperation, setViewState]);
-
-  const toggleVideo = useCallback(async () => {
-    const needsJoin = !desiredSessionRef.current.shouldBeJoined;
-    await runMediaOperation(needsJoin ? "session" : "video", async () => {
-      if (!desiredSessionRef.current.shouldBeJoined) {
-        await joinMedia({ audioEnabled: false, videoEnabled: true });
-        return;
-      }
-
-      if (desiredSessionRef.current.videoEnabled) {
-        const track = getLiveTrack("video");
-        if (track) {
-          track.onended = null;
-          track.stop();
-          localStreamRef.current?.removeTrack(track);
-        }
-        removeTrackFromPeers("video");
-        syncLocalStreamState();
-        desiredSessionRef.current.videoEnabled = false;
-        setViewState({ localVideoEnabled: false });
-        await emitMediaStateUpdate();
-        return;
-      }
-
-      const track = await acquireTrack("video");
-      if (!track) {
-        return;
-      }
-
-      track.enabled = true;
-      addTrackToPeers(track);
-      syncLocalStreamState();
-      desiredSessionRef.current.videoEnabled = true;
-      setViewState({ localVideoEnabled: true });
-      await emitMediaStateUpdate();
-    }, needsJoin ? ["session", "audio", "video"] : ["video", "session"]);
-  }, [
-    acquireTrack,
-    addTrackToPeers,
-    emitMediaStateUpdate,
-    getLiveTrack,
-    joinMedia,
-    removeTrackFromPeers,
-    runMediaOperation,
-    setViewState,
-    syncLocalStreamState,
-  ]);
-
-  useEffect(() => {
-    void refreshDeviceAvailability();
-
-    if (!navigator.mediaDevices?.addEventListener) {
-      return;
-    }
-
-    const handleDeviceChange = () => {
-      void refreshDeviceAvailability();
-    };
-
-    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
-
-    return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
-    };
-  }, [refreshDeviceAvailability]);
-
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) {
-      return;
-    }
-
-    const handlePeerJoined = ({ participant }: { participant: MediaParticipant }) => {
-      if (participant.peerId === selfPeerIdRef.current) {
-        return;
-      }
-
-      if (peerConnectionsRef.current.has(participant.peerId)) {
-        closePeerConnection(participant.peerId);
-      }
-
-      pendingIceCandidatesByPeerRef.current.delete(participant.peerId);
-      upsertRemoteParticipant(participant, null);
-      if (!desiredSessionRef.current.shouldBeJoined) {
-        return;
-      }
-
-      createPeerConnection(participant);
-    };
-
-    const handlePeerLeft = ({ peerId }: { peerId: string }) => {
-      closePeerConnection(peerId);
-      removeRemoteParticipant(peerId);
-    };
-
-    const handlePeerMediaState = (participantState: { peerId: string; audioEnabled: boolean; videoEnabled: boolean }) => {
-      if (participantState.peerId === selfPeerIdRef.current) {
-        return;
-      }
-
-      setViewState((currentState) => ({
-        remoteParticipants: currentState.remoteParticipants.map((participant) =>
-          participant.peerId === participantState.peerId
-            ? {
-                ...participant,
-                audioEnabled: participantState.audioEnabled,
-                videoEnabled: participantState.videoEnabled,
-              }
-            : participant,
-        ),
-      }));
-    };
-
-    const handleConnect = () => {
-      if (!desiredSessionRef.current.shouldBeJoined) {
-        return;
-      }
-
-      closeAllPeerConnections({ preserveParticipants: true });
-      void runMediaOperation(
-        "session",
-        async () =>
-          joinMedia(
-            {
-              audioEnabled: desiredSessionRef.current.audioEnabled,
-              videoEnabled: desiredSessionRef.current.videoEnabled,
-            },
-            true,
-          ),
-        ["session", "audio", "video"],
-      );
-    };
-
-    const handleDisconnect = () => {
-      if (!desiredSessionRef.current.shouldBeJoined) {
-        return;
-      }
-
-      setViewState({ status: "reconnecting" });
-      closeAllPeerConnections({ preserveParticipants: true });
-    };
-
-    const handleOfferEvent = ({ fromPeerId, offer }: MediaIncomingOffer) => {
-      void handleIncomingOffer({ fromPeerId, offer });
-    };
-    const handleAnswerEvent = ({ fromPeerId, answer }: MediaIncomingAnswer) => {
-      void handleIncomingAnswer({ fromPeerId, answer });
-    };
-    const handleIceCandidateEvent = ({ fromPeerId, candidate }: MediaIncomingIceCandidate) => {
-      void handleIncomingIceCandidate({ fromPeerId, candidate });
-    };
-
-    socket.on("webrtc:peer-joined", handlePeerJoined);
-    socket.on("webrtc:peer-left", handlePeerLeft);
-    socket.on("webrtc:peer-media-state", handlePeerMediaState);
-    socket.on("webrtc:offer", handleOfferEvent);
-    socket.on("webrtc:answer", handleAnswerEvent);
-    socket.on("webrtc:ice-candidate", handleIceCandidateEvent);
-    socket.on("connect", handleConnect);
-    socket.on("disconnect", handleDisconnect);
-
-    return () => {
-      socket.off("webrtc:peer-joined", handlePeerJoined);
-      socket.off("webrtc:peer-left", handlePeerLeft);
-      socket.off("webrtc:peer-media-state", handlePeerMediaState);
-      socket.off("webrtc:offer", handleOfferEvent);
-      socket.off("webrtc:answer", handleAnswerEvent);
-      socket.off("webrtc:ice-candidate", handleIceCandidateEvent);
-      socket.off("connect", handleConnect);
-      socket.off("disconnect", handleDisconnect);
-    };
-  }, [
-    closeAllPeerConnections,
-    closePeerConnection,
-    createPeerConnection,
-    handleIncomingAnswer,
-    handleIncomingIceCandidate,
-    handleIncomingOffer,
-    joinMedia,
-    removeRemoteParticipant,
-    runMediaOperation,
-    setViewState,
-    translate,
-    upsertRemoteParticipant,
-  ]);
-
   useEffect(() => {
     return () => {
       desiredSessionRef.current = {
@@ -1173,22 +859,9 @@ export function RoomMediaSessionProvider({
         audioEnabled: false,
         videoEnabled: false,
       };
-      closeAllPeerConnections({ preserveParticipants: false });
-      stopLocalTracks();
+      void disconnectLivekitRoom();
     };
-  }, [closeAllPeerConnections, stopLocalTracks]);
-
-  useEffect(() => {
-    if (isRoomSocketConnected) {
-      return;
-    }
-
-    if (!desiredSessionRef.current.shouldBeJoined) {
-      return;
-    }
-
-    setViewState({ status: "reconnecting" });
-  }, [isRoomSocketConnected, setViewState]);
+  }, [disconnectLivekitRoom]);
 
   const actions = useMemo<RoomMediaSessionActions>(
     () => ({
@@ -1201,7 +874,9 @@ export function RoomMediaSessionProvider({
 
   return (
     <RoomMediaSessionStoreContext.Provider value={mediaSessionStore}>
-      <RoomMediaSessionActionsContext.Provider value={actions}>{children}</RoomMediaSessionActionsContext.Provider>
+      <RoomMediaSessionActionsContext.Provider value={actions}>
+        {children}
+      </RoomMediaSessionActionsContext.Provider>
     </RoomMediaSessionStoreContext.Provider>
   );
 }
@@ -1226,25 +901,26 @@ export function useRoomMediaSessionActions() {
 
 export function useRoomMediaSessionStatusState() {
   const store = useRoomMediaSessionStoreApi();
-  const status = useStore(store, (s) => s.status);
-  const isJoined = useStore(store, (s) => s.isJoined);
+  const status = useStore(store, (state) => state.status);
+  const isJoined = useStore(store, (state) => state.isJoined);
   return { status, isJoined };
 }
 
 export function useRoomMediaSessionLocalState() {
   const store = useRoomMediaSessionStoreApi();
-  const localStream = useStore(store, (s) => s.localStream);
-  const localAudioEnabled = useStore(store, (s) => s.localAudioEnabled);
-  const localVideoEnabled = useStore(store, (s) => s.localVideoEnabled);
+  const localStream = useStore(store, (state) => state.localStream);
+  const localAudioEnabled = useStore(store, (state) => state.localAudioEnabled);
+  const localVideoEnabled = useStore(store, (state) => state.localVideoEnabled);
   return { localStream, localAudioEnabled, localVideoEnabled };
 }
 
 export function useRoomMediaSessionPendingState() {
   const store = useRoomMediaSessionStoreApi();
-  const isUpdatingAudio = useStore(store, (s) => s.isUpdatingAudio);
-  const isUpdatingVideo = useStore(store, (s) => s.isUpdatingVideo);
-  const isUpdatingSession = useStore(store, (s) => s.isUpdatingSession);
-  return { isUpdatingAudio, isUpdatingVideo, isUpdatingSession };
+  const isUpdatingAudio = useStore(store, (state) => state.isUpdatingAudio);
+  const isUpdatingVideo = useStore(store, (state) => state.isUpdatingVideo);
+  const isUpdatingSession = useStore(store, (state) => state.isUpdatingSession);
+  const isMediaEnabled = useStore(store, (state) => state.isMediaEnabled);
+  return { isUpdatingAudio, isUpdatingVideo, isUpdatingSession, isMediaEnabled };
 }
 
 export function useRoomMediaSessionRemoteParticipants() {

@@ -27,21 +27,21 @@ export class RealtimeRoomService {
     private readonly rateLimiter: SocketRateLimiterService,
   ) {}
 
-  handleCreate(client: RealtimeSocket, maxPlayers: number | undefined): CreateRoomResult {
+  async handleCreate(client: RealtimeSocket, maxPlayers: number | undefined): Promise<CreateRoomResult> {
     if (!this.rateLimiter.consume(client.id, "room:create")) {
       return this.session.rateLimitFailure(client);
     }
 
     const userId = this.session.requireUserId(client);
     const nickname = this.session.requireNickname(client);
-    const { room, previousExit } = this.roomService.createRoom(
+    const { room, previousExit } = await this.roomService.createRoom(
       userId,
       nickname,
       maxPlayers ?? DEFAULT_ROOM_MAX_PLAYERS,
     );
 
     if (previousExit?.roomCode) {
-      this.session.finalizeRoomExit(userId, previousExit);
+      await this.session.finalizeRoomExit(userId, previousExit);
     }
 
     void client.join(room.roomCode);
@@ -51,7 +51,7 @@ export class RealtimeRoomService {
     return successResult({ room: state });
   }
 
-  handleJoin(client: RealtimeSocket, payload: unknown): JoinResult {
+  async handleJoin(client: RealtimeSocket, payload: unknown): Promise<JoinResult> {
     if (!this.rateLimiter.consume(client.id, "room:join")) {
       const rateLimitFailure = this.session.rateLimitFailure(client);
       return {
@@ -73,13 +73,13 @@ export class RealtimeRoomService {
 
     const userId = this.session.requireUserId(client);
     const nickname = this.session.requireNickname(client);
-    const result = this.roomService.joinRoom(code, userId, nickname);
+    const result = await this.roomService.joinRoom(code, userId, nickname);
     if (!result.ok) {
       return { success: false, code: result.code, message: result.message };
     }
 
     if (result.previousExit?.roomCode) {
-      this.session.finalizeRoomExit(userId, result.previousExit);
+      await this.session.finalizeRoomExit(userId, result.previousExit);
     }
 
     void client.join(result.room.roomCode);
@@ -102,13 +102,13 @@ export class RealtimeRoomService {
     });
   }
 
-  handleLeave(client: RealtimeSocket): SocketActionResult {
+  async handleLeave(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "room:leave")) {
       return this.session.rateLimitFailure(client);
     }
 
     const userId = this.session.requireUserId(client);
-    const room = this.roomService.getRoomForUser(userId);
+    const room = await this.roomService.getRoomForUser(userId);
     if (!room) {
       return failureResult(
         SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -117,19 +117,19 @@ export class RealtimeRoomService {
     }
 
     const leaveResult = room.gameState
-      ? this.roomService.handoffUserToBot(userId)
-      : this.roomService.leaveRoom(userId);
-    this.session.finalizeRoomExit(userId, leaveResult);
+      ? await this.roomService.handoffUserToBot(userId)
+      : await this.roomService.leaveRoom(userId);
+    await this.session.finalizeRoomExit(userId, leaveResult);
     return successResult();
   }
 
-  handleReady(client: RealtimeSocket, ready: boolean): SocketActionResult {
+  async handleReady(client: RealtimeSocket, ready: boolean): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "room:ready")) {
       return this.session.rateLimitFailure(client);
     }
 
     const userId = this.session.requireUserId(client);
-    const result = this.roomService.setReady(userId, ready);
+    const result = await this.roomService.setReady(userId, ready);
     if (!result.ok) {
       emitSocketError(client, result.code, result.message);
       return failureResult(result.code, result.message);
@@ -139,13 +139,13 @@ export class RealtimeRoomService {
     return successResult();
   }
 
-  handleAddBot(client: RealtimeSocket) {
+  async handleAddBot(client: RealtimeSocket) {
     if (!this.rateLimiter.consume(client.id, "room:add-bot")) {
       return this.session.rateLimitFailure(client);
     }
 
     const userId = this.session.requireUserId(client);
-    const result = this.roomService.addLobbyBot(userId, client.data.roomId);
+    const result = await this.roomService.addLobbyBot(userId, client.data.roomId);
     if (!result.ok) {
       return failureResult(result.code, result.message);
     }
@@ -157,13 +157,13 @@ export class RealtimeRoomService {
     return successResult({ room: roomState, player: botPlayer });
   }
 
-  handleStart(client: RealtimeSocket): SocketActionResult {
+  async handleStart(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "room:start")) {
       return this.session.rateLimitFailure(client);
     }
 
     const userId = this.session.requireUserId(client);
-    const result = this.roomService.startGame(userId);
+    const result = await this.roomService.startGame(userId);
     if (!result.ok) {
       emitSocketError(client, result.code, result.message);
       return failureResult(result.code, result.message);

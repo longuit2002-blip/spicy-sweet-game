@@ -60,8 +60,8 @@ export class RoomService {
     private readonly observability: RoomObservabilityService,
   ) {}
 
-  private findRoomCodeByGamePlayer(userId: string): string | null {
-    for (const [roomCode, room] of this.roomRepository.getRoomEntries()) {
+  private async findRoomCodeByGamePlayer(userId: string): Promise<string | null> {
+    for (const [roomCode, room] of await this.roomRepository.getRoomEntries()) {
       if (room.gameState?.players.some((player) => player.id === userId)) {
         return roomCode;
       }
@@ -84,7 +84,7 @@ export class RoomService {
     return true;
   }
 
-  private reclaimGameSeat(room: ServerRoom, userId: string, nickname: string): boolean {
+  private async reclaimGameSeat(room: ServerRoom, userId: string, nickname: string): Promise<boolean> {
     const player = room.gameState?.players.find((gamePlayer) => gamePlayer.id === userId);
     if (!player) {
       return false;
@@ -95,17 +95,17 @@ export class RoomService {
       delete player.isBot;
     }
 
-    this.syncRoomPlayersFromGame(room);
+    await this.syncRoomPlayersFromGame(room);
     return true;
   }
 
-  private exitPreviousRoomForSwitch(userId: string): LeaveRoomResult | undefined {
-    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
+  private async exitPreviousRoomForSwitch(userId: string): Promise<LeaveRoomResult | undefined> {
+    const roomCode = await this.roomRepository.getRoomCodeForUser(userId);
     if (!roomCode) {
       return undefined;
     }
 
-    const room = this.roomRepository.getRoomByCode(roomCode);
+    const room = await this.roomRepository.getRoomByCode(roomCode);
     if (room?.gameState) {
       return this.handoffUserToBot(userId);
     }
@@ -133,12 +133,12 @@ export class RoomService {
     };
   }
 
-  createRoom(
+  async createRoom(
     userId: string,
     nickname: string,
     maxPlayers = DEFAULT_ROOM_MAX_PLAYERS,
-  ): { room: ServerRoom; previousExit?: LeaveRoomResult } {
-    const previousExit = this.exitPreviousRoomForSwitch(userId);
+  ): Promise<{ room: ServerRoom; previousExit?: LeaveRoomResult }> {
+    const previousExit = await this.exitPreviousRoomForSwitch(userId);
     const roomCode = generateRoomCode();
     const player: RoomPlayer = {
       id: userId,
@@ -161,20 +161,20 @@ export class RoomService {
       startedAt: null,
       finishedAt: null,
     };
-    this.roomRepository.saveRoom(room);
-    this.roomRepository.assignUserToRoom(userId, roomCode);
+    await this.roomRepository.saveRoom(room);
+    await this.roomRepository.assignUserToRoom(userId, roomCode);
     this.persistence.persistRoomSnapshot(room);
     return { room, previousExit };
   }
 
-  joinRoom(
+  async joinRoom(
     roomCode: string,
     userId: string,
     nickname: string,
-  ): (RoomSuccess & { resumed?: boolean; previousExit?: LeaveRoomResult }) | RoomFailure {
+  ): Promise<(RoomSuccess & { resumed?: boolean; previousExit?: LeaveRoomResult }) | RoomFailure> {
     const code = roomCode.toUpperCase();
-    const previousCode = this.roomRepository.getRoomCodeForUser(userId);
-    const room = this.roomRepository.getRoomByCode(code);
+    const previousCode = await this.roomRepository.getRoomCodeForUser(userId);
+    const room = await this.roomRepository.getRoomByCode(code);
     if (!room) {
       return {
         ok: false,
@@ -183,8 +183,9 @@ export class RoomService {
       };
     }
 
-    if (this.reclaimGameSeat(room, userId, nickname)) {
-      this.roomRepository.assignUserToRoom(userId, code);
+    if (await this.reclaimGameSeat(room, userId, nickname)) {
+      await this.roomRepository.assignUserToRoom(userId, code);
+      await this.roomRepository.saveRoom(room);
       this.observability.recordReconnectSuccess();
       this.persistence.persistRoomSnapshot(room);
       return { ok: true, room, resumed: true };
@@ -192,7 +193,8 @@ export class RoomService {
 
     const hasExistingPlayer = this.reclaimLobbySeat(room, userId, nickname);
     if (hasExistingPlayer) {
-      this.roomRepository.assignUserToRoom(userId, code);
+      await this.roomRepository.assignUserToRoom(userId, code);
+      await this.roomRepository.saveRoom(room);
       this.observability.recordReconnectSuccess();
       this.persistence.persistRoomSnapshot(room);
       return { ok: true, room, resumed: true };
@@ -214,7 +216,7 @@ export class RoomService {
     }
 
     const previousExit = previousCode && previousCode !== code
-      ? this.exitPreviousRoomForSwitch(userId)
+      ? await this.exitPreviousRoomForSwitch(userId)
       : undefined;
 
     const player: RoomPlayer = {
@@ -228,28 +230,29 @@ export class RoomService {
       trophyCount: 0,
     };
     room.players.push(player);
-    this.roomRepository.assignUserToRoom(userId, code);
+    await this.roomRepository.assignUserToRoom(userId, code);
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
     return { ok: true, room, previousExit };
   }
 
-  leaveRoom(userId: string): LeaveRoomResult {
-    const roomCode = this.roomRepository.getRoomCodeForUser(userId) ?? null;
+  async leaveRoom(userId: string): Promise<LeaveRoomResult> {
+    const roomCode = (await this.roomRepository.getRoomCodeForUser(userId)) ?? null;
     if (!roomCode) {
       return { roomCode: null, room: null };
     }
 
-    const room = this.roomRepository.getRoomByCode(roomCode);
+    const room = await this.roomRepository.getRoomByCode(roomCode);
     if (!room) {
-      this.roomRepository.clearUserRoom(userId);
+      await this.roomRepository.clearUserRoom(userId);
       return { roomCode: null, room: null };
     }
 
     room.players = room.players.filter((player) => player.id !== userId);
-    this.roomRepository.clearUserRoom(userId);
+    await this.roomRepository.clearUserRoom(userId);
 
     if (room.players.length === 0) {
-      this.roomRepository.deleteRoom(roomCode);
+      await this.roomRepository.deleteRoom(roomCode);
       this.persistence.deleteRoomSnapshot(roomCode);
       return { roomCode, room: null };
     }
@@ -265,40 +268,42 @@ export class RoomService {
       newHostId = room.hostId;
     }
 
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
     return { roomCode, room, newHostId, handedOffToBot: false };
   }
 
-  handoffUserToBot(userId: string): LeaveRoomResult {
+  async handoffUserToBot(userId: string): Promise<LeaveRoomResult> {
     const roomCode =
-      this.roomRepository.getRoomCodeForUser(userId) ?? this.findRoomCodeByGamePlayer(userId);
+      (await this.roomRepository.getRoomCodeForUser(userId)) ?? (await this.findRoomCodeByGamePlayer(userId));
     if (!roomCode) {
       return { roomCode: null, room: null, handedOffToBot: false };
     }
 
-    const room = this.roomRepository.getRoomByCode(roomCode);
+    const room = await this.roomRepository.getRoomByCode(roomCode);
     if (!room?.gameState) {
-      this.roomRepository.clearUserRoom(userId);
+      await this.roomRepository.clearUserRoom(userId);
       return { roomCode, room: room ?? null, handedOffToBot: false };
     }
 
     const player = room.gameState.players.find((gamePlayer) => gamePlayer.id === userId);
     if (!player) {
-      this.roomRepository.clearUserRoom(userId);
+      await this.roomRepository.clearUserRoom(userId);
       return { roomCode, room, handedOffToBot: false };
     }
 
     player.isBot = true;
-    this.roomRepository.clearUserRoom(userId);
-    this.syncRoomPlayersFromGame(room);
+    await this.roomRepository.clearUserRoom(userId);
+    await this.syncRoomPlayersFromGame(room);
     this.observability.recordDisconnectHandoff();
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
 
     return { roomCode, room, handedOffToBot: true };
   }
 
-  setReady(userId: string, ready: boolean): RoomSuccess | RoomFailure {
-    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
+  async setReady(userId: string, ready: boolean): Promise<RoomSuccess | RoomFailure> {
+    const roomCode = await this.roomRepository.getRoomCodeForUser(userId);
     if (!roomCode) {
       return {
         ok: false,
@@ -307,9 +312,9 @@ export class RoomService {
       };
     }
 
-    const room = this.roomRepository.getRoomByCode(roomCode);
+    const room = await this.roomRepository.getRoomByCode(roomCode);
     if (!room) {
-      this.roomRepository.clearUserRoom(userId);
+      await this.roomRepository.clearUserRoom(userId);
       return {
         ok: false,
         code: SOCKET_ERROR_CODE.NOT_IN_ROOM,
@@ -335,24 +340,25 @@ export class RoomService {
     }
 
     player.isReady = ready;
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
     return { ok: true, room };
   }
 
-  addLobbyBot(
+  async addLobbyBot(
     hostUserId: string,
     socketRoomCode?: string | null,
-  ): ({ ok: true; room: ServerRoom; player: RoomPlayer } & RoomSuccess) | RoomFailure {
+  ): Promise<({ ok: true; room: ServerRoom; player: RoomPlayer } & RoomSuccess) | RoomFailure> {
     const normalizedSocketCode = socketRoomCode ? socketRoomCode.toUpperCase() : undefined;
     let room = normalizedSocketCode
-      ? this.roomRepository.getRoomByCode(normalizedSocketCode)
+      ? await this.roomRepository.getRoomByCode(normalizedSocketCode)
       : undefined;
     if (room && !room.players.some((player) => player.id === hostUserId)) {
       room = undefined;
     }
     if (!room) {
-      const mappedCode = this.roomRepository.getRoomCodeForUser(hostUserId);
-      room = mappedCode ? this.roomRepository.getRoomByCode(mappedCode) : undefined;
+      const mappedCode = await this.roomRepository.getRoomCodeForUser(hostUserId);
+      room = mappedCode ? await this.roomRepository.getRoomByCode(mappedCode) : undefined;
     }
     if (!room) {
       return {
@@ -368,9 +374,9 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    const mappedCode = this.roomRepository.getRoomCodeForUser(hostUserId);
+    const mappedCode = await this.roomRepository.getRoomCodeForUser(hostUserId);
     if (mappedCode !== room.roomCode) {
-      this.roomRepository.assignUserToRoom(hostUserId, room.roomCode);
+      await this.roomRepository.assignUserToRoom(hostUserId, room.roomCode);
     }
     if (room.hostId !== hostUserId) {
       return {
@@ -407,12 +413,13 @@ export class RoomService {
       trophyCount: 0,
     };
     room.players.push(player);
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
     return { ok: true, room, player };
   }
 
-  startGame(hostId: string): RoomSuccess | RoomFailure {
-    const roomCode = this.roomRepository.getRoomCodeForUser(hostId);
+  async startGame(hostId: string): Promise<RoomSuccess | RoomFailure> {
+    const roomCode = await this.roomRepository.getRoomCodeForUser(hostId);
     if (!roomCode) {
       return {
         ok: false,
@@ -420,7 +427,7 @@ export class RoomService {
         message: SOCKET_ERROR_MESSAGE[SOCKET_ERROR_CODE.NOT_IN_ROOM],
       };
     }
-    const room = this.roomRepository.getRoomByCode(roomCode);
+    const room = await this.roomRepository.getRoomByCode(roomCode);
     if (!room) {
       return {
         ok: false,
@@ -477,21 +484,22 @@ export class RoomService {
       trophyCount: player.trophyCount,
       ...(player.isBot ? { isBot: true as const } : {}),
     }));
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
     return { ok: true, room };
   }
 
-  getRoomByCode(roomCode: string): ServerRoom | undefined {
+  async getRoomByCode(roomCode: string): Promise<ServerRoom | undefined> {
     return this.roomRepository.getRoomByCode(roomCode);
   }
 
-  getRoomForUser(userId: string): ServerRoom | undefined {
-    const roomCode = this.roomRepository.getRoomCodeForUser(userId);
+  async getRoomForUser(userId: string): Promise<ServerRoom | undefined> {
+    const roomCode = await this.roomRepository.getRoomCodeForUser(userId);
     return roomCode ? this.roomRepository.getRoomByCode(roomCode) : undefined;
   }
 
   /** Keep `room.players` in sync with authoritative `room.gameState` (hands, scores, flags). */
-  syncRoomPlayersFromGame(room: ServerRoom): void {
+  async syncRoomPlayersFromGame(room: ServerRoom): Promise<void> {
     if (!room.gameState) {
       return;
     }
@@ -520,6 +528,7 @@ export class RoomService {
       trophyCount: player.trophyCount,
       ...(player.isBot ? { isBot: true as const } : {}),
     }));
+    await this.roomRepository.saveRoom(room);
     this.persistence.persistRoomSnapshot(room);
   }
 }

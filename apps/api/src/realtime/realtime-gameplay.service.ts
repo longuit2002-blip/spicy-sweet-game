@@ -37,7 +37,11 @@ export class RealtimeGameplayService {
     private readonly observability: RoomObservabilityService,
   ) {}
 
-  handlePlayCard(client: RealtimeSocket, cardId: string, declaration: Declaration): SocketActionResult {
+  async handlePlayCard(
+    client: RealtimeSocket,
+    cardId: string,
+    declaration: Declaration,
+  ): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:play-card")) {
       return this.session.rateLimitFailure(client);
     }
@@ -51,7 +55,7 @@ export class RealtimeGameplayService {
       );
     }
 
-    const room = this.roomService.getRoomByCode(roomCode);
+    const room = await this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) {
       return this.invalidFailure(
         client,
@@ -70,12 +74,12 @@ export class RealtimeGameplayService {
     }
 
     room.gameState = nextState;
-    this.roomService.syncRoomPlayersFromGame(room);
+    await this.roomService.syncRoomPlayersFromGame(room);
     this.broadcast.emitStateUpdate(this.session.getServer(), roomCode, nextState);
     return successResult();
   }
 
-  handleDrawPass(client: RealtimeSocket): SocketActionResult {
+  async handleDrawPass(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:draw-pass")) {
       return this.session.rateLimitFailure(client);
     }
@@ -89,7 +93,7 @@ export class RealtimeGameplayService {
       );
     }
 
-    const room = this.roomService.getRoomByCode(roomCode);
+    const room = await this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) {
       return this.invalidFailure(
         client,
@@ -108,17 +112,17 @@ export class RealtimeGameplayService {
     }
 
     room.gameState = nextState;
-    this.roomService.syncRoomPlayersFromGame(room);
+    await this.roomService.syncRoomPlayersFromGame(room);
     this.broadcast.emitStateUpdate(this.session.getServer(), roomCode, nextState);
     return successResult();
   }
 
-  handleClaimChallenge(client: RealtimeSocket): SocketActionResult {
+  async handleClaimChallenge(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:claim-challenge")) {
       return this.session.rateLimitFailure(client);
     }
 
-    const room = this.requireGameRoom(client);
+    const room = await this.requireGameRoom(client);
     if (!room.ok) {
       return room.result;
     }
@@ -149,17 +153,20 @@ export class RealtimeGameplayService {
     }
 
     room.value.gameState = nextState;
-    this.roomService.syncRoomPlayersFromGame(room.value);
+    await this.roomService.syncRoomPlayersFromGame(room.value);
     this.broadcast.emitStateUpdate(this.session.getServer(), room.value.roomCode, nextState);
     return successResult();
   }
 
-  handleChallenge(client: RealtimeSocket, challengeType: ChallengeType): SocketActionResult {
+  async handleChallenge(
+    client: RealtimeSocket,
+    challengeType: ChallengeType,
+  ): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:challenge")) {
       return this.session.rateLimitFailure(client);
     }
 
-    const room = this.requireGameRoom(client);
+    const room = await this.requireGameRoom(client);
     if (!room.ok) {
       return room.result;
     }
@@ -190,7 +197,7 @@ export class RealtimeGameplayService {
 
     const nextState = resolveChallenge(gameState, userId, challengeType);
     room.value.gameState = nextState;
-    this.roomService.syncRoomPlayersFromGame(room.value);
+    await this.roomService.syncRoomPlayersFromGame(room.value);
     this.broadcast.emitStateUpdate(this.session.getServer(), room.value.roomCode, nextState);
     if (nextState.challengeResult) {
       this.session.getServer().to(room.value.roomCode).emit("game:challenge-result", nextState.challengeResult);
@@ -198,7 +205,7 @@ export class RealtimeGameplayService {
     return successResult();
   }
 
-  handleChallengePass(client: RealtimeSocket): SocketActionResult {
+  async handleChallengePass(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:challenge-pass")) {
       return this.session.rateLimitFailure(client);
     }
@@ -206,7 +213,7 @@ export class RealtimeGameplayService {
     return this.recordChallengePass(client);
   }
 
-  handleAccept(client: RealtimeSocket): SocketActionResult {
+  async handleAccept(client: RealtimeSocket): Promise<SocketActionResult> {
     if (!this.rateLimiter.consume(client.id, "game:accept")) {
       return this.session.rateLimitFailure(client);
     }
@@ -214,8 +221,8 @@ export class RealtimeGameplayService {
     return this.recordChallengePass(client);
   }
 
-  private recordChallengePass(client: RealtimeSocket): SocketActionResult {
-    const room = this.requireGameRoom(client);
+  private async recordChallengePass(client: RealtimeSocket): Promise<SocketActionResult> {
+    const room = await this.requireGameRoom(client);
     if (!room.ok) {
       return room.result;
     }
@@ -257,14 +264,17 @@ export class RealtimeGameplayService {
     }
 
     room.value.gameState = nextState;
-    this.roomService.syncRoomPlayersFromGame(room.value);
+    await this.roomService.syncRoomPlayersFromGame(room.value);
     this.broadcast.emitStateUpdate(this.session.getServer(), room.value.roomCode, nextState);
     return successResult();
   }
 
-  private requireGameRoom(client: RealtimeSocket):
+  private async requireGameRoom(
+    client: RealtimeSocket,
+  ): Promise<
     | { ok: true; value: ActiveGameRoom }
-    | { ok: false; result: SocketActionResult } {
+    | { ok: false; result: SocketActionResult }
+  > {
     const roomCode = client.data.roomId;
     if (!roomCode) {
       return {
@@ -276,7 +286,7 @@ export class RealtimeGameplayService {
       };
     }
 
-    const room = this.roomService.getRoomByCode(roomCode);
+    const room = await this.roomService.getRoomByCode(roomCode);
     if (!room?.gameState) {
       return {
         ok: false,

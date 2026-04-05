@@ -3,6 +3,7 @@ import {
   claimChallenge,
   drawAndPassTurnLocal,
   maxDeclarationRankForState,
+  MAX_DECLARATION_RANK,
   minDeclarationRankForState,
   nextTurn,
   playCardLocal,
@@ -10,6 +11,7 @@ import {
   resolveChallenge,
   tickChallengePhase,
   tickRevealPhase,
+  tickSupremeResolvePhase,
 } from "@sweet-spicy/game-logic";
 import type { Declaration, GameState, GameViewState, SpiceType, ChallengeType } from "@/shared/types/game";
 import { GAME_PHASE } from "@/shared/types/game";
@@ -84,6 +86,24 @@ export function useOfflineGameplayLoop({
   }, [currentGameState.phase, isOnlineMode, setLocalGameState]);
 
   useEffect(() => {
+    if (isOnlineMode || currentGameState.phase !== GAME_PHASE.SUPREME_RESOLVE) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setLocalGameState((previousState) => {
+        if (previousState.phase !== GAME_PHASE.SUPREME_RESOLVE) {
+          return previousState;
+        }
+
+        return tickSupremeResolvePhase(previousState);
+      });
+    }, OFFLINE_CHALLENGE_TICK_MS);
+
+    return () => clearInterval(intervalId);
+  }, [currentGameState.phase, isOnlineMode, setLocalGameState]);
+
+  useEffect(() => {
     if (
       currentGameState.phase !== GAME_PHASE.PENALTY &&
       currentGameState.phase !== GAME_PHASE.NEXT_TURN &&
@@ -122,34 +142,42 @@ export function useOfflineGameplayLoop({
           return drawAndPassTurnLocal(previousState, actingPlayer.id);
         }
 
-        const minDeclarationRank = minDeclarationRankForState(previousState);
-        const maxDeclarationRank = maxDeclarationRankForState(previousState);
         const lockedSuit = previousState.lockedSuit;
         const randomCard = hand[Math.floor(Math.random() * hand.length)];
         const allTypes: SpiceType[] = ["chili", "lemon", "avocado"];
-        const pickRankInBand = () =>
-          minDeclarationRank +
-          Math.floor(Math.random() * (maxDeclarationRank - minDeclarationRank + 1));
 
-        const declarationSuit =
-          lockedSuit ?? allTypes[Math.floor(Math.random() * allTypes.length)];
         let declaration: Declaration;
-        if (
-          randomCard.number >= minDeclarationRank &&
-          randomCard.number <= maxDeclarationRank &&
-          Math.random() > OFFLINE_BOT_TRUTH_PLAY_THRESHOLD
-        ) {
-          declaration = { type: declarationSuit, number: randomCard.number };
-        } else {
-          const typePool = lockedSuit != null ? [lockedSuit] : allTypes;
+        if (randomCard.kind === "total-wild") {
           declaration = {
-            type: typePool[Math.floor(Math.random() * typePool.length)] ?? declarationSuit,
-            number: pickRankInBand(),
+            type: allTypes[Math.floor(Math.random() * allTypes.length)]!,
+            number: 1 + Math.floor(Math.random() * MAX_DECLARATION_RANK),
           };
-        }
+        } else {
+          const minDeclarationRank = minDeclarationRankForState(previousState);
+          const maxDeclarationRank = maxDeclarationRankForState(previousState);
+          const pickRankInBand = () =>
+            minDeclarationRank +
+            Math.floor(Math.random() * (maxDeclarationRank - minDeclarationRank + 1));
 
-        if (lockedSuit != null) {
-          declaration = { ...declaration, type: lockedSuit };
+          const declarationSuit =
+            lockedSuit ?? allTypes[Math.floor(Math.random() * allTypes.length)];
+          if (
+            randomCard.number >= minDeclarationRank &&
+            randomCard.number <= maxDeclarationRank &&
+            Math.random() > OFFLINE_BOT_TRUTH_PLAY_THRESHOLD
+          ) {
+            declaration = { type: declarationSuit, number: randomCard.number };
+          } else {
+            const typePool = lockedSuit != null ? [lockedSuit] : allTypes;
+            declaration = {
+              type: typePool[Math.floor(Math.random() * typePool.length)] ?? declarationSuit,
+              number: pickRankInBand(),
+            };
+          }
+
+          if (lockedSuit != null) {
+            declaration = { ...declaration, type: lockedSuit };
+          }
         }
 
         return playCardLocal(previousState, randomCard.id, declaration);

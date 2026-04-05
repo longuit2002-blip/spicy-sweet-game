@@ -30,7 +30,8 @@ function maskWinnerPlayer(p: GamePlayer, viewerPlayerId: string): GamePlayer {
 
 /**
  * Server-side view of game state for a single client. Hides opponents' hands,
- * won piles, table pile contents, draw pile, and the real played card during CHALLENGE_PHASE.
+ * won piles, table pile contents, draw pile, and the real played card during CHALLENGE_PHASE
+ * (Total Wild is shown to everyone during SUPREME_RESOLVE).
  */
 export function toClientGameState(gs: GameState, viewerPlayerId: string): ClientGameState {
   const players: ClientGamePlayer[] = gs.players.map((p) => toClientPlayer(p, viewerPlayerId));

@@ -16,7 +16,7 @@ export function VideoPanel() {
   const { t } = useTranslation("game");
   const { status, isJoined } = useRoomMediaSessionStatusState();
   const { localStream, localAudioEnabled, localVideoEnabled } = useRoomMediaSessionLocalState();
-  const { isUpdatingAudio, isUpdatingVideo, isUpdatingSession } = useRoomMediaSessionPendingState();
+  const { isUpdatingAudio, isUpdatingVideo, isUpdatingSession, isMediaEnabled } = useRoomMediaSessionPendingState();
   const remoteParticipants = useRoomMediaSessionRemoteParticipants();
   const { toggleAudio, toggleVideo, leaveMedia } = useRoomMediaSessionActions();
   const statusPresentation = getMediaSessionStatusPresentation(t, {
@@ -62,6 +62,7 @@ export function VideoPanel() {
         isUpdatingAudio={isUpdatingAudio}
         isUpdatingVideo={isUpdatingVideo}
         isUpdatingSession={isUpdatingSession}
+        controlsDisabled={!isMediaEnabled}
         onToggleAudio={toggleAudio}
         onToggleVideo={toggleVideo}
         onLeave={leaveMedia}

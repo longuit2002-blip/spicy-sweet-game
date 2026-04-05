@@ -8,7 +8,9 @@ import { AuthModule } from "./auth/auth.module";
 import { RoomModule } from "./room/room.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { GameLoopModule } from "./game/game-loop.module";
+import { RedisModule } from "./redis/redis.module";
 import { AppController } from "./app.controller";
+import { MediaModule } from "./media/media.module";
 
 @Module({
   controllers: [AppController],
@@ -21,9 +23,11 @@ import { AppController } from "./app.controller";
       secret: process.env.JWT_SECRET ?? "sweet-spicy-dev-secret-change-me",
       signOptions: { expiresIn: "15m" },
     }),
+    RedisModule,
     PrismaModule,
     AuthModule,
     RoomModule,
+    MediaModule,
     RealtimeModule,
     GameLoopModule,
   ],

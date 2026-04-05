@@ -65,4 +65,17 @@ describe("toClientGameState", () => {
     expect(clientState.players[1]?.hand).toHaveLength(0);
     expect(clientState.players[1]?.wonPileCount).toBe(1);
   });
+
+  it("exposes the played Total Wild to all viewers during SUPREME_RESOLVE", () => {
+    const gs = createState(GAME_PHASE.SUPREME_RESOLVE);
+    const tw = { id: "tw", kind: "total-wild" as const, type: "chili" as const, number: 1 };
+    gs.playedCard = {
+      playerId: "opponent",
+      declaration: { type: "avocado", number: 10 },
+      card: tw,
+    };
+    const clientState = toClientGameState(gs, "self");
+
+    expect(clientState.playedCard?.card).toMatchObject({ id: "tw", kind: "total-wild" });
+  });
 });

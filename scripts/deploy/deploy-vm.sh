@@ -21,6 +21,9 @@ COMPOSE_FILE="${COMPOSE_FILE:-${DEPLOY_ROOT}/docker-compose.prod.yml}"
 cd "${DEPLOY_ROOT}"
 export WEB_IMAGE API_IMAGE
 docker compose -f "${COMPOSE_FILE}" pull
-docker compose -f "${COMPOSE_FILE}" up -d
+docker compose -f "${COMPOSE_FILE}" up -d postgres redis
+docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
+  sh -c "cd /app/apps/api && npx prisma migrate deploy"
+docker compose -f "${COMPOSE_FILE}" up -d api web
 
-echo "Deploy finished. Check: docker compose -f ${COMPOSE_FILE} ps"
+echo "Deploy finished (including prisma migrate deploy). Check: docker compose -f ${COMPOSE_FILE} ps"

@@ -6,6 +6,7 @@ const PHASE_TO_I18N_KEY: Record<GamePhase, `phases.${string}`> = {
   [GAME_PHASE.GAME_START]: "phases.gameStart",
   [GAME_PHASE.PLAYER_TURN]: "phases.playerTurn",
   [GAME_PHASE.CHALLENGE_PHASE]: "phases.challengePhase",
+  [GAME_PHASE.SUPREME_RESOLVE]: "phases.supremeResolve",
   [GAME_PHASE.REVEAL]: "phases.reveal",
   [GAME_PHASE.PENALTY]: "phases.penalty",
   [GAME_PHASE.TROPHY_AWARDED]: "phases.trophyAwarded",

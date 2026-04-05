@@ -110,7 +110,7 @@ const SocialMediaParticipantGrid = memo(function SocialMediaParticipantGrid() {
 const SocialMediaControlsSection = memo(function SocialMediaControlsSection() {
   const { isJoined } = useRoomMediaSessionStatusState();
   const { localAudioEnabled, localVideoEnabled } = useRoomMediaSessionLocalState();
-  const { isUpdatingAudio, isUpdatingVideo, isUpdatingSession } = useRoomMediaSessionPendingState();
+  const { isUpdatingAudio, isUpdatingVideo, isUpdatingSession, isMediaEnabled } = useRoomMediaSessionPendingState();
   const { toggleAudio, toggleVideo, leaveMedia } = useRoomMediaSessionActions();
 
   return (
@@ -121,6 +121,7 @@ const SocialMediaControlsSection = memo(function SocialMediaControlsSection() {
       isUpdatingAudio={isUpdatingAudio}
       isUpdatingVideo={isUpdatingVideo}
       isUpdatingSession={isUpdatingSession}
+      controlsDisabled={!isMediaEnabled}
       onToggleAudio={toggleAudio}
       onToggleVideo={toggleVideo}
       onLeave={leaveMedia}

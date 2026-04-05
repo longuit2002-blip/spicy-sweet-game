@@ -41,6 +41,8 @@ export const GAME_PHASE = {
   GAME_START: "GAME_START",
   PLAYER_TURN: "PLAYER_TURN",
   CHALLENGE_PHASE: "CHALLENGE_PHASE",
+  /** Total Wild was played: public resolve (no challenge), then table accept. */
+  SUPREME_RESOLVE: "SUPREME_RESOLVE",
   REVEAL: "REVEAL",
   PENALTY: "PENALTY",
   TROPHY_AWARDED: "TROPHY_AWARDED",
@@ -122,7 +124,7 @@ export interface ClientGamePlayer {
   isBot?: boolean;
 }
 
-/** During CHALLENGE_PHASE the real card is null until reveal. */
+/** During CHALLENGE_PHASE the real card is null until reveal; visible during SUPREME_RESOLVE. */
 export interface ClientPlayedCard {
   declaration: Declaration;
   playerId: string;

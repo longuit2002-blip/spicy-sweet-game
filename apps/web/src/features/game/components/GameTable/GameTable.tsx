@@ -1097,11 +1097,18 @@ export function GameTableDeclarationSection({
 
   const pileLayers = Math.min(tablePileCount, PILE_STACK_VISIBLE_MAX);
 
-  const showDeclaredCardFace =
-    phase === GAME_PHASE.REVEAL &&
+  const showSupremePlayFace =
+    phase === GAME_PHASE.SUPREME_RESOLVE &&
     playedCard != null &&
     playedCard.card != null &&
-    !inRevealLock;
+    playedCard.card.kind === "total-wild";
+
+  const showDeclaredCardFace =
+    (phase === GAME_PHASE.REVEAL &&
+      playedCard != null &&
+      playedCard.card != null &&
+      !inRevealLock) ||
+    showSupremePlayFace;
 
   /** Plain-text outcome for assistive tech (visual outcome is portal FX + PENALTY strip). */
   const revealOutcomeSrText = useMemo(() => {
@@ -1166,7 +1173,9 @@ export function GameTableDeclarationSection({
 
   /** Challenge / REVEAL: action strip is in BoardView below this band — avoid tall `min-h` + vertical centering (false gap above BLUFF). */
   const compactPlayedClaimBand =
-    phase === GAME_PHASE.CHALLENGE_PHASE || phase === GAME_PHASE.REVEAL;
+    phase === GAME_PHASE.CHALLENGE_PHASE ||
+    phase === GAME_PHASE.REVEAL ||
+    phase === GAME_PHASE.SUPREME_RESOLVE;
 
   return (
     <div className="relative min-h-0 w-full">
@@ -1244,11 +1253,24 @@ export function GameTableDeclarationSection({
                 >
                   <div className="w-full">
                     <p className="text-ui-micro font-bold uppercase tracking-wide text-muted-foreground">
-                      {t("table.currentClaim")}
+                      {phase === GAME_PHASE.SUPREME_RESOLVE
+                        ? t("table.supremeResolveEyebrow")
+                        : t("table.currentClaim")}
                     </p>
+                    {phase === GAME_PHASE.SUPREME_RESOLVE ? (
+                      <p className="mt-1 text-xs font-medium leading-snug text-trophy-gold sm:text-sm">
+                        {t("table.supremeResolveSub")}
+                      </p>
+                    ) : null}
                     <p className="mt-1 font-headline text-base font-semibold tabular-nums leading-snug text-foreground min-[400px]:text-lg sm:text-xl">
                       {SPICE_EMOJI[playedCard.declaration.type]} {SPICE_LABEL[playedCard.declaration.type]}{" "}
-                      <span className="text-primary">{playedCard.declaration.number}</span>
+                      <span
+                        className={
+                          phase === GAME_PHASE.SUPREME_RESOLVE ? "text-trophy-gold" : "text-primary"
+                        }
+                      >
+                        {playedCard.declaration.number}
+                      </span>
                     </p>
                   </div>
                   <Tooltip>
@@ -1283,6 +1305,7 @@ export function GameTableDeclarationSection({
                             <PlayfieldDeclaredCardFlip
                               faceCard={playedCard.card}
                               showFaceUp={showDeclaredCardFace}
+                              supremeImpact={showSupremePlayFace}
                               ariaLabel={claimFlipAriaLabel}
                               className="h-full w-full"
                             />
