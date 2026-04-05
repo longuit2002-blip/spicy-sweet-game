@@ -24,7 +24,12 @@ Copy from this repo:
 **Keep this file in sync with the repo.** When `DEPLOY_TO_EC2` is enabled, the workflow downloads the latest `docker/compose/docker-compose.prod.yml` from GitHub (same ref as the run) into `/opt/sweet-spicy/` before `compose up`. Manual deploys still need you to copy updates yourself. `.env` is never overwritten by CI.
 - `deploy/vm/nginx/default.conf` → reference for `location` rules.
 - **`deploy/vm/nginx/sites-available.sweetspicy.example.conf`** → **full** manual copy-paste vhost (same layout as the template).
-- **`deploy/vm/nginx/sites-available.sweetspicy.template.conf`** + **`scripts/deploy/sync-nginx-sweetspicy.sh`** → used by **GitHub Actions** deploy: hostname is taken from **Actions variable `NEXT_PUBLIC_SOCKET_URL`** (scheme/path stripped). **Requires** Let’s Encrypt files at `/etc/letsencrypt/live/<host>/` on the VM (run `certbot` once); until then the script **skips** nginx (no failure). Requires **`ubuntu` passwordless `sudo`** for `tee` / `nginx` / `systemctl`.
+- **`deploy/vm/nginx/sites-available.sweetspicy.template.conf`** + **`scripts/deploy/sync-nginx-sweetspicy.sh`** → used by **GitHub Actions** deploy: hostname is taken from **Actions variable `NEXT_PUBLIC_SOCKET_URL`** (scheme/path stripped). **Requires** Let’s Encrypt files at `/etc/letsencrypt/live/<host>/` on the VM (run `certbot` once); until then the script **skips** nginx (no failure). Requires **`ubuntu` passwordless `sudo`** for `tee` / `nginx` / `systemctl`. The template replaces **`/etc/nginx/sites-available/sweetspicy`** with **`/api/`** and **`/socket.io` → :8000** (fixes Certbot-only vhosts that only had **`/` → :3000**).
+- **Manual / re-run on the VM (same layout as CI):** copy `scripts/deploy/run-nginx-sync-from-vm-env.sh` next to the template under **`/opt/sweet-spicy/.deploy-assets/`** (or use the files Actions uploads), ensure **`NEXT_PUBLIC_SOCKET_URL`** is set in **`/opt/sweet-spicy/.env`**, then:
+  ```bash
+  SWEET_SPICY_ENV=/opt/sweet-spicy/.env bash /opt/sweet-spicy/.deploy-assets/run-nginx-sync-from-vm-env.sh
+  ```
+  **`scripts/deploy/deploy-vm.sh`** runs this automatically when `.deploy-assets/run-nginx-sync-from-vm-env.sh` and **`/opt/sweet-spicy/.env`** exist.
 
 ## Build images (CI or laptop)
 

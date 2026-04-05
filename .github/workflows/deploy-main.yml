@@ -159,6 +159,7 @@ jobs:
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_deploy \
             docker/compose/docker-compose.prod.yml \
             scripts/deploy/sync-nginx-sweetspicy.sh \
+            scripts/deploy/run-nginx-sync-from-vm-env.sh \
             deploy/vm/nginx/sites-available.sweetspicy.template.conf \
             "${SSH_USER}@${SSH_HOST}:/opt/sweet-spicy/.deploy-assets/"
 
@@ -187,6 +188,7 @@ jobs:
               sh -c "cd /app/apps/api && npx prisma migrate deploy"
             docker compose -f docker-compose.prod.yml up -d api web
             docker compose -f docker-compose.prod.yml ps
-            # Nginx: use files copied by GitHub Actions (no raw GitHub curl for private repos).
+            # Nginx: full vhost from template (/api, /socket.io → api :8000). NEXT_PUBLIC_* from GitHub vars.
             export NGINX_TEMPLATE_LOCAL=/opt/sweet-spicy/.deploy-assets/sites-available.sweetspicy.template.conf
             bash /opt/sweet-spicy/.deploy-assets/sync-nginx-sweetspicy.sh
+            # Keep .env in sync for manual reruns: sudo SWEET_SPICY_ENV=/opt/sweet-spicy/.env bash .../run-nginx-sync-from-vm-env.sh

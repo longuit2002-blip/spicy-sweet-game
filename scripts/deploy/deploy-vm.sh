@@ -28,8 +28,11 @@ docker compose -f "${COMPOSE_FILE}" up -d api web
 
 echo "Deploy finished (including prisma migrate deploy). Check: docker compose -f ${COMPOSE_FILE} ps"
 
-# Optional nginx sync. Prefer copied assets (same layout as CI) over raw GitHub (public repo only).
-if [[ -n "${NEXT_PUBLIC_SOCKET_URL:-}" ]]; then
+# Optional nginx: apply template if CI assets exist and .env defines NEXT_PUBLIC_SOCKET_URL.
+NGINX_WRAPPER="${DEPLOY_ROOT}/.deploy-assets/run-nginx-sync-from-vm-env.sh"
+if [[ -f "${NGINX_WRAPPER}" ]] && [[ -f "${DEPLOY_ROOT}/.env" ]]; then
+  SWEET_SPICY_ENV="${DEPLOY_ROOT}/.env" bash "${NGINX_WRAPPER}" || true
+elif [[ -n "${NEXT_PUBLIC_SOCKET_URL:-}" ]]; then
   SYNC_SCRIPT="${DEPLOY_ROOT}/.deploy-assets/sync-nginx-sweetspicy.sh"
   TMPL="${DEPLOY_ROOT}/.deploy-assets/sites-available.sweetspicy.template.conf"
   if [[ -f "${SYNC_SCRIPT}" ]] && [[ -f "${TMPL}" ]]; then
