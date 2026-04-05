@@ -142,26 +142,43 @@ jobs:
     if: vars.DEPLOY_TO_EC2 == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (deploy files match this commit; avoids private-repo 404 on raw.githubusercontent.com)
+        uses: actions/checkout@v4
+
+      - name: Upload compose + nginx assets to EC2
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/ec2_deploy
+          chmod 600 ~/.ssh/ec2_deploy
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_deploy "${SSH_USER}@${SSH_HOST}" "mkdir -p /opt/sweet-spicy/.deploy-assets"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_deploy \
+            docker/compose/docker-compose.prod.yml \
+            scripts/deploy/sync-nginx-sweetspicy.sh \
+            deploy/vm/nginx/sites-available.sweetspicy.template.conf \
+            "${SSH_USER}@${SSH_HOST}:/opt/sweet-spicy/.deploy-assets/"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         env:
           WEB_IMAGE: ${{ needs.build-and-push.outputs.web_image }}
           API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
-          COMPOSE_REPO: ${{ github.repository }}
-          COMPOSE_REF: ${{ github.ref_name }}
           NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
-          envs: WEB_IMAGE,API_IMAGE,COMPOSE_REPO,COMPOSE_REF,NEXT_PUBLIC_SOCKET_URL
+          envs: WEB_IMAGE,API_IMAGE,NEXT_PUBLIC_SOCKET_URL
           script: |
             set -euo pipefail
             mkdir -p /opt/sweet-spicy
             cd /opt/sweet-spicy
-            # VM file can lag behind the repo (e.g. missing `redis`). Always sync compose from this branch.
-            curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/docker/compose/docker-compose.prod.yml" -o docker-compose.prod.yml
+            cp /opt/sweet-spicy/.deploy-assets/docker-compose.prod.yml /opt/sweet-spicy/docker-compose.prod.yml
             export WEB_IMAGE API_IMAGE
             docker compose -f docker-compose.prod.yml pull
             # Match scripts/deploy/deploy-vm.sh: DB + Redis healthy first, migrate, then app containers.
@@ -170,5 +187,6 @@ jobs:
               sh -c "cd /app/apps/api && npx prisma migrate deploy"
             docker compose -f docker-compose.prod.yml up -d api web
             docker compose -f docker-compose.prod.yml ps
-            # Nginx: apply TLS vhost + /api + /socket.io (skipped until Let's Encrypt cert exists on VM).
-            curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/scripts/deploy/sync-nginx-sweetspicy.sh" | bash
+            # Nginx: use files copied by GitHub Actions (no raw GitHub curl for private repos).
+            export NGINX_TEMPLATE_LOCAL=/opt/sweet-spicy/.deploy-assets/sites-available.sweetspicy.template.conf
+            bash /opt/sweet-spicy/.deploy-assets/sync-nginx-sweetspicy.sh

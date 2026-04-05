@@ -28,9 +28,14 @@ docker compose -f "${COMPOSE_FILE}" up -d api web
 
 echo "Deploy finished (including prisma migrate deploy). Check: docker compose -f ${COMPOSE_FILE} ps"
 
-# Optional nginx sync (same as CI): export COMPOSE_REPO=owner/repo COMPOSE_REF=main NEXT_PUBLIC_SOCKET_URL=https://your.domain
-if [[ -n "${NEXT_PUBLIC_SOCKET_URL:-}" ]] && [[ -n "${COMPOSE_REPO:-}" ]] && [[ -n "${COMPOSE_REF:-}" ]]; then
-  if curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/scripts/deploy/sync-nginx-sweetspicy.sh" | bash; then
-    :
+# Optional nginx sync. Prefer copied assets (same layout as CI) over raw GitHub (public repo only).
+if [[ -n "${NEXT_PUBLIC_SOCKET_URL:-}" ]]; then
+  SYNC_SCRIPT="${DEPLOY_ROOT}/.deploy-assets/sync-nginx-sweetspicy.sh"
+  TMPL="${DEPLOY_ROOT}/.deploy-assets/sites-available.sweetspicy.template.conf"
+  if [[ -f "${SYNC_SCRIPT}" ]] && [[ -f "${TMPL}" ]]; then
+    export NGINX_TEMPLATE_LOCAL="${TMPL}"
+    bash "${SYNC_SCRIPT}" || true
+  elif [[ -n "${COMPOSE_REPO:-}" ]] && [[ -n "${COMPOSE_REF:-}" ]]; then
+    curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/scripts/deploy/sync-nginx-sweetspicy.sh" | bash || true
   fi
 fi
