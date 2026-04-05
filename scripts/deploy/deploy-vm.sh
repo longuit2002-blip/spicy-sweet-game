@@ -27,3 +27,10 @@ docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
 docker compose -f "${COMPOSE_FILE}" up -d api web
 
 echo "Deploy finished (including prisma migrate deploy). Check: docker compose -f ${COMPOSE_FILE} ps"
+
+# Optional nginx sync (same as CI): export COMPOSE_REPO=owner/repo COMPOSE_REF=main NEXT_PUBLIC_SOCKET_URL=https://your.domain
+if [[ -n "${NEXT_PUBLIC_SOCKET_URL:-}" ]] && [[ -n "${COMPOSE_REPO:-}" ]] && [[ -n "${COMPOSE_REF:-}" ]]; then
+  if curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/scripts/deploy/sync-nginx-sweetspicy.sh" | bash; then
+    :
+  fi
+fi

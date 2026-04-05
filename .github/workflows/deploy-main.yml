@@ -9,7 +9,9 @@
 #    - Variable: DEPLOY_TO_EC2 = true
 #    - Secrets: EC2_HOST (IP or hostname), EC2_USER (e.g. ubuntu), EC2_SSH_KEY (private key PEM)
 # 3. On the EC2 host, follow deploy/vm/README.md: /opt/sweet-spicy/, docker-compose.prod.yml,
-#    .env, and `docker login ghcr.io` if images are private.
+#    .env, `docker login ghcr.io` if images are private, nginx + sudo without password.
+#    First-time TLS: run certbot on the VM so /etc/letsencrypt/live/<host>/ exists; deploy then
+#    syncs nginx from deploy/vm/nginx/sites-available.sweetspicy.template.conf automatically.
 #
 # Images are pushed as:
 #   ghcr.io/<lowercase owner>/<lowercase repo>-web:<sha>  (+ branch tag main, latest)
@@ -145,15 +147,21 @@ jobs:
         env:
           WEB_IMAGE: ${{ needs.build-and-push.outputs.web_image }}
           API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
+          COMPOSE_REPO: ${{ github.repository }}
+          COMPOSE_REF: ${{ github.ref_name }}
+          NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
-          envs: WEB_IMAGE,API_IMAGE
+          envs: WEB_IMAGE,API_IMAGE,COMPOSE_REPO,COMPOSE_REF,NEXT_PUBLIC_SOCKET_URL
           script: |
             set -euo pipefail
+            mkdir -p /opt/sweet-spicy
             cd /opt/sweet-spicy
+            # VM file can lag behind the repo (e.g. missing `redis`). Always sync compose from this branch.
+            curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/docker/compose/docker-compose.prod.yml" -o docker-compose.prod.yml
             export WEB_IMAGE API_IMAGE
             docker compose -f docker-compose.prod.yml pull
             # Match scripts/deploy/deploy-vm.sh: DB + Redis healthy first, migrate, then app containers.
@@ -162,3 +170,5 @@ jobs:
               sh -c "cd /app/apps/api && npx prisma migrate deploy"
             docker compose -f docker-compose.prod.yml up -d api web
             docker compose -f docker-compose.prod.yml ps
+            # Nginx: apply TLS vhost + /api + /socket.io (skipped until Let's Encrypt cert exists on VM).
+            curl -fsSL "https://raw.githubusercontent.com/${COMPOSE_REPO}/${COMPOSE_REF}/scripts/deploy/sync-nginx-sweetspicy.sh" | bash
