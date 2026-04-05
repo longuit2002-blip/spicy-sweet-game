@@ -6,20 +6,20 @@ const sharedTypesDist = path.join(monorepoRoot, "packages/shared-types/dist/inde
 const gameLogicDist = path.join(monorepoRoot, "packages/game-logic/dist/index.js");
 
 /**
- * When set at **build** time (e.g. Docker: `API_PROXY_ORIGIN=http://api:8000`), the standalone
- * server proxies `/api/*` and `/socket.io` to Nest. Use Nginx on the host if you prefer one edge
- * proxy; this covers setups that only expose the web container (tunnel → :3000).
+ * REST under `/api/*` is proxied by `app/api/[[...path]]/route.ts` (runtime `API_INTERNAL_ORIGIN`).
+ * Here we only rewrite Socket.IO (WebSocket upgrade); use host Nginx if you prefer.
  */
-function productionApiProxyRewrites(): { source: string; destination: string }[] {
+function socketIoProxyRewrites():
+  | []
+  | { beforeFiles: { source: string; destination: string }[] } {
   const origin = process.env.API_PROXY_ORIGIN?.trim();
   if (!origin) {
     return [];
   }
   const base = origin.replace(/\/$/, "");
-  return [
-    { source: "/api/:path*", destination: `${base}/:path*` },
-    { source: "/socket.io/:path*", destination: `${base}/socket.io/:path*` },
-  ];
+  return {
+    beforeFiles: [{ source: "/socket.io/:path*", destination: `${base}/socket.io/:path*` }],
+  };
 }
 
 const nextConfig: NextConfig = {
@@ -50,7 +50,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   async rewrites() {
-    return productionApiProxyRewrites();
+    return socketIoProxyRewrites();
   },
 };
 

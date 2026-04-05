@@ -21,10 +21,11 @@ ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_SOCKET_URL
 # In Docker Compose the API service hostname is `api` (see docker-compose.prod.yml).
 ARG API_PROXY_ORIGIN=http://api:8000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
-ENV API_PROXY_ORIGIN=$API_PROXY_ORIGIN
-RUN pnpm exec turbo run build --filter=web
+# Inline env on this RUN so Docker layer + Turbo cache key reflect proxy URL / public URLs.
+RUN API_PROXY_ORIGIN="${API_PROXY_ORIGIN}" \
+    NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}" \
+    NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL}" \
+    pnpm exec turbo run build --filter=web
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 WORKDIR /app

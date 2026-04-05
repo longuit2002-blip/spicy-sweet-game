@@ -42,6 +42,8 @@ services:
     # Next.js must listen on 3000: do not let shared .env PORT=8000 (meant for API) override this.
     environment:
       PORT: "3000"
+      # Server-side proxy: browser calls /api/* on Next; forward to Nest (Docker network hostname).
+      API_INTERNAL_ORIGIN: "http://api:8000"
     ports:
       - "127.0.0.1:3000:3000"
 
