@@ -31,11 +31,15 @@ function buildTargetUrl(req: NextRequest, pathSegments: string[] | undefined): U
   return new URL(`${backendOrigin()}${suffix}${incoming.search}`);
 }
 
-function forwardRequestHeaders(req: NextRequest): Headers {
+function forwardRequestHeaders(req: NextRequest, stripContentLength: boolean): Headers {
   const out = new Headers();
   req.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
     if (lower === "host" || HOP_BY_HOP_REQUEST.has(lower)) {
+      return;
+    }
+    // Avoid length mismatch when forwarding a streamed body to `fetch`.
+    if (stripContentLength && lower === "content-length") {
       return;
     }
     out.set(key, value);
@@ -58,7 +62,8 @@ function forwardResponseHeaders(source: Headers): Headers {
 async function proxy(req: NextRequest, pathSegments: string[] | undefined): Promise<Response> {
   const target = buildTargetUrl(req, pathSegments);
   const method = req.method.toUpperCase();
-  const headers = forwardRequestHeaders(req);
+  const withBody = method !== "GET" && method !== "HEAD";
+  const headers = forwardRequestHeaders(req, withBody);
 
   const init: RequestInit & { duplex?: "half" } = {
     method,
@@ -66,17 +71,29 @@ async function proxy(req: NextRequest, pathSegments: string[] | undefined): Prom
     redirect: "manual",
   };
 
-  if (method !== "GET" && method !== "HEAD") {
+  if (withBody) {
     init.body = req.body;
     init.duplex = "half";
   }
 
-  const upstream = await fetch(target, init);
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: forwardResponseHeaders(upstream.headers),
-  });
+  try {
+    const upstream = await fetch(target, init);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: forwardResponseHeaders(upstream.headers),
+    });
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error("[api-proxy] upstream fetch failed", target.href, message);
+    return new Response(
+      JSON.stringify({
+        success: false as const,
+        error: { code: "bad_gateway", message: "Upstream API unreachable from web container" },
+      }),
+      { status: 502, headers: { "content-type": "application/json; charset=utf-8" } },
+    );
+  }
 }
 
 type RouteContext = { params: Promise<{ path?: string[] }> };

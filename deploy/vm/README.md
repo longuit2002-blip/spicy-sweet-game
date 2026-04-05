@@ -20,6 +20,8 @@ This folder supports the flow in **[docs/devops-setup-and-deploy.md](../../docs/
 Copy from this repo:
 
 - `docker/compose/docker-compose.prod.yml` → `/opt/sweet-spicy/docker-compose.prod.yml`
+
+**Keep this file in sync with the repo.** CI only runs `docker compose pull` / `up` on the server; it does not upload the compose file. An older copy (e.g. without the `redis` service) will leave `api` running with no `redis` host → `ENOTFOUND redis`.
 - `deploy/vm/nginx/default.conf` → use as the basis for `/etc/nginx/sites-available/...` (then `sites-enabled`, `nginx -t`, `systemctl reload nginx`)
 
 ## Build images (CI or laptop)

@@ -156,5 +156,9 @@ jobs:
             cd /opt/sweet-spicy
             export WEB_IMAGE API_IMAGE
             docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
+            # Match scripts/deploy/deploy-vm.sh: DB + Redis healthy first, migrate, then app containers.
+            docker compose -f docker-compose.prod.yml up -d postgres redis
+            docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+              sh -c "cd /app/apps/api && npx prisma migrate deploy"
+            docker compose -f docker-compose.prod.yml up -d api web
             docker compose -f docker-compose.prod.yml ps
