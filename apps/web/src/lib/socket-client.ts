@@ -10,6 +10,33 @@ const SOCKET_URL =
     ? (process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3001")
     : "http://localhost:3001";
 
+// #region agent log
+/** Debug NDJSON ingest (same machine as browser + Cursor debug server). */
+function agentSocketDebug(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  fetch("http://127.0.0.1:7441/ingest/dfeb2aae-d72a-4d3e-9028-a1269ee253e7", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "6201b8" },
+    body: JSON.stringify({
+      sessionId: "6201b8",
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      runId: "pre-fix",
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 /** Structured log for production debugging (browser console). */
 function logSocketConnectError(error: unknown): void {
   if (typeof window === "undefined") {
@@ -17,12 +44,24 @@ function logSocketConnectError(error: unknown): void {
   }
   const pageOrigin = window.location.origin;
   const base = { socketUrl: SOCKET_URL, pageOrigin };
+  let transport = "unknown";
+  if (socketInstance?.io?.engine && typeof socketInstance.io.engine.transport?.name === "string") {
+    transport = socketInstance.io.engine.transport.name;
+  }
   if (error instanceof Error) {
     const ext = error as Error & {
       description?: string;
       context?: unknown;
       type?: string;
     };
+    // #region agent log
+    agentSocketDebug("B", "socket-client:connect_error", "connect_error", {
+      ...base,
+      transport,
+      message: ext.message,
+      errType: ext.type ?? ext.name,
+    });
+    // #endregion
     console.error("[sweet-spicy][socket] connect_error", {
       ...base,
       message: ext.message,
@@ -33,6 +72,9 @@ function logSocketConnectError(error: unknown): void {
     });
     return;
   }
+  // #region agent log
+  agentSocketDebug("B", "socket-client:connect_error", "connect_error_non_error", { ...base, transport });
+  // #endregion
   console.error("[sweet-spicy][socket] connect_error", { ...base, error });
 }
 
@@ -82,6 +124,39 @@ export function createSocket(token?: string): GameSocket {
   }) as GameSocket;
 
   socketInstance.on("connect_error", logSocketConnectError);
+
+  // #region agent log
+  {
+    const engine = socketInstance.io?.engine;
+    agentSocketDebug("A", "socket-client:createSocket", "socket_instantiated", {
+      SOCKET_URL,
+      pageOrigin: typeof window !== "undefined" ? window.location.origin : "",
+      transportsOption: "websocket,polling",
+    });
+    engine?.once("open", () => {
+      agentSocketDebug("D", "socket-client:engine_open", "engine_open", {
+        transport: engine.transport?.name ?? "unknown",
+      });
+    });
+    engine?.on("upgrade", () => {
+      agentSocketDebug("C", "socket-client:engine_upgrade", "upgrade_ok", {
+        transport: engine.transport?.name ?? "unknown",
+      });
+    });
+    engine?.on("upgradeError", (err: unknown) => {
+      agentSocketDebug("C", "socket-client:engine_upgradeError", "upgrade_failed", {
+        err: err instanceof Error ? err.message : String(err),
+        transport: engine.transport?.name ?? "unknown",
+      });
+    });
+  }
+  socketInstance.once("connect", () => {
+    const engine = socketInstance?.io?.engine;
+    agentSocketDebug("D", "socket-client:connect", "socket_connected", {
+      transport: engine?.transport?.name ?? "unknown",
+    });
+  });
+  // #endregion
 
   return socketInstance;
 }
