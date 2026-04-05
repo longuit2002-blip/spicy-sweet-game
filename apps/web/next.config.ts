@@ -5,6 +5,23 @@ const monorepoRoot = path.resolve(process.cwd(), "../..");
 const sharedTypesDist = path.join(monorepoRoot, "packages/shared-types/dist/index.js");
 const gameLogicDist = path.join(monorepoRoot, "packages/game-logic/dist/index.js");
 
+/**
+ * When set at **build** time (e.g. Docker: `API_PROXY_ORIGIN=http://api:8000`), the standalone
+ * server proxies `/api/*` and `/socket.io` to Nest. Use Nginx on the host if you prefer one edge
+ * proxy; this covers setups that only expose the web container (tunnel → :3000).
+ */
+function productionApiProxyRewrites(): { source: string; destination: string }[] {
+  const origin = process.env.API_PROXY_ORIGIN?.trim();
+  if (!origin) {
+    return [];
+  }
+  const base = origin.replace(/\/$/, "");
+  return [
+    { source: "/api/:path*", destination: `${base}/:path*` },
+    { source: "/socket.io/:path*", destination: `${base}/socket.io/:path*` },
+  ];
+}
+
 const nextConfig: NextConfig = {
   /** Allow card-art `quality` values on `next/image` (see `GAME_CARD_NEXT_IMAGE_QUALITY` in `game-card-assets.ts`). */
   images: {
@@ -31,6 +48,9 @@ const nextConfig: NextConfig = {
       "@sweet-spicy/game-logic": gameLogicDist,
     };
     return config;
+  },
+  async rewrites() {
+    return productionApiProxyRewrites();
   },
 };
 

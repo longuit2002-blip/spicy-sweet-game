@@ -76,6 +76,13 @@ docker compose -f /opt/sweet-spicy/docker-compose.prod.yml exec redis redis-cli 
 
 TLS (Let’s Encrypt) is phase 2 in the spec; validate HTTP routing first.
 
+### Nginx must receive traffic before Next (troubleshooting)
+
+If `https://YOUR_DOMAIN/api/...` returns **HTML 404** from Next instead of JSON from the API, your public entrypoint is sending **`/api` to port 3000 only**. Fix one of:
+
+1. **Preferred:** Point **Nginx** (or Cloudflare Tunnel) at **:80** on the VM and use `deploy/vm/nginx/default.conf` so `/api/` and `/socket.io` go to `127.0.0.1:8000`.
+2. **Or:** Use a **new web image** built from this repo: the Dockerfile sets `API_PROXY_ORIGIN=http://api:8000`, so the Next standalone server proxies `/api/*` and `/socket.io` to the `api` service on the Compose network when you only publish the web container.
+
 ## Scripts in `scripts/deploy/`
 
 `deploy-vm.sh` and `rollback-vm.sh` are the standard deploy entrypoints after copying `docker-compose.prod.yml` into `/opt/sweet-spicy/`. They expect `WEB_IMAGE` and `API_IMAGE` in the environment (or `deploy.env`), and `deploy-vm.sh` also applies Prisma migrations automatically.

@@ -127,6 +127,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_SOCKET_URL=${{ vars.NEXT_PUBLIC_SOCKET_URL }}
+            API_PROXY_ORIGIN=http://api:8000
           tags: |
             ${{ steps.image-names.outputs.web_full }}
             ${{ steps.image-names.outputs.web_branch }}
